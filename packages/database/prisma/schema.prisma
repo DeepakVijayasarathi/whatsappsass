@@ -103,6 +103,7 @@ model Contact {
   tags        String[]
   optIn       Boolean  @default(false) @map("opt_in")
   leadStatus  String   @default("new") @map("lead_status")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   messageLogs         MessageLog[]
@@ -113,6 +114,7 @@ model Contact {
 
   @@index([workspaceId])
   @@index([phone])
+  @@index([workspaceId, createdAt])
   @@map("contacts")
 }
 
