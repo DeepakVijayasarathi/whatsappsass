@@ -7,9 +7,7 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 echo "[db] Resolving any failed migrations..."
-./node_modules/.bin/prisma migrate resolve \
-  --applied "20260522000000_init" \
-  --schema=./prisma/schema.prisma 2>/dev/null || true
+node dist/resolve-migrations.js || true
 
 echo "[db] Applying migrations..."
 ./node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
