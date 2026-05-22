@@ -6,13 +6,9 @@ const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/reset-passwor
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ── API proxy — rewrite /api/* to backend at runtime ──────────────────────
+  // API routes are handled by /app/api/[...path]/route.ts — skip middleware
   if (pathname.startsWith("/api/")) {
-    const backendUrl = process.env.BACKEND_URL || "http://127.0.0.1:4000";
-    const upstream = pathname.replace(/^\/api/, "");
-    const search = request.nextUrl.search;
-    const target = `${backendUrl}${upstream}${search}`;
-    return NextResponse.rewrite(target);
+    return NextResponse.next();
   }
 
   const token = request.cookies.get("token")?.value;
