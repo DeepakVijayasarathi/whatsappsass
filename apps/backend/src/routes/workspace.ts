@@ -105,6 +105,128 @@ export async function workspaceRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── Member role update ─────────────────────────────────────────────────────
+  app.patch(
+    "/members/:id/role",
+    { preHandler: [requireOwnerOrAdmin] },
+    async (request, reply) => {
+      const actor = request.user as JwtPayload;
+      const { id } = request.params as { id: string };
+      const schema = z.object({ role: z.enum(["admin", "marketer"]) });
+
+      const parsed = schema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+
+      const target = await prisma.user.findFirst({
+        where: { id, workspaceId: actor.workspaceId },
+      });
+      if (!target) return reply.status(404).send({ error: "Member not found" });
+      if (target.role === "owner") {
+        return reply.status(403).send({ error: "Cannot change the owner's role" });
+      }
+      if (actor.role !== "owner" && target.role === "admin") {
+        return reply.status(403).send({ error: "Only owner can change an admin's role" });
+      }
+
+      const updated = await prisma.user.update({
+        where: { id },
+        data: { role: parsed.data.role },
+        select: { id: true, name: true, email: true, role: true },
+      });
+
+      return reply.send(updated);
+    }
+  );
+
+  // ── Remove member ──────────────────────────────────────────────────────────
+  app.delete(
+    "/members/:id",
+    { preHandler: [requireOwnerOrAdmin] },
+    async (request, reply) => {
+      const actor = request.user as JwtPayload;
+      const { id } = request.params as { id: string };
+
+      if (id === actor.userId) {
+        return reply.status(400).send({ error: "You cannot remove yourself" });
+      }
+
+      const target = await prisma.user.findFirst({
+        where: { id, workspaceId: actor.workspaceId },
+      });
+      if (!target) return reply.status(404).send({ error: "Member not found" });
+      if (target.role === "owner") {
+        return reply.status(403).send({ error: "Cannot remove the workspace owner" });
+      }
+      if (actor.role !== "owner" && target.role === "admin") {
+        return reply.status(403).send({ error: "Only owner can remove an admin" });
+      }
+
+      await prisma.user.delete({ where: { id } });
+      return reply.send({ message: "Member removed" });
+    }
+  );
+
+  // ── Current user profile ───────────────────────────────────────────────────
+  app.get(
+    "/profile",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const actor = request.user as JwtPayload;
+      const user = await prisma.user.findUnique({
+        where: { id: actor.userId },
+        select: { id: true, name: true, email: true, role: true, createdAt: true },
+      });
+      if (!user) return reply.status(404).send({ error: "User not found" });
+      return reply.send(user);
+    }
+  );
+
+  // ── Update own profile / password ─────────────────────────────────────────
+  app.patch(
+    "/profile",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const actor = request.user as JwtPayload;
+      const schema = z.object({
+        name: z.string().min(1).optional(),
+        currentPassword: z.string().optional(),
+        newPassword: z.string().min(8).optional(),
+      });
+
+      const parsed = schema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: actor.userId } });
+      if (!user) return reply.status(404).send({ error: "User not found" });
+
+      const updateData: { name?: string; passwordHash?: string } = {};
+
+      if (parsed.data.name) updateData.name = parsed.data.name;
+
+      if (parsed.data.newPassword) {
+        if (!parsed.data.currentPassword) {
+          return reply.status(400).send({ error: "Current password required to set new password" });
+        }
+        const bcrypt = await import("bcryptjs");
+        const valid = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+        if (!valid) return reply.status(401).send({ error: "Current password is incorrect" });
+        updateData.passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+      }
+
+      const updated = await prisma.user.update({
+        where: { id: actor.userId },
+        data: updateData,
+        select: { id: true, name: true, email: true, role: true },
+      });
+
+      return reply.send(updated);
+    }
+  );
+
   // ── WhatsApp provider configuration ────────────────────────────────────────
   app.patch(
     "/provider",

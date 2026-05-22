@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Shield, Key, Wifi, RefreshCw } from "lucide-react";
+import { Shield, Key, Wifi, RefreshCw, Building2 } from "lucide-react";
 import clsx from "clsx";
 
 const licenseSchema = z.object({
@@ -116,6 +116,7 @@ export default function SettingsPage() {
 
   const tabs = [
     { id: "provider", label: "WhatsApp Provider" },
+    { id: "workspace", label: "Workspace" },
     { id: "license", label: "License" },
   ] as const;
 
@@ -292,6 +293,11 @@ export default function SettingsPage() {
           </>
         )}
 
+        {/* ── Workspace tab ── */}
+        {activeTab === "workspace" && (
+          <WorkspaceSettings />
+        )}
+
         {/* ── License tab ── */}
         {activeTab === "license" && (
           <div className="card">
@@ -341,6 +347,87 @@ export default function SettingsPage() {
             </form>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Workspace settings sub-component ──────────────────────────────────────────
+function WorkspaceSettings() {
+  const [workspace, setWorkspace] = useState<{
+    id: string; name: string; plan: string; status: string; createdAt: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState("");
+
+  useEffect(() => {
+    api.get("/workspace/me").then((r) => {
+      setWorkspace(r.data);
+      setName(r.data.name);
+    });
+  }, []);
+
+  const save = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      await api.patch("/workspace/me", { name: name.trim() });
+      toast.success("Workspace name updated");
+      setWorkspace((w) => w ? { ...w, name: name.trim() } : w);
+    } catch {
+      toast.error("Failed to update");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!workspace) return <p className="text-gray-400 text-sm">Loading...</p>;
+
+  return (
+    <div className="space-y-4">
+      <div className="card">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 bg-orange-50 rounded-xl flex items-center justify-center">
+            <Building2 className="w-5 h-5 text-orange-500" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">Workspace</p>
+            <p className="text-xs text-gray-400">Manage your workspace details</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Workspace name</label>
+            <div className="flex gap-2">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input flex-1"
+                placeholder="My Business"
+              />
+              <button onClick={save} disabled={saving || name === workspace.name} className="btn-primary shrink-0">
+                {saving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+            {[
+              { label: "Workspace ID", value: workspace.id, mono: true },
+              { label: "Plan", value: workspace.plan.toUpperCase() },
+              { label: "Status", value: workspace.status },
+              { label: "Created", value: new Date(workspace.createdAt).toLocaleDateString() },
+            ].map(({ label, value, mono }) => (
+              <div key={label}>
+                <p className="text-xs text-gray-400 mb-0.5">{label}</p>
+                <p className={clsx("text-sm text-gray-700 truncate", mono && "font-mono text-xs")}>
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
