@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
+import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard, Users, Megaphone, Send, Inbox, BarChart2,
   Settings, LogOut, MessageSquare, UserCircle, UsersRound,
@@ -12,28 +13,16 @@ import {
 } from "lucide-react";
 import { clearAuth, getUser, getWorkspace } from "@/lib/auth";
 import { useInboxNotifications } from "@/lib/useInboxNotifications";
-import { brand } from "@/lib/brand";
+import { brand, nav } from "@/lib/brand";
+import type { NavRole } from "@/lib/brand";
 
-const navItems = [
-  { href: "/dashboard",        icon: LayoutDashboard, label: "Dashboard",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/contacts",         icon: Users,           label: "Contacts",        roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/campaigns",        icon: Megaphone,       label: "WA Campaigns",    roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/email-campaigns",  icon: Mail,            label: "Email Campaigns", roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/send",             icon: Send,            label: "Send Message",    roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/inbox",            icon: Inbox,           label: "Inbox",           roles: ["owner","admin","marketer"], badge: "inbox", group: "main" },
-  { href: "/crm",              icon: Kanban,          label: "CRM Pipeline",    roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/templates",        icon: FileText,        label: "Templates",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/analytics",        icon: BarChart2,       label: "Analytics",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/sequences",        icon: GitBranch,       label: "Drip Sequences",  roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/guide",            icon: BookOpen,        label: "How to Use",      roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/auto-replies",     icon: Bot,             label: "Auto-Replies",    roles: ["owner","admin"],            badge: null,    group: "admin" },
-  { href: "/webhooks",         icon: Webhook,         label: "Webhooks",        roles: ["owner","admin"],            badge: null,    group: "admin" },
-  { href: "/admin/metrics",    icon: LineChart,       label: "Metrics",         roles: ["owner","admin"],            badge: null,    group: "admin" },
-  { href: "/admin/audit-log",  icon: ClipboardList,   label: "Audit Log",       roles: ["owner","admin"],            badge: null,    group: "admin" },
-  { href: "/admin/workspaces", icon: Shield,          label: "Super Admin",     roles: ["owner"],                    badge: null,    group: "admin" },
-  { href: "/team",             icon: UsersRound,      label: "Team",            roles: ["owner","admin"],            badge: null,    group: "admin" },
-  { href: "/settings",         icon: Settings,        label: "Settings",        roles: ["owner","admin"],            badge: null,    group: "admin" },
-];
+// ── Icon name → component map (mirrors the icon names used in brand.ts) ──────
+const ICONS: Record<string, LucideIcon> = {
+  LayoutDashboard, Users, Megaphone, Send, Inbox, BarChart2,
+  Settings, MessageSquare, UsersRound,
+  FileText, Mail, ClipboardList, Shield, LineChart, Kanban,
+  Bot, Webhook, GitBranch, BookOpen,
+};
 
 interface Props { open?: boolean; onClose?: () => void; }
 
@@ -48,7 +37,8 @@ export default function Sidebar({ open = false, onClose }: Props) {
 
   const handleLogout = () => { clearAuth(); router.push("/login"); };
 
-  const visible = navItems.filter((i) => i.roles.includes(user?.role ?? "marketer"));
+  const role = (user?.role ?? "marketer") as NavRole;
+  const visible    = nav.filter((i) => (i.enabled ?? true) && i.roles.includes(role));
   const mainItems  = visible.filter((i) => i.group === "main");
   const adminItems = visible.filter((i) => i.group === "admin");
 
@@ -90,7 +80,8 @@ export default function Sidebar({ open = false, onClose }: Props) {
 
         {/* Main section */}
         <div className="space-y-0.5">
-          {mainItems.map(({ href, icon: Icon, label, badge }) => {
+          {mainItems.map(({ href, icon, label, badge }) => {
+            const Icon = ICONS[icon] ?? FileText;
             const active = isActive(href);
             const showBadge = badge === "inbox" && unreadCount > 0;
             return (
@@ -123,7 +114,8 @@ export default function Sidebar({ open = false, onClose }: Props) {
               Admin
             </p>
             <div className="space-y-0.5">
-              {adminItems.map(({ href, icon: Icon, label }) => {
+              {adminItems.map(({ href, icon, label }) => {
+                const Icon = ICONS[icon] ?? FileText;
                 const active = isActive(href);
                 return (
                   <Link
