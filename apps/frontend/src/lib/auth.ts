@@ -35,14 +35,24 @@ export function clearAuth() {
 
 export function getUser(): AuthUser | null {
   if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem("user");
-  return raw ? JSON.parse(raw) : null;
+  try {
+    const raw = localStorage.getItem("user");
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch {
+    localStorage.removeItem("user");
+    return null;
+  }
 }
 
 export function getWorkspace(): AuthWorkspace | null {
   if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem("workspace");
-  return raw ? JSON.parse(raw) : null;
+  try {
+    const raw = localStorage.getItem("workspace");
+    return raw ? (JSON.parse(raw) as AuthWorkspace) : null;
+  } catch {
+    localStorage.removeItem("workspace");
+    return null;
+  }
 }
 
 export function isAuthenticated(): boolean {

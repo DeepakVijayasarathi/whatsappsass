@@ -187,7 +187,7 @@ export default function SuperAdminWorkspacesPage() {
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-1">
           <Shield className="w-5 h-5 text-orange-500" />
-          <h1 className="text-2xl font-bold text-gray-900">Super Admin — Workspaces</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Super Admin — Workspaces</h1>
         </div>
         <p className="text-gray-500 text-sm">Manage all tenants, suspend workspaces, and impersonate users</p>
       </div>

@@ -1,0 +1,165 @@
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { prisma } from "../lib/prisma";
+import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
+import type { JwtPayload } from "../middleware/authenticate";
+
+export async function sequenceRoutes(app: FastifyInstance) {
+  // ── List sequences ────────────────────────────────────────────────────────
+  app.get("/", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const sequences = await prisma.campaignSequence.findMany({
+      where: { workspaceId: user.workspaceId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        steps: { orderBy: { stepNumber: "asc" } },
+        _count: { select: { enrollments: true } },
+      },
+    });
+    return reply.send({ sequences });
+  });
+
+  // ── Get one sequence ──────────────────────────────────────────────────────
+  app.get("/:id", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const seq = await prisma.campaignSequence.findFirst({
+      where: { id, workspaceId: user.workspaceId },
+      include: {
+        steps: { orderBy: { stepNumber: "asc" } },
+        enrollments: {
+          include: { contact: { select: { id: true, name: true, phone: true } } },
+          orderBy: { startedAt: "desc" },
+          take: 50,
+        },
+        _count: { select: { enrollments: true } },
+      },
+    });
+    if (!seq) return reply.status(404).send({ error: "Sequence not found" });
+    return reply.send(seq);
+  });
+
+  // ── Create sequence ───────────────────────────────────────────────────────
+  app.post("/", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const schema = z.object({
+      name:  z.string().min(1),
+      steps: z.array(z.object({
+        stepNumber:   z.number().int().min(1),
+        templateName: z.string().min(1),
+        languageCode: z.string().default("en_US"),
+        delayDays:    z.number().int().min(0).default(0),
+      })).min(1, "At least one step required"),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const seq = await prisma.campaignSequence.create({
+      data: {
+        workspaceId: user.workspaceId,
+        name: parsed.data.name,
+        steps: { create: parsed.data.steps },
+      },
+      include: { steps: { orderBy: { stepNumber: "asc" } } },
+    });
+    return reply.status(201).send(seq);
+  });
+
+  // ── Update sequence status / name ─────────────────────────────────────────
+  app.patch("/:id", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const schema = z.object({
+      name:   z.string().min(1).optional(),
+      status: z.enum(["draft", "active", "paused"]).optional(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const existing = await prisma.campaignSequence.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    if (!existing) return reply.status(404).send({ error: "Not found" });
+
+    const updated = await prisma.campaignSequence.update({ where: { id }, data: parsed.data });
+    return reply.send(updated);
+  });
+
+  // ── Delete sequence ───────────────────────────────────────────────────────
+  app.delete("/:id", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const existing = await prisma.campaignSequence.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    if (!existing) return reply.status(404).send({ error: "Not found" });
+    await prisma.campaignSequence.delete({ where: { id } });
+    return reply.send({ message: "Deleted" });
+  });
+
+  // ── Enroll contacts ───────────────────────────────────────────────────────
+  app.post("/:id/enroll", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const schema = z.object({ contactIds: z.array(z.string().uuid()).min(1) });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const seq = await prisma.campaignSequence.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    if (!seq) return reply.status(404).send({ error: "Sequence not found" });
+    if (seq.status !== "active") return reply.status(409).send({ error: "Activate the sequence before enrolling contacts" });
+
+    // Skip already-enrolled contacts
+    const existing = await prisma.sequenceEnrollment.findMany({
+      where: { sequenceId: id, contactId: { in: parsed.data.contactIds } },
+      select: { contactId: true },
+    });
+    const alreadyEnrolled = new Set(existing.map((e) => e.contactId));
+    const toEnroll = parsed.data.contactIds.filter((cid) => !alreadyEnrolled.has(cid));
+
+    if (toEnroll.length === 0) return reply.send({ enrolled: 0, skipped: alreadyEnrolled.size });
+
+    await prisma.sequenceEnrollment.createMany({
+      data: toEnroll.map((contactId) => ({
+        sequenceId: id,
+        contactId,
+        currentStep: 0,
+        status: "active",
+      })),
+    });
+
+    return reply.send({ enrolled: toEnroll.length, skipped: alreadyEnrolled.size });
+  });
+
+  // ── Stop enrollment for a contact ─────────────────────────────────────────
+  app.patch("/:id/enrollments/:contactId/stop", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id, contactId } = request.params as { id: string; contactId: string };
+
+    const seq = await prisma.campaignSequence.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    if (!seq) return reply.status(404).send({ error: "Not found" });
+
+    await prisma.sequenceEnrollment.updateMany({
+      where: { sequenceId: id, contactId, status: "active" },
+      data: { status: "stopped", completedAt: new Date() },
+    });
+    return reply.send({ ok: true });
+  });
+
+  // ── Enrollment stats ──────────────────────────────────────────────────────
+  app.get("/:id/stats", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+
+    const seq = await prisma.campaignSequence.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    if (!seq) return reply.status(404).send({ error: "Not found" });
+
+    const enrollments = await prisma.sequenceEnrollment.findMany({
+      where: { sequenceId: id },
+      select: { status: true, currentStep: true },
+    });
+
+    const stats = enrollments.reduce<Record<string, number>>((acc, e) => {
+      acc[e.status] = (acc[e.status] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return reply.send({ stats, total: enrollments.length });
+  });
+}

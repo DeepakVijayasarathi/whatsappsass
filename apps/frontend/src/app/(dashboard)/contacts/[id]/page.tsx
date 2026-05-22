@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -65,6 +65,18 @@ export default function ContactProfilePage() {
   const [noteBody, setNoteBody] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!stageOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (stageRef.current && !stageRef.current.contains(e.target as Node)) {
+        setStageOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [stageOpen]);
 
   const load = useCallback(async () => {
     try {
@@ -144,7 +156,7 @@ export default function ContactProfilePage() {
           <h1 className="text-2xl font-bold text-gray-900">{contact.name}</h1>
           <p className="text-sm text-gray-500">Contact profile</p>
         </div>
-        <div className="relative">
+        <div className="relative" ref={stageRef}>
           <button
             onClick={() => setStageOpen((o) => !o)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${STAGE_COLORS[stage] ?? "bg-gray-100 text-gray-700"}`}

@@ -223,16 +223,16 @@ export default function TeamPage() {
         <PermissionsModal member={permTarget} onClose={() => setPermTarget(null)} onSaved={load} />
       )}
 
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Team</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Team</h1>
           <p className="text-gray-500 text-sm mt-1">
             {members.length} member{members.length !== 1 ? "s" : ""} in this workspace
           </p>
         </div>
         {canManage && (
-          <button onClick={() => setShowInvite(!showInvite)} className="btn-primary flex items-center gap-2">
-            <UserPlus className="w-4 h-4" /> Invite Member
+          <button onClick={() => setShowInvite(!showInvite)} className="btn-primary flex items-center gap-2 shrink-0">
+            <UserPlus className="w-4 h-4" /> <span className="hidden sm:inline">Invite Member</span><span className="sm:hidden">Invite</span>
           </button>
         )}
       </div>
@@ -241,7 +241,7 @@ export default function TeamPage() {
       {showInvite && (
         <div className="card mb-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">Invite New Member</h2>
-          <form onSubmit={handleSubmit(onInvite)} className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit(onInvite)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Full name</label>
               <input {...register("name")} className="input" placeholder="Jane Doe" />
@@ -284,20 +284,21 @@ export default function TeamPage() {
             <p className="text-gray-500">No members yet.</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <table className="w-full text-sm min-w-[400px]">
             <thead>
               <tr className="border-b border-gray-100">
-                <th className="pb-3 text-left font-medium text-gray-500">Member</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Email</th>
+                <th className="pb-3 text-left font-medium text-gray-500 pl-4 sm:pl-0">Member</th>
+                <th className="pb-3 text-left font-medium text-gray-500 hidden sm:table-cell">Email</th>
                 <th className="pb-3 text-left font-medium text-gray-500">Role</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Joined</th>
-                {canManage && <th className="pb-3 text-right font-medium text-gray-500">Actions</th>}
+                <th className="pb-3 text-left font-medium text-gray-500 hidden md:table-cell">Joined</th>
+                {canManage && <th className="pb-3 text-right font-medium text-gray-500 pr-4 sm:pr-0">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {members.map((m) => (
                 <tr key={m.id} className={clsx("hover:bg-gray-50/50", m.id === me?.id && "bg-brand/5")}>
-                  <td className="py-3">
+                  <td className="py-3 pl-4 sm:pl-0">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
                         <span className="text-xs font-bold text-gray-600">{m.name[0].toUpperCase()}</span>
@@ -312,7 +313,7 @@ export default function TeamPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="py-3 text-gray-600">{m.email}</td>
+                  <td className="py-3 text-gray-600 hidden sm:table-cell">{m.email}</td>
                   <td className="py-3">
                     {canManage && m.role !== "owner" && m.id !== me?.id ? (
                       <select
@@ -330,9 +331,9 @@ export default function TeamPage() {
                       </span>
                     )}
                   </td>
-                  <td className="py-3 text-gray-400 text-xs">{new Date(m.createdAt).toLocaleDateString()}</td>
+                  <td className="py-3 text-gray-400 text-xs hidden md:table-cell">{new Date(m.createdAt).toLocaleDateString()}</td>
                   {canManage && (
-                    <td className="py-3 text-right">
+                    <td className="py-3 text-right pr-4 sm:pr-0">
                       <div className="flex items-center justify-end gap-1">
                         {m.role !== "owner" && (
                           <button
@@ -359,13 +360,14 @@ export default function TeamPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
       {/* Role legend */}
       <div className="mt-6 card">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Role Defaults</p>
-        <div className="grid grid-cols-3 gap-4 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
           {[
             { role: "owner", perms: ["Full access (all permissions)", "Manage billing", "Delete workspace"] },
             { role: "admin", perms: ["All permissions by default", "Can be restricted per-user", "Manage members & settings"] },

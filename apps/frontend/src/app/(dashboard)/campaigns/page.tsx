@@ -29,6 +29,7 @@ interface RunOptions {
   campaignId: string;
   name: string;
   template: string;
+  templateBody?: string | null;
 }
 
 const schema = z.object({
@@ -45,6 +46,17 @@ const statusConfig: Record<string, { label: string; badge: string; icon: React.E
   completed: { label: "Completed", badge: "badge-green",  icon: CheckCircle2 },
 };
 
+function extractVariables(body: string | null): number[] {
+  if (!body) return [];
+  const nums = [...new Set([...body.matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1])))].sort((a, b) => a - b);
+  return nums;
+}
+
+function buildComponents(varValues: Record<number, string>): object[] {
+  const params = Object.entries(varValues).sort(([a], [b]) => Number(a) - Number(b)).map(([, text]) => ({ type: "text", text }));
+  return params.length ? [{ type: "body", parameters: params }] : [];
+}
+
 function RunModal({ campaign, onClose, onDone }: {
   campaign: RunOptions;
   onClose: () => void;
@@ -56,9 +68,23 @@ function RunModal({ campaign, onClose, onDone }: {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ summary: Record<string, number>; total: number } | null>(null);
+  const [varValues, setVarValues] = useState<Record<number, string>>({});
+  const [templateBody, setTemplateBody] = useState<string | null>(campaign.templateBody ?? null);
 
   useEffect(() => {
-    api.get("/contacts?limit=500").then((r) => {
+    if (templateBody) return;
+    api.get("/templates").then((r) => {
+      const t = (r.data.templates as Array<{ name: string; body: string | null }>)
+        .find((tmpl) => tmpl.name === campaign.template);
+      if (t?.body) setTemplateBody(t.body);
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const variables = extractVariables(templateBody);
+
+  useEffect(() => {
+    api.get("/contacts?limit=1000").then((r) => {
       const opted = r.data.contacts.filter((c: { optIn: boolean }) => c.optIn);
       setContacts(opted);
       setSelectedIds(new Set(opted.map((c: { id: string }) => c.id)));
@@ -84,6 +110,9 @@ function RunModal({ campaign, onClose, onDone }: {
 
   const run = async () => {
     if (selectedIds.size === 0) { toast.error("Select at least one contact"); return; }
+    for (const n of variables) {
+      if (!varValues[n]?.trim()) { toast.error(`Fill in variable {{${n}}} before sending`); return; }
+    }
     setRunning(true);
     try {
       await api.patch(`/campaigns/${campaign.campaignId}`, { status: "running" });
@@ -92,6 +121,7 @@ function RunModal({ campaign, onClose, onDone }: {
         contactIds: Array.from(selectedIds),
         templateName: campaign.template,
         languageCode: "en_US",
+        components: buildComponents(varValues),
       });
       await api.patch(`/campaigns/${campaign.campaignId}`, { status: "completed" });
       setResult(res.data);
@@ -107,8 +137,8 @@ function RunModal({ campaign, onClose, onDone }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-lg max-h-[92vh] sm:max-h-[90vh] flex flex-col">
         <div className="p-5 border-b border-gray-100">
           <h2 className="text-lg font-bold text-gray-900">Run Campaign</h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -144,6 +174,23 @@ function RunModal({ campaign, onClose, onDone }: {
                 {selectedIds.size === filtered.length ? "Deselect all" : "Select all"}
               </button>
             </div>
+
+            {variables.length > 0 && (
+              <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 space-y-2">
+                <p className="text-xs font-semibold text-amber-800">Fill in template variables</p>
+                {variables.map((n) => (
+                  <div key={n} className="flex items-center gap-2">
+                    <label className="text-xs font-medium text-amber-700 w-20 shrink-0">{`{{${n}}}`}</label>
+                    <input
+                      className="input text-sm flex-1"
+                      placeholder={`Value for {{${n}}}`}
+                      value={varValues[n] ?? ""}
+                      onChange={(e) => setVarValues((v) => ({ ...v, [n]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex-1 overflow-y-auto">
               {loading ? (
@@ -199,8 +246,8 @@ function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: 
   const total = stats ? Object.values(stats).reduce((a, b) => a + b, 0) : 0;
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-sm p-5 sm:p-6">
         <h2 className="text-lg font-bold text-gray-900 mb-1">{name}</h2>
         <p className="text-sm text-gray-500 mb-5">Campaign statistics</p>
         {!stats ? (
@@ -321,13 +368,13 @@ export default function CampaignsPage() {
         <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />
       )}
 
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Campaigns</h1>
           <p className="text-gray-500 text-sm mt-1">{total} total campaigns</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" /> New Campaign
+        <button onClick={() => setShowForm(!showForm)} className="btn-primary flex items-center gap-2 shrink-0">
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New Campaign</span><span className="sm:hidden">New</span>
         </button>
       </div>
 
@@ -335,7 +382,7 @@ export default function CampaignsPage() {
         <div className="card mb-6 max-w-xl">
           <h2 className="text-base font-semibold mb-4">Create Campaign</h2>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Campaign name</label>
                 <input {...register("name")} className="input" placeholder="Summer Sale 2025" />
@@ -384,15 +431,16 @@ export default function CampaignsPage() {
             <p className="text-gray-400 text-sm mt-1">Create your first campaign to start sending</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="border-b border-gray-100">
-                <th className="pb-3 text-left font-medium text-gray-500">Name</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Template</th>
+                <th className="pb-3 text-left font-medium text-gray-500 pl-4 sm:pl-0">Name</th>
+                <th className="pb-3 text-left font-medium text-gray-500 hidden sm:table-cell">Template</th>
                 <th className="pb-3 text-left font-medium text-gray-500">Status</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Replies</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Scheduled</th>
-                <th className="pb-3 text-right font-medium text-gray-500">Actions</th>
+                <th className="pb-3 text-left font-medium text-gray-500 hidden md:table-cell">Replies</th>
+                <th className="pb-3 text-left font-medium text-gray-500 hidden lg:table-cell">Scheduled</th>
+                <th className="pb-3 text-right font-medium text-gray-500 pr-4 sm:pr-0">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -400,14 +448,19 @@ export default function CampaignsPage() {
                 const cfg = statusConfig[c.status] ?? statusConfig.draft;
                 return (
                   <tr key={c.id} className="hover:bg-gray-50/50">
-                    <td className="py-3 font-medium text-gray-900">{c.name}</td>
-                    <td className="py-3">
+                    <td className="py-3 font-medium text-gray-900 pl-4 sm:pl-0">
+                      <div>{c.name}</div>
+                      <div className="sm:hidden mt-0.5">
+                        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{c.template}</code>
+                      </div>
+                    </td>
+                    <td className="py-3 hidden sm:table-cell">
                       <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{c.template}</code>
                     </td>
                     <td className="py-3">
                       <span className={clsx("badge", cfg.badge)}>{cfg.label}</span>
                     </td>
-                    <td className="py-3">
+                    <td className="py-3 hidden md:table-cell">
                       {replyCounts[c.id] ? (
                         <div className="flex items-center gap-1.5 text-xs text-gray-600">
                           <MessageCircle className="w-3.5 h-3.5 text-gray-400" />
@@ -422,10 +475,10 @@ export default function CampaignsPage() {
                         <span className="text-xs text-gray-300">—</span>
                       )}
                     </td>
-                    <td className="py-3 text-gray-500 text-xs">
+                    <td className="py-3 text-gray-500 text-xs hidden lg:table-cell">
                       {c.scheduledAt ? new Date(c.scheduledAt).toLocaleString() : "—"}
                     </td>
-                    <td className="py-3">
+                    <td className="py-3 pr-4 sm:pr-0">
                       <div className="flex items-center justify-end gap-2">
                         {/* Stats */}
                         <button
@@ -475,6 +528,7 @@ export default function CampaignsPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
 
         {/* Pagination */}

@@ -30,16 +30,19 @@ model Workspace {
   status               String        @default("active")
   createdAt            DateTime      @default(now()) @map("created_at")
 
-  users           User[]
-  contacts        Contact[]
-  contactNotes    ContactNote[]
-  campaigns       Campaign[]
-  emailCampaigns  EmailCampaign[]
-  messageLogs     MessageLog[]
-  emailLogs       EmailLog[]
-  licenseKeys     LicenseKey[]
-  inboundMessages InboundMessage[]
-  auditLogs       AuditLog[]
+  users              User[]
+  contacts           Contact[]
+  contactNotes       ContactNote[]
+  campaigns          Campaign[]
+  emailCampaigns     EmailCampaign[]
+  messageLogs        MessageLog[]
+  emailLogs          EmailLog[]
+  licenseKeys        LicenseKey[]
+  inboundMessages    InboundMessage[]
+  auditLogs          AuditLog[]
+  autoReplies        AutoReply[]
+  webhookEndpoints   WebhookEndpoint[]
+  campaignSequences  CampaignSequence[]
 
   @@map("workspaces")
 }
@@ -55,11 +58,26 @@ model User {
   workspaceId  String    @map("workspace_id")
   createdAt    DateTime  @default(now()) @map("created_at")
 
-  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  auditLogs  AuditLog[]
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([workspaceId])
   @@map("users")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 model LicenseKey {
@@ -86,11 +104,12 @@ model Contact {
   optIn       Boolean  @default(false) @map("opt_in")
   leadStatus  String   @default("new") @map("lead_status")
 
-  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  messageLogs     MessageLog[]
-  emailLogs       EmailLog[]
-  inboundMessages InboundMessage[]
-  notes           ContactNote[]
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messageLogs         MessageLog[]
+  emailLogs           EmailLog[]
+  inboundMessages     InboundMessage[]
+  notes               ContactNote[]
+  sequenceEnrollments SequenceEnrollment[]
 
   @@index([workspaceId])
   @@index([phone])
@@ -221,4 +240,86 @@ model InboundMessage {
   @@index([fromPhone])
   @@index([campaignId])
   @@map("inbound_messages")
+}
+
+// ── Auto-reply rules ──────────────────────────────────────────────────────────
+model AutoReply {
+  id           String   @id @default(uuid())
+  workspaceId  String   @map("workspace_id")
+  keyword      String
+  matchType    String   @default("exact") @map("match_type")
+  templateName String   @map("template_name")
+  languageCode String   @default("en_US") @map("language_code")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("auto_replies")
+}
+
+// ── Outbound webhook endpoints ────────────────────────────────────────────────
+model WebhookEndpoint {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  url         String
+  secret      String?
+  events      String[]
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("webhook_endpoints")
+}
+
+// ── Drip sequence campaigns ───────────────────────────────────────────────────
+model CampaignSequence {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  status      String   @default("draft")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  steps       SequenceStep[]
+  enrollments SequenceEnrollment[]
+
+  @@index([workspaceId])
+  @@map("campaign_sequences")
+}
+
+model SequenceStep {
+  id           String   @id @default(uuid())
+  sequenceId   String   @map("sequence_id")
+  stepNumber   Int      @map("step_number")
+  templateName String   @map("template_name")
+  languageCode String   @default("en_US") @map("language_code")
+  delayDays    Int      @default(0) @map("delay_days")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  sequence CampaignSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  @@index([sequenceId])
+  @@map("sequence_steps")
+}
+
+model SequenceEnrollment {
+  id          String    @id @default(uuid())
+  sequenceId  String    @map("sequence_id")
+  contactId   String    @map("contact_id")
+  currentStep Int       @default(0) @map("current_step")
+  startedAt   DateTime  @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  status      String    @default("active")
+
+  sequence CampaignSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  contact  Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([sequenceId, contactId])
+  @@index([sequenceId])
+  @@index([contactId])
+  @@map("sequence_enrollments")
 }

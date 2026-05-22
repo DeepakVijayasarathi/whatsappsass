@@ -22,6 +22,7 @@ import {
   Shield,
   LineChart,
   Kanban,
+  X,
 } from "lucide-react";
 import { clearAuth, getUser, getWorkspace } from "@/lib/auth";
 import { useInboxNotifications } from "@/lib/useInboxNotifications";
@@ -43,7 +44,12 @@ const navItems = [
   { href: "/settings",         icon: Settings,        label: "Settings",        roles: ["owner", "admin"],             badge: null,    group: "admin" },
 ];
 
-export default function Sidebar() {
+interface Props {
+  open?: boolean;
+  onClose?: () => void;
+}
+
+export default function Sidebar({ open = false, onClose }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const user = getUser();
@@ -62,22 +68,34 @@ export default function Sidebar() {
   );
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-100 flex flex-col h-screen fixed left-0 top-0">
+    <aside
+      className={clsx(
+        "fixed left-0 top-0 z-40 w-64 bg-white border-r border-gray-100 flex flex-col h-screen transition-transform duration-200 ease-in-out",
+        // Desktop: always visible. Mobile: slide in/out
+        open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      )}
+    >
       {/* Workspace header */}
-      <div className="p-5 border-b border-gray-100">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-brand rounded-lg flex items-center justify-center shrink-0">
-            <MessageSquare className="w-5 h-5 text-white" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-sm text-gray-900 truncate">
-              {workspace?.name ?? "Workspace"}
-            </p>
-            <span className="text-xs text-gray-400 uppercase tracking-wide">
-              {workspace?.plan ?? "lite"} plan
-            </span>
-          </div>
+      <div className="p-5 border-b border-gray-100 flex items-center gap-3 min-h-[65px]">
+        <div className="w-9 h-9 bg-brand rounded-lg flex items-center justify-center shrink-0">
+          <MessageSquare className="w-5 h-5 text-white" />
         </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-sm text-gray-900 truncate">
+            {workspace?.name ?? "Workspace"}
+          </p>
+          <span className="text-xs text-gray-400 uppercase tracking-wide">
+            {workspace?.plan ?? "lite"} plan
+          </span>
+        </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={onClose}
+          className="lg:hidden p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg shrink-0"
+          aria-label="Close menu"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Navigation */}

@@ -1,11 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import crypto from "crypto";
 import { prisma } from "../lib/prisma";
 import { authenticate } from "../middleware/authenticate";
 import { requireWhatsappEnabled } from "../middleware/whatsappEnabled";
 import type { JwtPayload } from "../middleware/authenticate";
 import { sendWhatsAppTemplate } from "../lib/whatsapp";
 import type { ProviderConfig } from "../lib/whatsapp";
+import { fireWebhooks } from "../lib/webhookDispatcher";
+
+const META_APP_SECRET = process.env.META_APP_SECRET;
 
 const sendMessageSchema = z.object({
   to: z.string().min(7),
@@ -114,7 +118,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
       const user = request.user as JwtPayload;
       const schema = z.object({
         campaignId: z.string().uuid(),
-        contactIds: z.array(z.string().uuid()).min(1).max(100),
+        contactIds: z.array(z.string().uuid()).min(1).max(1000),
         templateName: z.string().min(1),
         languageCode: z.string().default("en_US"),
         components: z.array(z.any()).optional().default([]),
@@ -202,6 +206,18 @@ export async function whatsappRoutes(app: FastifyInstance) {
 
   // ── Webhook inbound (POST) ────────────────────────────────────────────────
   app.post("/webhook", async (request, reply) => {
+    // Verify Meta signature if APP_SECRET is configured
+    if (META_APP_SECRET) {
+      const signature = (request.headers["x-hub-signature-256"] as string | undefined) ?? "";
+      const expected = "sha256=" + crypto
+        .createHmac("sha256", META_APP_SECRET)
+        .update(JSON.stringify(request.body))
+        .digest("hex");
+      if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+        return reply.status(403).send({ error: "Invalid webhook signature" });
+      }
+    }
+
     const body = request.body as {
       entry?: Array<{
         changes?: Array<{
@@ -234,9 +250,52 @@ export async function whatsappRoutes(app: FastifyInstance) {
       const value = change.value;
       if (!value) continue;
 
-      // ── Status updates ─────────────────────────────────────────────────
+      // ── Status updates — write back to MessageLog ──────────────────────
       for (const s of value.statuses ?? []) {
+        const VALID_STATUSES = ["sent", "delivered", "read", "failed"];
+        const newStatus = VALID_STATUSES.includes(s.status) ? s.status : null;
         app.log.info({ messageId: s.id, status: s.status }, "Status update");
+        if (newStatus) {
+          // MessageLog doesn't store the provider message ID, so match by workspace + phone
+          // Best-effort: find the most recent matching log for this recipient
+          try {
+            const phoneNumberId = value.metadata?.phone_number_id;
+            const ws = phoneNumberId
+              ? await prisma.workspace.findFirst({
+                  where: { metaPhoneNumberId: phoneNumberId, status: "active" },
+                  select: { id: true },
+                })
+              : null;
+            if (ws) {
+              const normalized = normalisePhone(s.recipient_id);
+              const contact = await prisma.contact.findFirst({
+                where: { workspaceId: ws.id, OR: [{ phone: s.recipient_id }, { phone: normalized }] },
+                select: { id: true },
+              });
+              if (contact) {
+                await prisma.messageLog.updateMany({
+                  where: { workspaceId: ws.id, contactId: contact.id, status: "sent" },
+                  data: { status: newStatus },
+                });
+                const EVENT_MAP: Record<string, string> = {
+                  delivered: "message.delivered",
+                  read: "message.read",
+                  failed: "message.failed",
+                };
+                const webhookEvent = EVENT_MAP[newStatus];
+                if (webhookEvent) {
+                  fireWebhooks(ws.id, webhookEvent as "message.delivered" | "message.read" | "message.failed", {
+                    messageId: s.id,
+                    recipientId: s.recipient_id,
+                    status: newStatus,
+                  }).catch(() => {});
+                }
+              }
+            }
+          } catch (err) {
+            app.log.error({ err, statusUpdate: s }, "Failed to update MessageLog status");
+          }
+        }
       }
 
       // ── Inbound messages ────────────────────────────────────────────────
@@ -305,6 +364,66 @@ export async function whatsappRoutes(app: FastifyInstance) {
               { from: fromPhone, type: msg.type, campaignId, replyTo: msg.context?.id },
               "Inbound message captured"
             );
+
+            // ── Fire message.inbound webhook ─────────────────────────────
+            fireWebhooks(ws.id, "message.inbound", {
+              messageId: msg.id,
+              fromPhone,
+              type: msg.type,
+              body: bodyText,
+              contactId: contact?.id ?? null,
+              campaignId,
+            }).catch(() => {});
+
+            // ── Opt-out automation ───────────────────────────────────────
+            let isOptOut = false;
+            const OPT_OUT_KEYWORDS = new Set(["stop", "unsubscribe", "optout", "opt-out", "cancel", "quit", "end"]);
+            if (contact && msg.type === "text" && bodyText) {
+              const word = bodyText.trim().toLowerCase().replace(/[^a-z-]/g, "");
+              if (OPT_OUT_KEYWORDS.has(word)) {
+                isOptOut = true;
+                await prisma.contact.update({
+                  where: { id: contact.id },
+                  data: { optIn: false },
+                });
+                app.log.info({ contactId: contact.id, phone: fromPhone }, "Contact opted out");
+                fireWebhooks(ws.id, "contact.opted_out", {
+                  contactId: contact.id,
+                  phone: fromPhone,
+                }).catch(() => {});
+              }
+            }
+
+            // ── Auto-reply ───────────────────────────────────────────────
+            if (!isOptOut && contact && msg.type === "text" && bodyText) {
+              const rules = await prisma.autoReply.findMany({
+                where: { workspaceId: ws.id, isActive: true },
+              });
+              for (const rule of rules) {
+                const msgLower = bodyText.trim().toLowerCase();
+                const keyLower = rule.keyword.toLowerCase();
+                let matches = false;
+                if (rule.matchType === "exact") matches = msgLower === keyLower;
+                else if (rule.matchType === "contains") matches = msgLower.includes(keyLower);
+                else if (rule.matchType === "starts_with") matches = msgLower.startsWith(keyLower);
+
+                if (matches) {
+                  try {
+                    const wsConfig = await getProviderConfig(ws.id);
+                    await sendWhatsAppTemplate(
+                      { to: fromPhone, templateName: rule.templateName, languageCode: rule.languageCode, components: [] },
+                      wsConfig
+                    );
+                    await prisma.messageLog.create({
+                      data: { workspaceId: ws.id, contactId: contact.id, status: "sent" },
+                    });
+                  } catch (autoErr) {
+                    app.log.error({ autoErr, ruleId: rule.id }, "Auto-reply send failed");
+                  }
+                  break;
+                }
+              }
+            }
           } catch (err) {
             app.log.error({ err, msgId: msg.id }, "Failed to store inbound message");
           }
@@ -321,13 +440,21 @@ export async function whatsappRoutes(app: FastifyInstance) {
     { preHandler: [authenticate] },
     async (request, reply) => {
       const user = request.user as JwtPayload;
-      const { page = "1", limit = "20", unread, campaignId } = request.query as Record<string, string>;
+      const { page = "1", limit = "20", unread, campaignId, search } = request.query as Record<string, string>;
 
       const skip = (Number(page) - 1) * Number(limit);
       const where = {
         workspaceId: user.workspaceId,
         ...(unread === "true" ? { read: false } : {}),
         ...(campaignId ? { campaignId } : {}),
+        ...(search
+          ? {
+              OR: [
+                { fromPhone: { contains: search } },
+                { body: { contains: search, mode: "insensitive" as const } },
+              ],
+            }
+          : {}),
       };
 
       const [messages, total, totalUnread] = await Promise.all([
@@ -366,6 +493,55 @@ export async function whatsappRoutes(app: FastifyInstance) {
       });
 
       return reply.send({ marked: count });
+    }
+  );
+
+  // ── Conversations list (latest message per sender) ────────────────────────
+  app.get(
+    "/conversations",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+
+      // Fetch recent messages and deduplicate by fromPhone in app code
+      const messages = await prisma.inboundMessage.findMany({
+        where: { workspaceId: user.workspaceId },
+        orderBy: { receivedAt: "desc" },
+        take: 500,
+        include: { contact: { select: { id: true, name: true, phone: true } } },
+      });
+
+      type MsgRow = (typeof messages)[number];
+      const seen = new Set<string>();
+      const latestPerPhone = messages.filter((m: MsgRow) => {
+        if (seen.has(m.fromPhone)) return false;
+        seen.add(m.fromPhone);
+        return true;
+      });
+
+      const unreadGroups = await prisma.inboundMessage.groupBy({
+        by: ["fromPhone"],
+        where: { workspaceId: user.workspaceId, read: false },
+        _count: { id: true },
+      });
+      type UnreadRow = (typeof unreadGroups)[number];
+      const unreadMap = new Map(unreadGroups.map((g: UnreadRow) => [g.fromPhone, g._count.id]));
+
+      const conversations = latestPerPhone.map((m: MsgRow) => ({
+        fromPhone: m.fromPhone,
+        contactId: m.contactId,
+        contact: m.contact,
+        latestMessage: {
+          id: m.id,
+          body: m.body,
+          type: m.type,
+          receivedAt: m.receivedAt,
+          read: m.read,
+        },
+        unreadCount: unreadMap.get(m.fromPhone) ?? 0,
+      }));
+
+      return reply.send({ conversations });
     }
   );
 

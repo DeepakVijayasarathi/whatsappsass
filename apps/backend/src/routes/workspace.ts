@@ -217,6 +217,10 @@ export async function workspaceRoutes(app: FastifyInstance) {
         updateData.passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
       }
 
+      if (Object.keys(updateData).length === 0) {
+        return reply.send({ id: user.id, name: user.name, email: user.email, role: user.role });
+      }
+
       const updated = await prisma.user.update({
         where: { id: actor.userId },
         data: updateData,

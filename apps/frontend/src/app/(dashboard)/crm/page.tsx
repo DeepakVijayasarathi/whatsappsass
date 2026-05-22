@@ -72,8 +72,8 @@ export default function CrmPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">CRM Pipeline</h1>
+      <div>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">CRM Pipeline</h1>
         <div className="flex gap-4 overflow-x-auto pb-4">
           {STAGES.map((s) => (
             <div key={s} className="min-w-[240px] bg-gray-100 rounded-xl h-64 animate-pulse" />
@@ -84,13 +84,13 @@ export default function CrmPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div>
+      <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">CRM Pipeline</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">CRM Pipeline</h1>
           <p className="text-sm text-gray-500 mt-0.5">{contacts.length} contacts across {STAGES.length} stages</p>
         </div>
-        <Link href="/contacts" className="btn-secondary text-sm">
+        <Link href="/contacts" className="btn-secondary text-sm shrink-0">
           Manage Contacts
         </Link>
       </div>

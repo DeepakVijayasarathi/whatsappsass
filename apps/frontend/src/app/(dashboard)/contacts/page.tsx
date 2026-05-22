@@ -98,8 +98,8 @@ function EditModal({ contact, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md">
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <h2 className="text-lg font-bold text-gray-900">Edit Contact</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -345,20 +345,20 @@ export default function ContactsPage() {
         />
       )}
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Contacts</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Contacts</h1>
           <p className="text-gray-500 text-sm mt-1">{total} total contacts</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0 flex-wrap justify-end">
           <button onClick={exportContacts} className="btn-secondary flex items-center gap-2 text-sm">
-            <Download className="w-4 h-4" /> Export CSV
+            <Download className="w-4 h-4" /> <span className="hidden sm:inline">Export CSV</span>
           </button>
           <button onClick={() => setTab("import")} className="btn-secondary flex items-center gap-2 text-sm">
-            <Upload className="w-4 h-4" /> Import CSV
+            <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Import</span>
           </button>
           <button onClick={() => setTab("add")} className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Add Contact
+            <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Contact</span><span className="sm:hidden">Add</span>
           </button>
         </div>
       </div>
@@ -529,16 +529,17 @@ export default function ContactsPage() {
           </div>
 
           {loading ? (
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className="pb-3 w-8" />
+                  <th className="pb-3 w-8 pl-4 sm:pl-0" />
                   <th className="pb-3 text-left font-medium text-gray-500">Name</th>
                   <th className="pb-3 text-left font-medium text-gray-500">Phone</th>
-                  <th className="pb-3 text-left font-medium text-gray-500">Email</th>
-                  <th className="pb-3 text-left font-medium text-gray-500">Tags</th>
+                  <th className="pb-3 text-left font-medium text-gray-500 hidden md:table-cell">Email</th>
+                  <th className="pb-3 text-left font-medium text-gray-500 hidden lg:table-cell">Tags</th>
                   <th className="pb-3 text-left font-medium text-gray-500">Opt-in</th>
-                  <th className="pb-3" />
+                  <th className="pb-3 pr-4 sm:pr-0" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -547,6 +548,7 @@ export default function ContactsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           ) : contacts.length === 0 ? (
             <div className="text-center py-16">
               <Phone className="w-10 h-10 text-gray-300 mx-auto mb-3" />
@@ -559,10 +561,11 @@ export default function ContactsPage() {
             </div>
           ) : (
             <>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <table className="w-full text-sm min-w-[480px]">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    <th className="pb-3 w-8">
+                    <th className="pb-3 w-8 pl-4 sm:pl-0">
                       <input
                         type="checkbox"
                         checked={contacts.length > 0 && selectedIds.size === contacts.length}
@@ -573,10 +576,10 @@ export default function ContactsPage() {
                     </th>
                     <th className="pb-3 text-left font-medium text-gray-500">Name</th>
                     <th className="pb-3 text-left font-medium text-gray-500">Phone</th>
-                    <th className="pb-3 text-left font-medium text-gray-500">Email</th>
-                    <th className="pb-3 text-left font-medium text-gray-500">Tags</th>
+                    <th className="pb-3 text-left font-medium text-gray-500 hidden md:table-cell">Email</th>
+                    <th className="pb-3 text-left font-medium text-gray-500 hidden lg:table-cell">Tags</th>
                     <th className="pb-3 text-left font-medium text-gray-500">Opt-in</th>
-                    <th className="pb-3" />
+                    <th className="pb-3 pr-4 sm:pr-0" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -588,7 +591,7 @@ export default function ContactsPage() {
                         selectedIds.has(c.id) && "bg-brand/5"
                       )}
                     >
-                      <td className="py-3">
+                      <td className="py-3 pl-4 sm:pl-0">
                         <input
                           type="checkbox"
                           checked={selectedIds.has(c.id)}
@@ -602,8 +605,8 @@ export default function ContactsPage() {
                         </Link>
                       </td>
                       <td className="py-3 text-gray-600 font-mono text-xs">{c.phone}</td>
-                      <td className="py-3 text-gray-500 text-xs">{c.email ?? <span className="text-gray-300">—</span>}</td>
-                      <td className="py-3">
+                      <td className="py-3 text-gray-500 text-xs hidden md:table-cell">{c.email ?? <span className="text-gray-300">—</span>}</td>
+                      <td className="py-3 hidden lg:table-cell">
                         <div className="flex gap-1 flex-wrap">
                           {c.tags.map((tag) => (
                             <span key={tag} className="badge-gray">{tag}</span>
@@ -615,7 +618,7 @@ export default function ContactsPage() {
                           {c.optIn ? "Yes" : "No"}
                         </span>
                       </td>
-                      <td className="py-3 text-right">
+                      <td className="py-3 text-right pr-4 sm:pr-0">
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => setEditContact(c)}
@@ -637,6 +640,7 @@ export default function ContactsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
 
               {/* Pagination */}
               {totalPages > 1 && (

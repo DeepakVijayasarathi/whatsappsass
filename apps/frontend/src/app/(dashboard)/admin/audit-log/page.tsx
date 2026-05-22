@@ -47,7 +47,7 @@ export default function AuditLogPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Audit Log</h1>
         <p className="text-gray-500 text-sm mt-1">All actions taken within this workspace</p>
       </div>
 

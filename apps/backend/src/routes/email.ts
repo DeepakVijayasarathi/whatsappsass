@@ -16,14 +16,16 @@ export async function emailRoutes(app: FastifyInstance) {
       where: { id: user.workspaceId },
       select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPass: true, smtpFromEmail: true, smtpFromName: true },
     });
-    if (!ws?.smtpHost) return reply.status(400).send({ error: "SMTP not configured" });
+    if (!ws?.smtpHost || !ws.smtpUser || !ws.smtpPass || !ws.smtpFromEmail) {
+      return reply.status(400).send({ error: "SMTP not fully configured (host, user, password, and from-email are required)" });
+    }
     try {
       await verifySmtp({
         host: ws.smtpHost,
         port: ws.smtpPort ?? 587,
-        user: ws.smtpUser!,
-        pass: ws.smtpPass!,
-        fromEmail: ws.smtpFromEmail!,
+        user: ws.smtpUser,
+        pass: ws.smtpPass,
+        fromEmail: ws.smtpFromEmail,
         fromName: ws.smtpFromName,
       });
       return reply.send({ ok: true });
@@ -141,12 +143,12 @@ export async function emailRoutes(app: FastifyInstance) {
       where: { id: user.workspaceId },
       select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPass: true, smtpFromEmail: true, smtpFromName: true },
     });
-    if (!ws?.smtpHost || !ws.smtpFromEmail) {
-      return reply.status(400).send({ error: "Email (SMTP) not configured. Configure it in Settings → Email." });
+    if (!ws?.smtpHost || !ws.smtpUser || !ws.smtpPass || !ws.smtpFromEmail) {
+      return reply.status(400).send({ error: "Email (SMTP) not fully configured. Set host, user, password, and from-email in Settings → Email." });
     }
 
     await sendEmail(
-      { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser!, pass: ws.smtpPass!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName },
+      { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: ws.smtpPass, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName },
       { to: parsed.data.to, subject: parsed.data.subject, html: parsed.data.body }
     );
 
@@ -176,8 +178,14 @@ export async function emailRoutes(app: FastifyInstance) {
     ]);
 
     if (!campaign) return reply.status(404).send({ error: "Campaign not found" });
-    if (!ws?.smtpHost || !ws.smtpFromEmail) {
-      return reply.status(400).send({ error: "Email (SMTP) not configured. Configure it in Settings → Email." });
+    if (campaign.status === "running") {
+      return reply.status(409).send({ error: "Campaign is already running. Wait for it to complete before re-sending." });
+    }
+    if (campaign.status === "completed") {
+      return reply.status(409).send({ error: "Campaign already completed. Duplicate to re-send." });
+    }
+    if (!ws?.smtpHost || !ws.smtpUser || !ws.smtpPass || !ws.smtpFromEmail) {
+      return reply.status(400).send({ error: "Email (SMTP) not fully configured. Set host, user, password, and from-email in Settings → Email." });
     }
 
     const contactWhere = {
@@ -192,28 +200,32 @@ export async function emailRoutes(app: FastifyInstance) {
 
     await prisma.emailCampaign.update({ where: { id }, data: { status: "running" } });
 
-    const smtpCfg = { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser!, pass: ws.smtpPass!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName };
+    // Return immediately — send emails in the background so large lists don't timeout
+    reply.send({ message: "Campaign queued", campaignId: id, total: contacts.length });
 
-    let sent = 0;
-    let failed = 0;
-    for (const contact of contacts) {
-      try {
-        await sendEmail(smtpCfg, { to: contact.email!, subject: campaign.subject, html: campaign.body });
-        await prisma.emailLog.create({
-          data: { workspaceId: user.workspaceId, campaignId: id, contactId: contact.id, toEmail: contact.email!, status: "sent" },
-        });
-        sent++;
-      } catch {
-        await prisma.emailLog.create({
-          data: { workspaceId: user.workspaceId, campaignId: id, contactId: contact.id, toEmail: contact.email!, status: "failed" },
-        });
-        failed++;
+    const smtpCfg = { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: ws.smtpPass, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName };
+    const workspaceId = user.workspaceId;
+    const userId = user.userId;
+
+    setImmediate(async () => {
+      let sent = 0;
+      let failed = 0;
+      for (const contact of contacts) {
+        try {
+          await sendEmail(smtpCfg, { to: contact.email!, subject: campaign.subject, html: campaign.body });
+          await prisma.emailLog.create({
+            data: { workspaceId, campaignId: id, contactId: contact.id, toEmail: contact.email!, status: "sent" },
+          });
+          sent++;
+        } catch {
+          await prisma.emailLog.create({
+            data: { workspaceId, campaignId: id, contactId: contact.id, toEmail: contact.email!, status: "failed" },
+          });
+          failed++;
+        }
       }
-    }
-
-    await prisma.emailCampaign.update({ where: { id }, data: { status: "completed" } });
-    await logAudit({ workspaceId: user.workspaceId, userId: user.userId, action: "email_campaign.sent", entityType: "email_campaign", entityId: id, meta: { sent, failed, total: contacts.length } });
-
-    return reply.send({ message: "Campaign sent", summary: { sent, failed, total: contacts.length } });
+      await prisma.emailCampaign.update({ where: { id }, data: { status: "completed" } });
+      await logAudit({ workspaceId, userId, action: "email_campaign.sent", entityType: "email_campaign", entityId: id, meta: { sent, failed, total: contacts.length } });
+    });
   });
 }

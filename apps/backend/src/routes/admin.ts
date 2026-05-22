@@ -181,6 +181,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // ── Promote user to super-admin (owner-only, only for current workspace owner) ──
   app.post("/super/promote/:userId", { preHandler: [requireSuperAdmin] }, async (request, reply) => {
+    const actor = request.user as JwtPayload;
     const { userId } = request.params as { userId: string };
     const schema = z.object({ superAdmin: z.boolean() });
     const parsed = schema.safeParse(request.body);
@@ -191,6 +192,16 @@ export async function adminRoutes(app: FastifyInstance) {
       data: { superAdmin: parsed.data.superAdmin },
       select: { id: true, email: true, superAdmin: true },
     });
+
+    await logAudit({
+      workspaceId: actor.workspaceId,
+      userId: actor.userId,
+      action: parsed.data.superAdmin ? "super.promoted_user" : "super.demoted_user",
+      entityType: "user",
+      entityId: userId,
+      meta: { targetEmail: updated.email, superAdmin: updated.superAdmin },
+    });
+
     return reply.send(updated);
   });
 }

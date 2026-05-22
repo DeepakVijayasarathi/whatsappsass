@@ -16,21 +16,37 @@ import { analyticsRoutes } from "./routes/analytics";
 import { templateRoutes } from "./routes/templates";
 import { emailRoutes } from "./routes/email";
 import { adminRoutes } from "./routes/admin";
+import { autoReplyRoutes } from "./routes/auto-replies";
+import { webhookRoutes } from "./routes/webhooks";
+import { sequenceRoutes } from "./routes/sequences";
+import { startScheduler } from "./lib/scheduler";
 
 const app = Fastify({ logger: true });
 
-const JWT_SECRET = process.env.JWT_SECRET || "whatsapp-saas-secret-key-2025";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("FATAL: JWT_SECRET environment variable is not set. Refusing to start.");
+  process.exit(1);
+}
+
+const ALLOWED_ORIGIN = process.env.FRONTEND_URL || "http://localhost:3000";
 
 async function bootstrap() {
   await app.register(helmet, { global: true });
   await app.register(cors, {
-    origin: true,
+    origin: (origin, cb) => {
+      if (!origin || origin === ALLOWED_ORIGIN) return cb(null, true);
+      cb(new Error("Not allowed by CORS"), false);
+    },
     credentials: true,
   });
-  await app.register(jwt, { secret: JWT_SECRET });
-  await app.register(rateLimit, {
+  await app.register(jwt, { secret: JWT_SECRET! });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await app.register(rateLimit as any, {
     max: 100,
     timeWindow: "1 minute",
+    // Exclude Meta webhook endpoints from rate limiting — Meta can burst many events
+    skip: (req: { url?: string }) => req.url?.startsWith("/whatsapp/webhook") ?? false,
   });
 
   app.get("/health", async () => ({ status: "ok" }));
@@ -46,10 +62,15 @@ async function bootstrap() {
   await app.register(templateRoutes, { prefix: "/templates" });
   await app.register(emailRoutes, { prefix: "/email" });
   await app.register(adminRoutes, { prefix: "/admin" });
+  await app.register(autoReplyRoutes, { prefix: "/auto-replies" });
+  await app.register(webhookRoutes, { prefix: "/webhooks" });
+  await app.register(sequenceRoutes, { prefix: "/sequences" });
 
   const port = Number(process.env.PORT) || 4000;
   await app.listen({ port, host: "0.0.0.0" });
   console.log(`Backend running on http://localhost:${port}`);
+
+  startScheduler();
 }
 
 bootstrap().catch((err) => {

@@ -257,13 +257,13 @@ export default function EmailCampaignsPage() {
       {sendTarget && <SendModal campaign={sendTarget} onClose={() => setSendTarget(null)} onDone={() => load(page)} />}
       {statsTarget && <StatsModal id={statsTarget.id} name={statsTarget.name} onClose={() => setStatsTarget(null)} />}
 
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Email Campaigns</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Email Campaigns</h1>
           <p className="text-gray-500 text-sm mt-1">{total} total campaigns</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" /> New Campaign
+        <button onClick={() => setShowForm(!showForm)} className="btn-primary flex items-center gap-2 shrink-0">
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New Campaign</span><span className="sm:hidden">New</span>
         </button>
       </div>
 
@@ -271,7 +271,7 @@ export default function EmailCampaignsPage() {
         <div className="card mb-6 max-w-2xl">
           <h2 className="text-base font-semibold mb-4">Create Email Campaign</h2>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Campaign name</label>
                 <input {...register("name")} className="input" placeholder="Summer Newsletter" />
@@ -304,7 +304,8 @@ export default function EmailCampaignsPage() {
 
       <div className="card">
         {loading ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="border-b border-gray-100">
                 {["Name", "Subject", "Status", "Created", ""].map((h) => (
@@ -316,6 +317,7 @@ export default function EmailCampaignsPage() {
               {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={5} />)}
             </tbody>
           </table>
+          </div>
         ) : campaigns.length === 0 ? (
           <div className="text-center py-16">
             <Mail className="w-10 h-10 text-gray-300 mx-auto mb-3" />
@@ -323,14 +325,15 @@ export default function EmailCampaignsPage() {
             <p className="text-gray-400 text-sm mt-1">Create your first email campaign to start sending</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="border-b border-gray-100">
-                <th className="pb-3 text-left font-medium text-gray-500">Name</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Subject</th>
+                <th className="pb-3 text-left font-medium text-gray-500 pl-4 sm:pl-0">Name</th>
+                <th className="pb-3 text-left font-medium text-gray-500 hidden sm:table-cell">Subject</th>
                 <th className="pb-3 text-left font-medium text-gray-500">Status</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Created</th>
-                <th className="pb-3 text-right font-medium text-gray-500">Actions</th>
+                <th className="pb-3 text-left font-medium text-gray-500 hidden md:table-cell">Created</th>
+                <th className="pb-3 text-right font-medium text-gray-500 pr-4 sm:pr-0">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -338,15 +341,18 @@ export default function EmailCampaignsPage() {
                 const cfg = statusConfig[c.status] ?? statusConfig.draft;
                 return (
                   <tr key={c.id} className="hover:bg-gray-50/50">
-                    <td className="py-3 font-medium text-gray-900">{c.name}</td>
-                    <td className="py-3 text-gray-600 max-w-xs truncate">{c.subject}</td>
+                    <td className="py-3 font-medium text-gray-900 pl-4 sm:pl-0">
+                      <div>{c.name}</div>
+                      <div className="sm:hidden text-xs text-gray-500 truncate max-w-[180px] mt-0.5">{c.subject}</div>
+                    </td>
+                    <td className="py-3 text-gray-600 max-w-xs truncate hidden sm:table-cell">{c.subject}</td>
                     <td className="py-3">
                       <span className={clsx("badge", cfg.badge, "capitalize")}>{c.status}</span>
                     </td>
-                    <td className="py-3 text-gray-400 text-xs">
+                    <td className="py-3 text-gray-400 text-xs hidden md:table-cell">
                       {new Date(c.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="py-3">
+                    <td className="py-3 pr-4 sm:pr-0">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => setStatsTarget({ id: c.id, name: c.name })}
                           className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="Stats">
@@ -371,6 +377,7 @@ export default function EmailCampaignsPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
 
         {totalPages > 1 && (

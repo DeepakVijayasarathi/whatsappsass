@@ -16,8 +16,27 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
+// Extract {{1}}, {{2}} … placeholders from a template body
+function extractVariables(body: string | null): number[] {
+  if (!body) return [];
+  const matches = [...body.matchAll(/\{\{(\d+)\}\}/g)];
+  const nums = [...new Set(matches.map((m) => Number(m[1])))].sort((a, b) => a - b);
+  return nums;
+}
+
+// Build Meta components array from filled variable values
+function buildComponents(varValues: Record<number, string>): object[] {
+  const parameters = Object.entries(varValues)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([, text]) => ({ type: "text", text }));
+  if (parameters.length === 0) return [];
+  return [{ type: "body", parameters }];
+}
+
 export default function SendPage() {
   const [showPicker, setShowPicker] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [varValues, setVarValues] = useState<Record<number, string>>({});
 
   const {
     register,
@@ -29,18 +48,33 @@ export default function SendPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { languageCode: "en_US" } });
 
   const templateName = watch("templateName");
+  const variables = extractVariables(selectedTemplate?.body ?? null);
 
   const onSelect = (t: Template) => {
     setValue("templateName", t.name, { shouldValidate: true });
     setValue("languageCode", t.language, { shouldValidate: true });
+    setSelectedTemplate(t);
+    setVarValues({});
     setShowPicker(false);
   };
 
   const onSubmit = async (data: FormData) => {
+    // Validate all variables are filled
+    for (const n of variables) {
+      if (!varValues[n]?.trim()) {
+        toast.error(`Fill in variable {{${n}}} before sending`);
+        return;
+      }
+    }
     try {
-      await api.post("/whatsapp/send", data);
+      await api.post("/whatsapp/send", {
+        ...data,
+        components: buildComponents(varValues),
+      });
       toast.success("Message sent!");
       reset();
+      setSelectedTemplate(null);
+      setVarValues({});
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
@@ -49,14 +83,19 @@ export default function SendPage() {
     }
   };
 
+  // Highlight template body substituting variables
+  const previewBody = selectedTemplate?.body
+    ? selectedTemplate.body.replace(/\{\{(\d+)\}\}/g, (_, n) => varValues[Number(n)] || `{{${n}}}`)
+    : null;
+
   return (
     <div>
       {showPicker && (
         <TemplatePicker onSelect={onSelect} onClose={() => setShowPicker(false)} />
       )}
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Send Message</h1>
+      <div className="mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Send Message</h1>
         <p className="text-gray-500 text-sm mt-1">
           Send a WhatsApp template message to a contact
         </p>
@@ -91,7 +130,7 @@ export default function SendPage() {
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-gray-700">
-                Template name
+                Template
               </label>
               <button
                 type="button"
@@ -106,10 +145,15 @@ export default function SendPage() {
               {...register("templateName")}
               className="input font-mono"
               placeholder="hello_world"
+              onChange={(e) => {
+                setValue("templateName", e.target.value, { shouldValidate: true });
+                // Clear selected template if user types manually
+                if (selectedTemplate && e.target.value !== selectedTemplate.name) {
+                  setSelectedTemplate(null);
+                  setVarValues({});
+                }
+              }}
             />
-            {templateName && (
-              <p className="text-xs text-gray-400 mt-1 font-mono">Selected: {templateName}</p>
-            )}
             {errors.templateName && (
               <p className="text-red-500 text-xs mt-1">{errors.templateName.message}</p>
             )}
@@ -126,7 +170,41 @@ export default function SendPage() {
             />
           </div>
 
-          <button type="submit" disabled={isSubmitting} className="btn-primary w-full flex items-center justify-center gap-2">
+          {/* Template variables — only shown when template has {{N}} placeholders */}
+          {variables.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-amber-800">
+                Template variables — fill in all fields
+              </p>
+              {variables.map((n) => (
+                <div key={n}>
+                  <label className="block text-xs font-medium text-amber-700 mb-1">
+                    Variable {`{{${n}}}`}
+                  </label>
+                  <input
+                    className="input text-sm"
+                    placeholder={`Value for {{${n}}}`}
+                    value={varValues[n] ?? ""}
+                    onChange={(e) => setVarValues((v) => ({ ...v, [n]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Live preview */}
+          {previewBody && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Preview</p>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{previewBody}</p>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isSubmitting || !templateName}
+            className="btn-primary w-full flex items-center justify-center gap-2"
+          >
             <Send className="w-4 h-4" />
             {isSubmitting ? "Sending..." : "Send Message"}
           </button>

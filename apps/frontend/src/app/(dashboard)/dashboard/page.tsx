@@ -32,8 +32,11 @@ export default function DashboardPage() {
   const [data, setData] = useState<OverviewData | null>(null);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
+    setError(false);
     Promise.all([
       api.get("/analytics/overview"),
       api.get("/meta/status"),
@@ -42,8 +45,11 @@ export default function DashboardPage() {
         setData(overview.data);
         setWhatsappEnabled(meta.data.metaWhatsappEnabled);
       })
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { load(); }, []);
 
   const stats = [
     { label: "Total Contacts",  value: data?.totalContacts ?? 0,  icon: Users,        color: "text-blue-500",   bg: "bg-blue-50" },
@@ -57,18 +63,28 @@ export default function DashboardPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500 text-sm mt-1">Overview of your WhatsApp activity</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">WhatsApp API:</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-sm text-gray-600 hidden sm:inline">WhatsApp API:</span>
           <span className={whatsappEnabled ? "badge-green" : "badge-red"}>
             {whatsappEnabled ? "Enabled" : "Disabled"}
           </span>
         </div>
       </div>
+
+      {/* Error state */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between">
+          <p className="text-sm text-red-600 font-medium">Failed to load dashboard data. Please check your connection.</p>
+          <button onClick={load} className="text-sm text-red-600 underline font-medium hover:text-red-800">
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">

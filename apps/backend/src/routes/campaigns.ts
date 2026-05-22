@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
-import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
+import { authenticate, requireOwnerOrAdmin, checkPermission } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
 
 const campaignSchema = z.object({
@@ -36,7 +36,7 @@ export async function campaignRoutes(app: FastifyInstance) {
 
   app.post(
     "/",
-    { preHandler: [requireOwnerOrAdmin] },
+    { preHandler: [checkPermission("can_run_campaigns")] },
     async (request, reply) => {
       const user = request.user as JwtPayload;
       const parsed = campaignSchema.safeParse(request.body);
@@ -73,7 +73,7 @@ export async function campaignRoutes(app: FastifyInstance) {
 
   app.patch(
     "/:id",
-    { preHandler: [requireOwnerOrAdmin] },
+    { preHandler: [checkPermission("can_run_campaigns")] },
     async (request, reply) => {
       const user = request.user as JwtPayload;
       const { id } = request.params as { id: string };

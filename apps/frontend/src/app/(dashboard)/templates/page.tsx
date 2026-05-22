@@ -51,9 +51,9 @@ export default function TemplatesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Templates</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Templates</h1>
           <p className="text-gray-500 text-sm mt-1">
             {provider ? `Fetched from ${provider.toUpperCase()}` : "WhatsApp message templates"}
             {!loading && !error && ` · ${templates.length} templates`}

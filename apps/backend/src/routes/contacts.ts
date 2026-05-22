@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
-import { authenticate } from "../middleware/authenticate";
+import { authenticate, checkPermission } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
 
 const contactSchema = z.object({
@@ -106,6 +106,42 @@ export async function contactRoutes(app: FastifyInstance) {
     await prisma.contact.delete({ where: { id } });
 
     return reply.send({ message: "Contact deleted" });
+  });
+
+  // ── CSV export ─────────────────────────────────────────────────────────────
+  app.get("/export", { preHandler: [checkPermission("can_export")] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { tag } = request.query as Record<string, string>;
+
+    const contacts = await prisma.contact.findMany({
+      where: {
+        workspaceId: user.workspaceId,
+        ...(tag ? { tags: { has: tag } } : {}),
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, phone: true, email: true, tags: true, optIn: true, leadStatus: true },
+    });
+
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const header = ["id", "name", "phone", "email", "tags", "opt_in", "lead_status"].join(",");
+    const rows = contacts.map((c) =>
+      [
+        escape(c.id),
+        escape(c.name),
+        escape(c.phone),
+        escape(c.email ?? ""),
+        escape(c.tags.join("|")),
+        c.optIn ? "true" : "false",
+        escape(c.leadStatus),
+      ].join(",")
+    );
+
+    const csv = [header, ...rows].join("\n");
+
+    return reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="contacts-${Date.now()}.csv"`)
+      .send(csv);
   });
 
   app.post("/bulk", { preHandler: [authenticate] }, async (request, reply) => {
@@ -264,5 +300,35 @@ export async function contactRoutes(app: FastifyInstance) {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
     return reply.send({ contact, timeline });
+  });
+
+  // ── Engagement score ──────────────────────────────────────────────────────
+  app.get("/:id/engagement", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+
+    const contact = await prisma.contact.findFirst({
+      where: { id, workspaceId: user.workspaceId },
+    });
+    if (!contact) return reply.status(404).send({ error: "Contact not found" });
+
+    const logs = await prisma.messageLog.findMany({
+      where: { contactId: id, workspaceId: user.workspaceId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { status: true },
+    });
+
+    const SCORE_MAP: Record<string, number> = { read: 100, delivered: 70, sent: 40, failed: 0 };
+    const total = logs.length;
+    if (total === 0) return reply.send({ score: 0, total: 0, breakdown: {} });
+
+    const breakdown = logs.reduce((acc: Record<string, number>, l) => {
+      acc[l.status] = (acc[l.status] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const raw = logs.reduce((sum: number, l) => sum + (SCORE_MAP[l.status] ?? 0), 0) / total;
+    return reply.send({ score: Math.round(raw), total, breakdown });
   });
 }
