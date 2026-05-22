@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id                   String        @id @default(uuid())
+  name                 String
+  plan                 String        @default("lite")
+  metaWhatsappEnabled  Boolean       @default(false) @map("meta_whatsapp_enabled")
+  whatsappProvider     String        @default("meta") @map("whatsapp_provider")
+  msg91AuthKey         String?       @map("msg91_auth_key")
+  msg91IntegratedNumber String?      @map("msg91_integrated_number")
+  licenseKey           String?       @unique @map("license_key")
+  status               String        @default("active")
+  createdAt            DateTime      @default(now()) @map("created_at")
+
+  users           User[]
+  contacts        Contact[]
+  campaigns       Campaign[]
+  messageLogs     MessageLog[]
+  licenseKeys     LicenseKey[]
+  inboundMessages InboundMessage[]
+
+  @@map("workspaces")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         String    @default("marketer")
+  workspaceId  String    @map("workspace_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("users")
+}
+
+model LicenseKey {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  workspaceId String?   @map("workspace_id")
+  plan        String    @default("lite")
+  status      String    @default("inactive")
+  expiryDate  DateTime? @map("expiry_date")
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@map("license_keys")
+}
+
+model Contact {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  phone       String
+  tags        String[]
+  optIn       Boolean  @default(false) @map("opt_in")
+
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messageLogs     MessageLog[]
+  inboundMessages InboundMessage[]
+
+  @@index([workspaceId])
+  @@index([phone])
+  @@map("contacts")
+}
+
+model Campaign {
+  id          String    @id @default(uuid())
+  workspaceId String    @map("workspace_id")
+  name        String
+  template    String
+  status      String    @default("draft")
+  scheduledAt DateTime? @map("scheduled_at")
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messageLogs MessageLog[]
+
+  @@index([workspaceId])
+  @@map("campaigns")
+}
+
+model MessageLog {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  contactId   String   @map("contact_id")
+  campaignId  String?  @map("campaign_id")
+  status      String   @default("sent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  campaign  Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([campaignId])
+  @@map("message_logs")
+}
+
+model InboundMessage {
+  id              String   @id @default(uuid())
+  workspaceId     String   @map("workspace_id")
+  contactId       String?  @map("contact_id")
+  fromPhone       String   @map("from_phone")
+  messageId       String   @unique @map("message_id")
+  type            String   @default("text")
+  body            String?
+  replyToMessageId String? @map("reply_to_message_id")
+  rawPayload      Json     @map("raw_payload")
+  read            Boolean  @default(false)
+  receivedAt      DateTime @default(now()) @map("received_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([fromPhone])
+  @@map("inbound_messages")
+}

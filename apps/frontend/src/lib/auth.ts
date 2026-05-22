@@ -1,0 +1,50 @@
+import Cookies from "js-cookie";
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export interface AuthWorkspace {
+  id: string;
+  name: string;
+  plan: string;
+}
+
+export function getToken(): string | undefined {
+  return Cookies.get("token");
+}
+
+export function setAuth(token: string, user: AuthUser, workspace: AuthWorkspace) {
+  Cookies.set("token", token, { expires: 7, sameSite: "strict" });
+  if (typeof window !== "undefined") {
+    localStorage.setItem("user", JSON.stringify(user));
+    localStorage.setItem("workspace", JSON.stringify(workspace));
+  }
+}
+
+export function clearAuth() {
+  Cookies.remove("token");
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("user");
+    localStorage.removeItem("workspace");
+  }
+}
+
+export function getUser(): AuthUser | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("user");
+  return raw ? JSON.parse(raw) : null;
+}
+
+export function getWorkspace(): AuthWorkspace | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("workspace");
+  return raw ? JSON.parse(raw) : null;
+}
+
+export function isAuthenticated(): boolean {
+  return !!getToken();
+}
