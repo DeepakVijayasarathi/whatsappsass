@@ -57,6 +57,7 @@ function parseCsv(text: string): Omit<Contact, "id">[] {
     return {
       name: row.name || row.fullname || row.contactname || "",
       phone: row.phone || row.mobile || row.phonenumber || "",
+      email: row.email || null,
       tags: row.tags ? row.tags.split("|").map((t) => t.trim()).filter(Boolean) : [],
       optIn: row.optin === "true" || row.optin === "1" || row.optin === "yes",
     };
