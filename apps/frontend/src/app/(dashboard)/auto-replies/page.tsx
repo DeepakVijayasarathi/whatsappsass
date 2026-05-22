@@ -188,10 +188,8 @@ export default function AutoRepliesPage() {
 
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Auto-Reply Rules</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Automatically send a template when a contact's message matches a keyword
-          </p>
+          <h1 className="page-title">Auto-Reply Rules</h1>
+          <p className="page-subtitle">Automatically send a template when a contact's message matches a keyword</p>
         </div>
         <button
           onClick={() => setModal("create")}
@@ -213,34 +211,32 @@ export default function AutoRepliesPage() {
             ))}
           </div>
         ) : rules.length === 0 ? (
-          <div className="text-center py-16">
-            <Bot className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No auto-reply rules yet</p>
-            <p className="text-gray-400 text-sm mt-1">
-              Create a rule to automatically respond when contacts message you
-            </p>
+          <div className="empty-state">
+            <Bot className="empty-icon" />
+            <p className="empty-title">No auto-reply rules yet</p>
+            <p className="empty-desc">Create a rule to automatically respond when contacts message you</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left pb-3 text-xs font-semibold text-gray-500 uppercase tracking-wider pr-4">Keyword</th>
-                  <th className="text-left pb-3 text-xs font-semibold text-gray-500 uppercase tracking-wider pr-4">Match</th>
-                  <th className="text-left pb-3 text-xs font-semibold text-gray-500 uppercase tracking-wider pr-4">Template</th>
-                  <th className="text-left pb-3 text-xs font-semibold text-gray-500 uppercase tracking-wider pr-4 hidden sm:table-cell">Language</th>
-                  <th className="text-left pb-3 text-xs font-semibold text-gray-500 uppercase tracking-wider pr-4">Status</th>
-                  <th className="pb-3 w-20" />
+                <tr className="tbl-head">
+                  <th className="tbl-th">Keyword</th>
+                  <th className="tbl-th">Match</th>
+                  <th className="tbl-th">Template</th>
+                  <th className="tbl-th hidden sm:table-cell">Language</th>
+                  <th className="tbl-th">Status</th>
+                  <th className="tbl-th w-20" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rules.map((rule) => (
-                  <tr key={rule.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="py-3 pr-4 font-medium text-gray-900">{rule.keyword}</td>
-                    <td className="py-3 pr-4 text-gray-500">{MATCH_LABELS[rule.matchType]}</td>
-                    <td className="py-3 pr-4 font-mono text-xs text-brand">{rule.templateName}</td>
-                    <td className="py-3 pr-4 text-gray-400 hidden sm:table-cell">{rule.languageCode}</td>
-                    <td className="py-3 pr-4">
+                  <tr key={rule.id} className="tbl-row">
+                    <td className="tbl-td font-medium text-gray-900">{rule.keyword}</td>
+                    <td className="tbl-td text-gray-500">{MATCH_LABELS[rule.matchType]}</td>
+                    <td className="tbl-td font-mono text-xs text-brand">{rule.templateName}</td>
+                    <td className="tbl-td text-gray-400 hidden sm:table-cell">{rule.languageCode}</td>
+                    <td className="tbl-td">
                       <button
                         onClick={() => toggleActive(rule)}
                         className={rule.isActive ? "text-green-500" : "text-gray-300"}
@@ -249,7 +245,7 @@ export default function AutoRepliesPage() {
                         {rule.isActive ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                       </button>
                     </td>
-                    <td className="py-3">
+                    <td className="tbl-td">
                       <div className="flex items-center gap-1 justify-end">
                         <button
                           onClick={() => setModal(rule)}

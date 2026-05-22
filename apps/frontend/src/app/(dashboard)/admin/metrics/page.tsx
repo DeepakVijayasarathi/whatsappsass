@@ -43,8 +43,8 @@ export default function MetricsPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Usage Metrics</h1>
-        <p className="text-gray-500 text-sm mt-1">Workspace-level statistics and message performance</p>
+        <h1 className="page-title">Usage Metrics</h1>
+        <p className="page-subtitle">Workspace-level statistics and message performance</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 mb-8">

@@ -259,8 +259,8 @@ export default function EmailCampaignsPage() {
 
       <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Email Campaigns</h1>
-          <p className="text-gray-500 text-sm mt-1">{total} total campaigns</p>
+          <h1 className="page-title">Email Campaigns</h1>
+          <p className="page-subtitle">{total} total campaigns</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary flex items-center gap-2 shrink-0">
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New Campaign</span><span className="sm:hidden">New</span>
@@ -307,9 +307,9 @@ export default function EmailCampaignsPage() {
           <div className="overflow-x-auto -mx-4 sm:mx-0">
           <table className="w-full text-sm min-w-[480px]">
             <thead>
-              <tr className="border-b border-gray-100">
+              <tr className="tbl-head">
                 {["Name", "Subject", "Status", "Created", ""].map((h) => (
-                  <th key={h} className="pb-3 text-left font-medium text-gray-500">{h}</th>
+                  <th key={h} className="tbl-th">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -319,40 +319,43 @@ export default function EmailCampaignsPage() {
           </table>
           </div>
         ) : campaigns.length === 0 ? (
-          <div className="text-center py-16">
-            <Mail className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No email campaigns yet</p>
-            <p className="text-gray-400 text-sm mt-1">Create your first email campaign to start sending</p>
+          <div className="empty-state">
+            <Mail className="empty-icon" />
+            <p className="empty-title">No email campaigns yet</p>
+            <p className="empty-desc">Create your first email campaign to start sending</p>
           </div>
         ) : (
           <div className="overflow-x-auto -mx-4 sm:mx-0">
           <table className="w-full text-sm min-w-[480px]">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="pb-3 text-left font-medium text-gray-500 pl-4 sm:pl-0">Name</th>
-                <th className="pb-3 text-left font-medium text-gray-500 hidden sm:table-cell">Subject</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Status</th>
-                <th className="pb-3 text-left font-medium text-gray-500 hidden md:table-cell">Created</th>
-                <th className="pb-3 text-right font-medium text-gray-500 pr-4 sm:pr-0">Actions</th>
+              <tr className="tbl-head">
+                <th className="tbl-th pl-4 sm:pl-0">Name</th>
+                <th className="tbl-th hidden sm:table-cell">Subject</th>
+                <th className="tbl-th">Status</th>
+                <th className="tbl-th hidden md:table-cell">Created</th>
+                <th className="tbl-th text-right pr-4 sm:pr-0">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {campaigns.map((c) => {
                 const cfg = statusConfig[c.status] ?? statusConfig.draft;
                 return (
-                  <tr key={c.id} className="hover:bg-gray-50/50">
-                    <td className="py-3 font-medium text-gray-900 pl-4 sm:pl-0">
+                  <tr key={c.id} className="tbl-row">
+                    <td className="tbl-td font-medium text-gray-900 pl-4 sm:pl-0">
                       <div>{c.name}</div>
                       <div className="sm:hidden text-xs text-gray-500 truncate max-w-[180px] mt-0.5">{c.subject}</div>
                     </td>
-                    <td className="py-3 text-gray-600 max-w-xs truncate hidden sm:table-cell">{c.subject}</td>
-                    <td className="py-3">
-                      <span className={clsx("badge", cfg.badge, "capitalize")}>{c.status}</span>
+                    <td className="tbl-td text-gray-600 max-w-xs truncate hidden sm:table-cell">{c.subject}</td>
+                    <td className="tbl-td">
+                      <span className={clsx("badge flex items-center gap-1 w-fit", cfg.badge)}>
+                        <cfg.icon className="w-3 h-3" />
+                        <span className="capitalize">{c.status}</span>
+                      </span>
                     </td>
-                    <td className="py-3 text-gray-400 text-xs hidden md:table-cell">
+                    <td className="tbl-td text-gray-400 text-xs hidden md:table-cell">
                       {new Date(c.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="py-3 pr-4 sm:pr-0">
+                    <td className="tbl-td pr-4 sm:pr-0">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => setStatsTarget({ id: c.id, name: c.name })}
                           className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="Stats">

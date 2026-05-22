@@ -47,17 +47,17 @@ export default function AuditLogPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Audit Log</h1>
-        <p className="text-gray-500 text-sm mt-1">All actions taken within this workspace</p>
+        <h1 className="page-title">Audit Log</h1>
+        <p className="page-subtitle">All actions taken within this workspace</p>
       </div>
 
       <div className="card">
         {loading ? (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
+              <tr className="tbl-head">
                 {["Action", "User", "Entity", "Details", "Time"].map((h) => (
-                  <th key={h} className="pb-3 text-left font-medium text-gray-500">{h}</th>
+                  <th key={h} className="tbl-th">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -66,20 +66,20 @@ export default function AuditLogPage() {
             </tbody>
           </table>
         ) : logs.length === 0 ? (
-          <div className="text-center py-16">
-            <ClipboardList className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No activity yet</p>
-            <p className="text-gray-400 text-sm mt-1">Actions will appear here as your team uses the workspace</p>
+          <div className="empty-state">
+            <ClipboardList className="empty-icon" />
+            <p className="empty-title">No activity yet</p>
+            <p className="empty-desc">Actions will appear here as your team uses the workspace</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="pb-3 text-left font-medium text-gray-500">Action</th>
-                <th className="pb-3 text-left font-medium text-gray-500">User</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Entity</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Details</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Time</th>
+              <tr className="tbl-head">
+                <th className="tbl-th">Action</th>
+                <th className="tbl-th">User</th>
+                <th className="tbl-th">Entity</th>
+                <th className="tbl-th">Details</th>
+                <th className="tbl-th">Time</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">

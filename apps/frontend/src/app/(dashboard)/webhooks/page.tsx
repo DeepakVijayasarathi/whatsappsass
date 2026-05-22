@@ -185,10 +185,8 @@ export default function WebhooksPage() {
 
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Outbound Webhooks</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Receive real-time event notifications at your own endpoints
-          </p>
+          <h1 className="page-title">Outbound Webhooks</h1>
+          <p className="page-subtitle">Receive real-time event notifications at your own endpoints</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -210,12 +208,10 @@ export default function WebhooksPage() {
             ))}
           </div>
         ) : endpoints.length === 0 ? (
-          <div className="text-center py-16">
-            <Webhook className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No webhook endpoints yet</p>
-            <p className="text-gray-400 text-sm mt-1">
-              Add an endpoint to receive real-time event notifications
-            </p>
+          <div className="empty-state">
+            <Webhook className="empty-icon" />
+            <p className="empty-title">No webhook endpoints yet</p>
+            <p className="empty-desc">Add an endpoint to receive real-time event notifications</p>
           </div>
         ) : (
           <div className="space-y-4">

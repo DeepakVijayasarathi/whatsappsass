@@ -92,13 +92,13 @@ export default function ProfilePage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
-        <p className="text-gray-500 text-sm mt-1">Manage your personal account settings</p>
+        <h1 className="page-title">My Profile</h1>
+        <p className="page-subtitle">Manage your personal account settings</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left — identity card */}
-        <div className="col-span-1">
+        <div className="lg:col-span-1">
           <div className="card text-center">
             <div className="w-16 h-16 bg-brand/10 rounded-full flex items-center justify-center mx-auto mb-3">
               <span className="text-2xl font-bold text-brand">
@@ -124,7 +124,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Right — forms */}
-        <div className="col-span-2">
+        <div className="lg:col-span-2">
           {/* Tabs */}
           <div className="flex gap-1 mb-5 border-b border-gray-200">
             {tabs.map(({ id, label, icon: Icon }) => (

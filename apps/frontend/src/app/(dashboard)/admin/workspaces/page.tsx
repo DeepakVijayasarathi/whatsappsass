@@ -187,18 +187,18 @@ export default function SuperAdminWorkspacesPage() {
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-1">
           <Shield className="w-5 h-5 text-orange-500" />
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Super Admin — Workspaces</h1>
+          <h1 className="page-title">Super Admin — Workspaces</h1>
         </div>
-        <p className="text-gray-500 text-sm">Manage all tenants, suspend workspaces, and impersonate users</p>
+        <p className="page-subtitle">Manage all tenants, suspend workspaces, and impersonate users</p>
       </div>
 
       <div className="card">
         {loading ? (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
+              <tr className="tbl-head">
                 {["Workspace", "Plan", "Status", "Members", "Contacts", "Created", ""].map((h) => (
-                  <th key={h} className="pb-3 text-left font-medium text-gray-500">{h}</th>
+                  <th key={h} className="tbl-th">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -207,52 +207,54 @@ export default function SuperAdminWorkspacesPage() {
             </tbody>
           </table>
         ) : workspaces.length === 0 ? (
-          <div className="text-center py-16">
-            <Building2 className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No workspaces found</p>
+          <div className="empty-state">
+            <Building2 className="empty-icon" />
+            <p className="empty-title">No workspaces found</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="pb-3 text-left font-medium text-gray-500">Workspace</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Plan</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Status</th>
-                <th className="pb-3 text-left font-medium text-gray-500">
+              <tr className="tbl-head">
+                <th className="tbl-th">Workspace</th>
+                <th className="tbl-th">Plan</th>
+                <th className="tbl-th">Status</th>
+                <th className="tbl-th">
                   <div className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />Members</div>
                 </th>
-                <th className="pb-3 text-left font-medium text-gray-500">
+                <th className="tbl-th">
                   <div className="flex items-center gap-1"><UserCheck className="w-3.5 h-3.5" />Contacts</div>
                 </th>
-                <th className="pb-3 text-left font-medium text-gray-500">Created</th>
-                <th className="pb-3" />
+                <th className="tbl-th">Created</th>
+                <th className="tbl-th" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {workspaces.map((ws) => (
                 <tr
                   key={ws.id}
-                  className="hover:bg-gray-50/50 cursor-pointer"
+                  className="tbl-row cursor-pointer"
                   onClick={() => setDetailId(ws.id)}
                 >
-                  <td className="py-3 font-medium text-gray-900 flex items-center gap-2">
-                    <div className="w-7 h-7 bg-brand/10 rounded-lg flex items-center justify-center">
-                      <span className="text-xs font-bold text-brand">{ws.name[0].toUpperCase()}</span>
+                  <td className="tbl-td font-medium text-gray-900">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 bg-brand/10 rounded-lg flex items-center justify-center shrink-0">
+                        <span className="text-xs font-bold text-brand">{ws.name[0].toUpperCase()}</span>
+                      </div>
+                      {ws.name}
                     </div>
-                    {ws.name}
                   </td>
-                  <td className="py-3">
-                    <span className="badge-gray uppercase">{ws.plan}</span>
+                  <td className="tbl-td">
+                    <span className="badge badge-gray uppercase">{ws.plan}</span>
                   </td>
-                  <td className="py-3">
+                  <td className="tbl-td">
                     <span className={clsx("badge", ws.status === "active" ? "badge-green" : "badge-red")}>
                       {ws.status}
                     </span>
                   </td>
-                  <td className="py-3 text-gray-600">{ws._count.users}</td>
-                  <td className="py-3 text-gray-600">{ws._count.contacts.toLocaleString()}</td>
-                  <td className="py-3 text-gray-400 text-xs">{new Date(ws.createdAt).toLocaleDateString()}</td>
-                  <td className="py-3 text-right">
+                  <td className="tbl-td text-gray-600">{ws._count.users}</td>
+                  <td className="tbl-td text-gray-600">{ws._count.contacts.toLocaleString()}</td>
+                  <td className="tbl-td text-gray-400 text-xs">{new Date(ws.createdAt).toLocaleDateString()}</td>
+                  <td className="tbl-td text-right">
                     <ChevronRight className="w-4 h-4 text-gray-300" />
                   </td>
                 </tr>

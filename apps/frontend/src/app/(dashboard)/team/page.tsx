@@ -9,6 +9,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { UserPlus, Trash2, Shield, Users, SlidersHorizontal, X } from "lucide-react";
 import clsx from "clsx";
+import { SkeletonTableRow } from "@/components/Skeleton";
+
+const AVATAR_COLORS = [
+  "bg-violet-100 text-violet-600",
+  "bg-blue-100 text-blue-600",
+  "bg-emerald-100 text-emerald-600",
+  "bg-amber-100 text-amber-700",
+  "bg-rose-100 text-rose-600",
+  "bg-cyan-100 text-cyan-700",
+  "bg-orange-100 text-orange-600",
+  "bg-pink-100 text-pink-600",
+];
+const avatarColor = (name: string) => AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
 
 interface Member {
   id: string;
@@ -225,10 +238,8 @@ export default function TeamPage() {
 
       <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Team</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {members.length} member{members.length !== 1 ? "s" : ""} in this workspace
-          </p>
+          <h1 className="page-title">Team</h1>
+          <p className="page-subtitle">{members.length} member{members.length !== 1 ? "s" : ""} in this workspace</p>
         </div>
         {canManage && (
           <button onClick={() => setShowInvite(!showInvite)} className="btn-primary flex items-center gap-2 shrink-0">
@@ -277,22 +288,36 @@ export default function TeamPage() {
       {/* Members table */}
       <div className="card">
         {loading ? (
-          <p className="text-gray-400 text-sm">Loading...</p>
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <table className="w-full text-sm min-w-[400px]">
+            <thead>
+              <tr className="tbl-head">
+                {["Member", "Email", "Role", "Joined", ""].map((h) => (
+                  <th key={h} className="tbl-th">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {Array.from({ length: 3 }).map((_, i) => <SkeletonTableRow key={i} cols={5} />)}
+            </tbody>
+          </table>
+          </div>
         ) : members.length === 0 ? (
-          <div className="text-center py-16">
-            <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No members yet.</p>
+          <div className="empty-state">
+            <Users className="empty-icon" />
+            <p className="empty-title">No members yet</p>
+            <p className="empty-desc">Invite team members to collaborate in this workspace</p>
           </div>
         ) : (
           <div className="overflow-x-auto -mx-4 sm:mx-0">
           <table className="w-full text-sm min-w-[400px]">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="pb-3 text-left font-medium text-gray-500 pl-4 sm:pl-0">Member</th>
-                <th className="pb-3 text-left font-medium text-gray-500 hidden sm:table-cell">Email</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Role</th>
-                <th className="pb-3 text-left font-medium text-gray-500 hidden md:table-cell">Joined</th>
-                {canManage && <th className="pb-3 text-right font-medium text-gray-500 pr-4 sm:pr-0">Actions</th>}
+              <tr className="tbl-head">
+                <th className="tbl-th pl-4 sm:pl-0">Member</th>
+                <th className="tbl-th hidden sm:table-cell">Email</th>
+                <th className="tbl-th">Role</th>
+                <th className="tbl-th hidden md:table-cell">Joined</th>
+                {canManage && <th className="tbl-th text-right pr-4 sm:pr-0">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -300,8 +325,8 @@ export default function TeamPage() {
                 <tr key={m.id} className={clsx("hover:bg-gray-50/50", m.id === me?.id && "bg-brand/5")}>
                   <td className="py-3 pl-4 sm:pl-0">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                        <span className="text-xs font-bold text-gray-600">{m.name[0].toUpperCase()}</span>
+                      <div className={clsx("w-8 h-8 rounded-full flex items-center justify-center shrink-0", avatarColor(m.name))}>
+                        <span className="text-xs font-bold">{m.name[0].toUpperCase()}</span>
                       </div>
                       <div>
                         <p className="font-medium text-gray-900">
