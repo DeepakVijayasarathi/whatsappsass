@@ -2,12 +2,7 @@
 set -e
 
 if [ -z "$DATABASE_URL" ]; then
-  echo "[ERROR] DATABASE_URL environment variable is not set. Exiting."
-  exit 1
-fi
-
-if [ -z "$JWT_SECRET" ]; then
-  echo "[ERROR] JWT_SECRET environment variable is not set. Exiting."
+  echo "[ERROR] DATABASE_URL is not set. Exiting."
   exit 1
 fi
 
