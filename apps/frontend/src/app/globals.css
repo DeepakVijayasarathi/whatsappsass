@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 @layer base {
+  /* Keep these in sync with tailwind.config.ts and src/lib/brand.ts */
   :root {
     --brand: #25D366;
     --brand-dark: #128C7E;

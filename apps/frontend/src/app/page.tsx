@@ -4,6 +4,7 @@ import {
   Kanban, BarChart2, Webhook, CheckCircle2, ArrowRight,
   Zap, Shield, Globe,
 } from "lucide-react";
+import { brand } from "@/lib/brand";
 
 const features = [
   { icon: Megaphone,    title: "WhatsApp Campaigns",  desc: "Send bulk messages to thousands of opted-in contacts using approved templates." },
@@ -56,7 +57,7 @@ const plans = [
       "SLA guarantee",
     ],
     cta: "Talk to us",
-    href: "mailto:hello@example.com",
+    href: `mailto:${brand.contactEmail}`,
     primary: true,
   },
 ];
@@ -72,7 +73,7 @@ export default function LandingPage() {
             <div className="w-8 h-8 bg-gradient-to-br from-brand to-brand-dark rounded-xl flex items-center justify-center shadow-sm">
               <MessageSquare className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-gray-900 text-sm tracking-tight">WA SaaS Lite</span>
+            <span className="font-bold text-gray-900 text-sm tracking-tight">{brand.name}</span>
           </div>
           <div className="flex items-center gap-3">
             <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900 font-medium px-3 py-1.5">
@@ -96,15 +97,14 @@ export default function LandingPage() {
         </div>
 
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-tight tracking-tight max-w-3xl mx-auto">
-          WhatsApp marketing,{" "}
+          {brand.tagline.split(",")[0]},{" "}
           <span className="bg-gradient-to-r from-brand to-brand-dark bg-clip-text text-transparent">
-            on your own server
+            {brand.tagline.split(",")[1]?.trim()}
           </span>
         </h1>
 
         <p className="mt-6 text-lg sm:text-xl text-gray-500 max-w-2xl mx-auto leading-relaxed">
-          Send campaigns, manage contacts, automate replies, and close deals — all from one dashboard.
-          Connect Meta Cloud API or MSG91. No SaaS markup.
+          {brand.subTagline}
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -268,7 +268,7 @@ export default function LandingPage() {
             <div className="w-6 h-6 bg-gradient-to-br from-brand to-brand-dark rounded-lg flex items-center justify-center">
               <MessageSquare className="w-3 h-3 text-white" />
             </div>
-            <span className="text-sm font-semibold text-gray-700">WA SaaS Lite</span>
+            <span className="text-sm font-semibold text-gray-700">{brand.name}</span>
           </div>
           <div className="flex items-center gap-5 text-xs text-gray-400">
             <Link href="/login" className="hover:text-gray-700">Sign in</Link>

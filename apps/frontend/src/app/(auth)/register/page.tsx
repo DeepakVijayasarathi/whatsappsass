@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
+import { brand } from "@/lib/brand";
 import { MessageSquare, CheckCircle2 } from "lucide-react";
 
 const schema = z.object({
@@ -19,13 +20,6 @@ const schema = z.object({
   workspaceName: z.string().min(1, "Workspace name required"),
 });
 type FormData = z.infer<typeof schema>;
-
-const perks = [
-  "WhatsApp & Email campaigns",
-  "Two-way inbox & auto-replies",
-  "CRM pipeline & drip sequences",
-  "No credit card required",
-];
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -53,24 +47,24 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen flex">
       {/* ── Left panel — branding ── */}
-      <div className="hidden lg:flex lg:w-[45%] bg-gradient-to-br from-brand to-brand-dark flex-col justify-between p-12 text-white">
+      <div className={`hidden lg:flex lg:w-[45%] bg-gradient-to-br ${brand.authGradient} flex-col justify-between p-12 text-white`}>
         <div>
           <div className="flex items-center gap-2.5 mb-16">
             <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
               <MessageSquare className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
             </div>
-            <span className="font-bold text-white tracking-tight">WA SaaS Lite</span>
+            <span className="font-bold text-white tracking-tight">{brand.name}</span>
           </div>
 
           <h2 className="text-3xl font-extrabold leading-tight mb-4">
-            Everything you need to grow on WhatsApp
+            {brand.authRegisterHeadline}
           </h2>
           <p className="text-white/70 text-sm leading-relaxed max-w-xs">
             One dashboard for campaigns, inbox, CRM, and automation. Self-hosted, no per-message fees.
           </p>
 
           <ul className="mt-10 space-y-3.5">
-            {perks.map((perk) => (
+            {brand.authPerks.map((perk) => (
               <li key={perk} className="flex items-center gap-3 text-sm text-white/90">
                 <CheckCircle2 className="w-4.5 h-4.5 text-white/70 shrink-0" style={{ width: 18, height: 18 }} />
                 {perk}
@@ -90,7 +84,7 @@ export default function RegisterPage() {
             <div className="w-8 h-8 bg-gradient-to-br from-brand to-brand-dark rounded-xl flex items-center justify-center">
               <MessageSquare className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-gray-900 text-sm">WA SaaS Lite</span>
+            <span className="font-bold text-gray-900 text-sm">{brand.name}</span>
           </div>
 
           <div className="mb-8">

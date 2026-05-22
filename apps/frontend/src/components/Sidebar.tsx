@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { clearAuth, getUser, getWorkspace } from "@/lib/auth";
 import { useInboxNotifications } from "@/lib/useInboxNotifications";
+import { brand } from "@/lib/brand";
 
 const navItems = [
   { href: "/dashboard",        icon: LayoutDashboard, label: "Dashboard",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
@@ -72,7 +73,7 @@ export default function Sidebar({ open = false, onClose }: Props) {
             {workspace?.name ?? "Workspace"}
           </p>
           <span className="text-[10px] text-gray-400 uppercase tracking-widest font-medium">
-            {workspace?.plan ?? "lite"} plan
+            {workspace?.plan ?? brand.planLabel} plan
           </span>
         </div>
         <button

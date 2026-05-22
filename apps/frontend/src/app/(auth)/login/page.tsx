@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
+import { brand } from "@/lib/brand";
 import { MessageSquare } from "lucide-react";
 
 const schema = z.object({
@@ -49,17 +50,17 @@ function LoginForm() {
   return (
     <div className="min-h-screen flex">
       {/* ── Left panel — branding ── */}
-      <div className="hidden lg:flex lg:w-[45%] bg-gradient-to-br from-brand to-brand-dark flex-col justify-between p-12 text-white">
+      <div className={`hidden lg:flex lg:w-[45%] bg-gradient-to-br ${brand.authGradient} flex-col justify-between p-12 text-white`}>
         <div>
           <div className="flex items-center gap-2.5 mb-16">
             <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
               <MessageSquare className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
             </div>
-            <span className="font-bold text-white tracking-tight">WA SaaS Lite</span>
+            <span className="font-bold text-white tracking-tight">{brand.name}</span>
           </div>
 
           <h2 className="text-3xl font-extrabold leading-tight mb-4">
-            Welcome back
+            {brand.authLoginHeadline}
           </h2>
           <p className="text-white/70 text-sm leading-relaxed max-w-xs">
             Sign in to your workspace and pick up where you left off.
@@ -82,7 +83,7 @@ function LoginForm() {
             <div className="w-8 h-8 bg-gradient-to-br from-brand to-brand-dark rounded-xl flex items-center justify-center">
               <MessageSquare className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-gray-900 text-sm">WA SaaS Lite</span>
+            <span className="font-bold text-gray-900 text-sm">{brand.name}</span>
           </div>
 
           <div className="mb-8">
