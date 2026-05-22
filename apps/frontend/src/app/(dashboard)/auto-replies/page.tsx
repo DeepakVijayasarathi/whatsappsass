@@ -21,7 +21,10 @@ const MATCH_LABELS: Record<string, string> = {
   starts_with: "Starts with",
 };
 
-const defaultForm = { keyword: "", matchType: "exact" as const, templateName: "", languageCode: "en_US", isActive: true };
+type MatchType = "exact" | "contains" | "starts_with";
+type FormData = { keyword: string; matchType: MatchType; templateName: string; languageCode: string; isActive: boolean };
+
+const defaultForm: FormData = { keyword: "", matchType: "exact", templateName: "", languageCode: "en_US", isActive: true };
 
 function RuleModal({
   initial,
@@ -29,10 +32,10 @@ function RuleModal({
   onClose,
 }: {
   initial?: Partial<AutoReply>;
-  onSave: (data: typeof defaultForm) => Promise<void>;
+  onSave: (data: FormData) => Promise<void>;
   onClose: () => void;
 }) {
-  const [form, setForm] = useState({ ...defaultForm, ...initial });
+  const [form, setForm] = useState<FormData>({ ...defaultForm, ...initial });
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -71,7 +74,7 @@ function RuleModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">Match type</label>
             <select
               value={form.matchType}
-              onChange={(e) => setForm({ ...form, matchType: e.target.value as typeof form.matchType })}
+              onChange={(e) => setForm({ ...form, matchType: e.target.value as MatchType })}
               className="input"
             >
               <option value="exact">Exact match</option>
@@ -137,7 +140,7 @@ export default function AutoRepliesPage() {
 
   useEffect(() => { load(); }, []);
 
-  const handleSave = async (data: typeof defaultForm) => {
+  const handleSave = async (data: FormData) => {
     try {
       if (modal && modal !== "create") {
         await api.patch(`/auto-replies/${modal.id}`, data);
