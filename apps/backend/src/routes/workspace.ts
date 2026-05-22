@@ -291,6 +291,41 @@ export async function workspaceRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── SMTP / email config ────────────────────────────────────────────────────
+  app.patch(
+    "/smtp",
+    { preHandler: [requireOwnerOrAdmin] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+      const schema = z.object({
+        smtpHost:      z.string().min(1),
+        smtpPort:      z.number().int().min(1).max(65535).default(587),
+        smtpUser:      z.string().min(1),
+        smtpPass:      z.string().min(1),
+        smtpFromEmail: z.string().email(),
+        smtpFromName:  z.string().optional(),
+      });
+      const parsed = schema.safeParse(request.body);
+      if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+      await prisma.workspace.update({ where: { id: user.workspaceId }, data: parsed.data });
+      return reply.send({ message: "Email config saved" });
+    }
+  );
+
+  app.get(
+    "/smtp",
+    { preHandler: [requireOwnerOrAdmin] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+      const ws = await prisma.workspace.findUnique({
+        where: { id: user.workspaceId },
+        select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpFromEmail: true, smtpFromName: true },
+      });
+      return reply.send(ws ?? {});
+    }
+  );
+
   app.get(
     "/provider",
     { preHandler: [authenticate] },

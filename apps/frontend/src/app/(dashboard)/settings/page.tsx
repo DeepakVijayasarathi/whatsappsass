@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Shield, Key, Wifi, RefreshCw, Building2 } from "lucide-react";
+import { Shield, Key, Wifi, RefreshCw, Building2, Mail, CheckCircle2 } from "lucide-react";
 import clsx from "clsx";
 
 const licenseSchema = z.object({
@@ -45,7 +45,7 @@ export default function SettingsPage() {
   const [metaEnabled, setMetaEnabled] = useState(false);
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
   const [toggling, setToggling] = useState(false);
-  const [activeTab, setActiveTab] = useState<"provider" | "workspace" | "license">("provider");
+  const [activeTab, setActiveTab] = useState<"provider" | "email" | "workspace" | "license">("provider");
 
   const {
     register: regLicense,
@@ -140,9 +140,10 @@ export default function SettingsPage() {
   };
 
   const tabs = [
-    { id: "provider", label: "WhatsApp Provider" },
+    { id: "provider",  label: "WhatsApp Provider" },
+    { id: "email",     label: "Email (SMTP)" },
     { id: "workspace", label: "Workspace" },
-    { id: "license", label: "License" },
+    { id: "license",   label: "License" },
   ] as const;
 
   return (
@@ -336,6 +337,9 @@ export default function SettingsPage() {
           </>
         )}
 
+        {/* ── Email tab ── */}
+        {activeTab === "email" && <EmailSettings />}
+
         {/* ── Workspace tab ── */}
         {activeTab === "workspace" && (
           <WorkspaceSettings />
@@ -488,6 +492,135 @@ function WorkspaceSettings() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Email / SMTP settings sub-component ───────────────────────────────────────
+function EmailSettings() {
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testOk, setTestOk] = useState<boolean | null>(null);
+
+  const schema = z.object({
+    smtpHost:      z.string().min(1, "Host required"),
+    smtpPort:      z.coerce.number().int().min(1).max(65535).default(587),
+    smtpUser:      z.string().min(1, "Username required"),
+    smtpPass:      z.string().min(1, "Password required"),
+    smtpFromEmail: z.string().email("Invalid from email"),
+    smtpFromName:  z.string().optional(),
+  });
+  type SmtpForm = z.infer<typeof schema>;
+
+  const { register, handleSubmit, getValues, formState: { errors } } = useForm<SmtpForm>({
+    resolver: zodResolver(schema),
+    defaultValues: async () => {
+      try {
+        const res = await api.get("/workspace/smtp");
+        return { smtpPort: 587, ...res.data };
+      } catch {
+        return { smtpPort: 587, smtpHost: "", smtpUser: "", smtpPass: "", smtpFromEmail: "", smtpFromName: "" };
+      }
+    },
+  });
+
+  const save = async (data: SmtpForm) => {
+    setSaving(true);
+    setTestOk(null);
+    try {
+      await api.patch("/workspace/smtp", data);
+      toast.success("Email config saved");
+    } catch {
+      toast.error("Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testConnection = async () => {
+    const data = getValues();
+    setSaving(true);
+    try {
+      await api.patch("/workspace/smtp", data);
+    } catch { /* save first silently */ }
+    setTesting(true);
+    setSaving(false);
+    try {
+      await api.post("/email/smtp/test", {});
+      setTestOk(true);
+      toast.success("SMTP connection verified");
+    } catch (err: unknown) {
+      setTestOk(false);
+      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || "SMTP test failed");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-9 h-9 bg-orange-50 rounded-xl flex items-center justify-center">
+          <Mail className="w-5 h-5 text-orange-500" />
+        </div>
+        <div>
+          <p className="font-semibold text-gray-900">Email / SMTP Configuration</p>
+          <p className="text-xs text-gray-400">Used for email campaigns and transactional emails</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit(save)} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">SMTP Host</label>
+            <input {...register("smtpHost")} className="input font-mono" placeholder="smtp.gmail.com" />
+            {errors.smtpHost && <p className="text-red-500 text-xs mt-1">{errors.smtpHost.message}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+            <input {...register("smtpPort")} type="number" className="input font-mono" placeholder="587" />
+            {errors.smtpPort && <p className="text-red-500 text-xs mt-1">{errors.smtpPort.message}</p>}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username / Email</label>
+            <input {...register("smtpUser")} className="input" placeholder="you@gmail.com" />
+            {errors.smtpUser && <p className="text-red-500 text-xs mt-1">{errors.smtpUser.message}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password / App Password</label>
+            <input {...register("smtpPass")} type="password" className="input" placeholder="••••••••" />
+            {errors.smtpPass && <p className="text-red-500 text-xs mt-1">{errors.smtpPass.message}</p>}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">From Email</label>
+            <input {...register("smtpFromEmail")} className="input" placeholder="noreply@yourbrand.com" />
+            {errors.smtpFromEmail && <p className="text-red-500 text-xs mt-1">{errors.smtpFromEmail.message}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">From Name (optional)</label>
+            <input {...register("smtpFromName")} className="input" placeholder="Your Brand" />
+          </div>
+        </div>
+
+        <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+          For Gmail, use an <strong>App Password</strong> (not your main password). Enable 2FA first, then generate at Google Account → Security → App passwords.
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button type="submit" disabled={saving} className="btn-primary">
+            {saving ? "Saving..." : "Save Config"}
+          </button>
+          <button type="button" onClick={testConnection} disabled={testing || saving} className="btn-secondary flex items-center gap-2">
+            {testing ? "Testing..." : "Test Connection"}
+          </button>
+          {testOk === true && <span className="flex items-center gap-1 text-sm text-green-600"><CheckCircle2 className="w-4 h-4" />Connected</span>}
+          {testOk === false && <span className="text-sm text-red-500">Connection failed</span>}
+        </div>
+      </form>
     </div>
   );
 }

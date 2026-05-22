@@ -7,6 +7,7 @@ import type { JwtPayload } from "../middleware/authenticate";
 const contactSchema = z.object({
   name: z.string().min(1),
   phone: z.string().min(7),
+  email: z.string().email().optional().or(z.literal("")),
   tags: z.array(z.string()).optional().default([]),
   optIn: z.boolean().optional().default(false),
 });
@@ -125,5 +126,143 @@ export async function contactRoutes(app: FastifyInstance) {
     });
 
     return reply.status(201).send({ created: result.count });
+  });
+
+  // ── CRM: update lead status ───────────────────────────────────────────────
+  app.patch("/:id/lead-status", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const { status } = request.body as { status: string };
+
+    const VALID = ["new", "prospect", "qualified", "customer", "churned"];
+    if (!VALID.includes(status)) {
+      return reply.status(400).send({ error: `status must be one of: ${VALID.join(", ")}` });
+    }
+
+    const existing = await prisma.contact.findFirst({
+      where: { id, workspaceId: user.workspaceId },
+    });
+    if (!existing) return reply.status(404).send({ error: "Contact not found" });
+
+    const contact = await prisma.contact.update({
+      where: { id },
+      data: { leadStatus: status },
+    });
+
+    return reply.send(contact);
+  });
+
+  // ── CRM: notes ───────────────────────────────────────────────────────────
+  app.get("/:id/notes", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+
+    const contact = await prisma.contact.findFirst({
+      where: { id, workspaceId: user.workspaceId },
+    });
+    if (!contact) return reply.status(404).send({ error: "Contact not found" });
+
+    const notes = await prisma.contactNote.findMany({
+      where: { contactId: id, workspaceId: user.workspaceId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return reply.send({ notes });
+  });
+
+  app.post("/:id/notes", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const parsed = z.object({ body: z.string().min(1) }).safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const contact = await prisma.contact.findFirst({
+      where: { id, workspaceId: user.workspaceId },
+    });
+    if (!contact) return reply.status(404).send({ error: "Contact not found" });
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { email: true },
+    });
+
+    const note = await prisma.contactNote.create({
+      data: {
+        workspaceId: user.workspaceId,
+        contactId: id,
+        userId: user.userId,
+        userEmail: dbUser?.email ?? null,
+        body: parsed.data.body,
+      },
+    });
+
+    return reply.status(201).send(note);
+  });
+
+  app.delete("/:id/notes/:noteId", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id, noteId } = request.params as { id: string; noteId: string };
+
+    const note = await prisma.contactNote.findFirst({
+      where: { id: noteId, contactId: id, workspaceId: user.workspaceId },
+    });
+    if (!note) return reply.status(404).send({ error: "Note not found" });
+
+    await prisma.contactNote.delete({ where: { id: noteId } });
+
+    return reply.send({ message: "Note deleted" });
+  });
+
+  // ── CRM: timeline (sent + received messages merged) ───────────────────────
+  app.get("/:id/timeline", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+
+    const contact = await prisma.contact.findFirst({
+      where: { id, workspaceId: user.workspaceId },
+      include: { notes: { orderBy: { createdAt: "desc" } } },
+    });
+    if (!contact) return reply.status(404).send({ error: "Contact not found" });
+
+    const [sentLogs, inbound] = await Promise.all([
+      prisma.messageLog.findMany({
+        where: { contactId: id, workspaceId: user.workspaceId },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: { campaign: { select: { id: true, name: true } } },
+      }),
+      prisma.inboundMessage.findMany({
+        where: { contactId: id, workspaceId: user.workspaceId },
+        orderBy: { receivedAt: "desc" },
+        take: 50,
+      }),
+    ]);
+
+    type SentEntry = { type: "sent"; id: string; status: string; campaign: { id: string; name: string } | null; createdAt: Date };
+    type ReceivedEntry = { type: "received"; id: string; body: string | null; msgType: string; replyToMessageId: string | null; createdAt: Date };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sentEntries: SentEntry[] = (sentLogs as any[]).map((l: SentEntry & { createdAt: Date; campaign: { id: string; name: string } | null }) => ({
+      type: "sent" as const,
+      id: l.id,
+      status: l.status,
+      campaign: l.campaign,
+      createdAt: l.createdAt,
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const receivedEntries: ReceivedEntry[] = (inbound as any[]).map((m: { id: string; body: string | null; type: string; replyToMessageId: string | null; receivedAt: Date }) => ({
+      type: "received" as const,
+      id: m.id,
+      body: m.body,
+      msgType: m.type,
+      replyToMessageId: m.replyToMessageId,
+      createdAt: m.receivedAt,
+    }));
+
+    const timeline = [...sentEntries, ...receivedEntries]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    return reply.send({ contact, timeline });
   });
 }

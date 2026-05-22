@@ -19,16 +19,27 @@ model Workspace {
   metaWebhookVerifyToken String?       @map("meta_webhook_verify_token")
   msg91AuthKey           String?       @map("msg91_auth_key")
   msg91IntegratedNumber  String?       @map("msg91_integrated_number")
+  // Email / SMTP config
+  smtpHost               String?       @map("smtp_host")
+  smtpPort               Int?          @map("smtp_port")
+  smtpUser               String?       @map("smtp_user")
+  smtpPass               String?       @map("smtp_pass")
+  smtpFromEmail          String?       @map("smtp_from_email")
+  smtpFromName           String?       @map("smtp_from_name")
   licenseKey             String?       @unique @map("license_key")
   status               String        @default("active")
   createdAt            DateTime      @default(now()) @map("created_at")
 
   users           User[]
   contacts        Contact[]
+  contactNotes    ContactNote[]
   campaigns       Campaign[]
+  emailCampaigns  EmailCampaign[]
   messageLogs     MessageLog[]
+  emailLogs       EmailLog[]
   licenseKeys     LicenseKey[]
   inboundMessages InboundMessage[]
+  auditLogs       AuditLog[]
 
   @@map("workspaces")
 }
@@ -39,10 +50,13 @@ model User {
   email        String    @unique
   passwordHash String    @map("password_hash")
   role         String    @default("marketer")
+  permissions  Json?
+  superAdmin   Boolean   @default(false) @map("super_admin")
   workspaceId  String    @map("workspace_id")
   createdAt    DateTime  @default(now()) @map("created_at")
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  auditLogs  AuditLog[]
 
   @@index([workspaceId])
   @@map("users")
@@ -67,16 +81,36 @@ model Contact {
   workspaceId String   @map("workspace_id")
   name        String
   phone       String
+  email       String?
   tags        String[]
   optIn       Boolean  @default(false) @map("opt_in")
+  leadStatus  String   @default("new") @map("lead_status")
 
   workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   messageLogs     MessageLog[]
+  emailLogs       EmailLog[]
   inboundMessages InboundMessage[]
+  notes           ContactNote[]
 
   @@index([workspaceId])
   @@index([phone])
   @@map("contacts")
+}
+
+model ContactNote {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  contactId   String   @map("contact_id")
+  userId      String?  @map("user_id")
+  userEmail   String?  @map("user_email")
+  body        String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+  @@map("contact_notes")
 }
 
 model Campaign {
@@ -92,6 +126,23 @@ model Campaign {
 
   @@index([workspaceId])
   @@map("campaigns")
+}
+
+model EmailCampaign {
+  id          String    @id @default(uuid())
+  workspaceId String    @map("workspace_id")
+  name        String
+  subject     String
+  body        String
+  status      String    @default("draft")
+  scheduledAt DateTime? @map("scheduled_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  logs      EmailLog[]
+
+  @@index([workspaceId])
+  @@map("email_campaigns")
 }
 
 model MessageLog {
@@ -111,6 +162,43 @@ model MessageLog {
   @@map("message_logs")
 }
 
+model EmailLog {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  campaignId  String?  @map("campaign_id")
+  contactId   String   @map("contact_id")
+  toEmail     String   @map("to_email")
+  status      String   @default("sent")
+  sentAt      DateTime @default(now()) @map("sent_at")
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign  EmailCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contact   Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([campaignId])
+  @@map("email_logs")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  userId      String?  @map("user_id")
+  userEmail   String?  @map("user_email")
+  action      String
+  entityType  String?  @map("entity_type")
+  entityId    String?  @map("entity_id")
+  meta        Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
 model InboundMessage {
   id              String   @id @default(uuid())
   workspaceId     String   @map("workspace_id")
@@ -124,10 +212,13 @@ model InboundMessage {
   read            Boolean  @default(false)
   receivedAt      DateTime @default(now()) @map("received_at")
 
+  campaignId       String?  @map("campaign_id")
+
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contact   Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([fromPhone])
+  @@index([campaignId])
   @@map("inbound_messages")
 }

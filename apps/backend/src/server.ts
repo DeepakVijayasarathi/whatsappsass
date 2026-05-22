@@ -14,6 +14,8 @@ import { campaignRoutes } from "./routes/campaigns";
 import { whatsappRoutes } from "./routes/whatsapp";
 import { analyticsRoutes } from "./routes/analytics";
 import { templateRoutes } from "./routes/templates";
+import { emailRoutes } from "./routes/email";
+import { adminRoutes } from "./routes/admin";
 
 const app = Fastify({ logger: true });
 
@@ -42,6 +44,8 @@ async function bootstrap() {
   await app.register(whatsappRoutes, { prefix: "/whatsapp" });
   await app.register(analyticsRoutes, { prefix: "/analytics" });
   await app.register(templateRoutes, { prefix: "/templates" });
+  await app.register(emailRoutes, { prefix: "/email" });
+  await app.register(adminRoutes, { prefix: "/admin" });
 
   const port = Number(process.env.PORT) || 4000;
   await app.listen({ port, host: "0.0.0.0" });

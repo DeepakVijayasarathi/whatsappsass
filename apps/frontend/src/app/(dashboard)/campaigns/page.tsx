@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
-import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen } from "lucide-react";
+import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -239,6 +239,7 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [runTarget, setRunTarget] = useState<RunOptions | null>(null);
   const [statsTarget, setStatsTarget] = useState<{ id: string; name: string } | null>(null);
+  const [replyCounts, setReplyCounts] = useState<Record<string, { total: number; unread: number }>>({});
 
   const PAGE_SIZE = 20;
 
@@ -254,9 +255,13 @@ export default function CampaignsPage() {
 
   const load = useCallback((p: number) => {
     setLoading(true);
-    api.get(`/campaigns?page=${p}&limit=${PAGE_SIZE}`).then((r) => {
+    Promise.all([
+      api.get(`/campaigns?page=${p}&limit=${PAGE_SIZE}`),
+      api.get("/whatsapp/campaign-replies").catch(() => ({ data: { replies: {} } })),
+    ]).then(([r, rr]) => {
       setCampaigns(r.data.campaigns);
       setTotal(r.data.total);
+      setReplyCounts(rr.data.replies ?? {});
     }).finally(() => setLoading(false));
   }, []);
 
@@ -385,6 +390,7 @@ export default function CampaignsPage() {
                 <th className="pb-3 text-left font-medium text-gray-500">Name</th>
                 <th className="pb-3 text-left font-medium text-gray-500">Template</th>
                 <th className="pb-3 text-left font-medium text-gray-500">Status</th>
+                <th className="pb-3 text-left font-medium text-gray-500">Replies</th>
                 <th className="pb-3 text-left font-medium text-gray-500">Scheduled</th>
                 <th className="pb-3 text-right font-medium text-gray-500">Actions</th>
               </tr>
@@ -400,6 +406,21 @@ export default function CampaignsPage() {
                     </td>
                     <td className="py-3">
                       <span className={clsx("badge", cfg.badge)}>{cfg.label}</span>
+                    </td>
+                    <td className="py-3">
+                      {replyCounts[c.id] ? (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                          <MessageCircle className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{replyCounts[c.id].total}</span>
+                          {replyCounts[c.id].unread > 0 && (
+                            <span className="bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                              {replyCounts[c.id].unread} new
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
                     </td>
                     <td className="py-3 text-gray-500 text-xs">
                       {c.scheduledAt ? new Date(c.scheduledAt).toLocaleString() : "—"}

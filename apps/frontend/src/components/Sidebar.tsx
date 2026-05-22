@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import clsx from "clsx";
 import {
   LayoutDashboard,
@@ -16,19 +17,30 @@ import {
   UserCircle,
   UsersRound,
   FileText,
+  Mail,
+  ClipboardList,
+  Shield,
+  LineChart,
+  Kanban,
 } from "lucide-react";
 import { clearAuth, getUser, getWorkspace } from "@/lib/auth";
+import { useInboxNotifications } from "@/lib/useInboxNotifications";
 
 const navItems = [
-  { href: "/dashboard",  icon: LayoutDashboard, label: "Dashboard",    roles: ["owner", "admin", "marketer"] },
-  { href: "/contacts",   icon: Users,            label: "Contacts",     roles: ["owner", "admin", "marketer"] },
-  { href: "/campaigns",  icon: Megaphone,        label: "Campaigns",    roles: ["owner", "admin", "marketer"] },
-  { href: "/send",       icon: Send,             label: "Send Message", roles: ["owner", "admin", "marketer"] },
-  { href: "/inbox",      icon: Inbox,            label: "Inbox",        roles: ["owner", "admin", "marketer"] },
-  { href: "/templates",  icon: FileText,         label: "Templates",    roles: ["owner", "admin", "marketer"] },
-  { href: "/analytics",  icon: BarChart2,        label: "Analytics",    roles: ["owner", "admin", "marketer"] },
-  { href: "/team",       icon: UsersRound,       label: "Team",         roles: ["owner", "admin"] },
-  { href: "/settings",   icon: Settings,         label: "Settings",     roles: ["owner", "admin"] },
+  { href: "/dashboard",        icon: LayoutDashboard, label: "Dashboard",       roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/contacts",         icon: Users,           label: "Contacts",        roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/campaigns",        icon: Megaphone,       label: "WA Campaigns",    roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/email-campaigns",  icon: Mail,            label: "Email Campaigns", roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/send",             icon: Send,            label: "Send Message",    roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/inbox",            icon: Inbox,           label: "Inbox",           roles: ["owner", "admin", "marketer"], badge: "inbox", group: "main" },
+  { href: "/crm",              icon: Kanban,          label: "CRM Pipeline",    roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/templates",        icon: FileText,        label: "Templates",       roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/analytics",        icon: BarChart2,       label: "Analytics",       roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/admin/metrics",    icon: LineChart,       label: "Metrics",         roles: ["owner", "admin"],             badge: null,    group: "admin" },
+  { href: "/admin/audit-log",  icon: ClipboardList,   label: "Audit Log",       roles: ["owner", "admin"],             badge: null,    group: "admin" },
+  { href: "/admin/workspaces", icon: Shield,          label: "Super Admin",     roles: ["owner"],                      badge: null,    group: "admin" },
+  { href: "/team",             icon: UsersRound,      label: "Team",            roles: ["owner", "admin"],             badge: null,    group: "admin" },
+  { href: "/settings",         icon: Settings,        label: "Settings",        roles: ["owner", "admin"],             badge: null,    group: "admin" },
 ];
 
 export default function Sidebar() {
@@ -36,6 +48,9 @@ export default function Sidebar() {
   const router = useRouter();
   const user = getUser();
   const workspace = getWorkspace();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useInboxNotifications(setUnreadCount);
 
   const handleLogout = () => {
     clearAuth();
@@ -66,25 +81,57 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        {visible.map(({ href, icon: Icon, label }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={clsx(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                active
-                  ? "bg-brand/10 text-brand"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-              )}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {label}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 p-3 overflow-y-auto">
+        {/* Main section */}
+        <div className="space-y-0.5 mb-3">
+          {visible.filter((i) => i.group === "main").map(({ href, icon: Icon, label, badge }) => {
+            const active = pathname === href || pathname.startsWith(href + "/");
+            const showBadge = badge === "inbox" && unreadCount > 0;
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={clsx(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                  active ? "bg-brand/10 text-brand" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                )}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="flex-1">{label}</span>
+                {showBadge && (
+                  <span className="min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Admin section */}
+        {visible.some((i) => i.group === "admin") && (
+          <>
+            <p className="px-3 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Admin</p>
+            <div className="space-y-0.5">
+              {visible.filter((i) => i.group === "admin").map(({ href, icon: Icon, label }) => {
+                const active = pathname === href || pathname.startsWith(href + "/");
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={clsx(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                      active ? "bg-brand/10 text-brand" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    )}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </>
+        )}
       </nav>
 
       {/* User footer */}

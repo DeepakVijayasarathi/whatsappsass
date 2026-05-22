@@ -37,6 +37,11 @@ async function getProviderConfig(workspaceId: string): Promise<ProviderConfig> {
   };
 }
 
+// Normalise phone numbers: strip all non-digits except leading +
+function normalisePhone(phone: string): string {
+  return phone.replace(/[^\d+]/g, "");
+}
+
 export async function whatsappRoutes(app: FastifyInstance) {
   app.post(
     "/send",
@@ -70,8 +75,12 @@ export async function whatsappRoutes(app: FastifyInstance) {
 
       let contactId = parsed.data.contactId;
       if (!contactId) {
+        const normalized = normalisePhone(parsed.data.to);
         const contact = await prisma.contact.findFirst({
-          where: { phone: parsed.data.to, workspaceId: user.workspaceId },
+          where: {
+            workspaceId: user.workspaceId,
+            OR: [{ phone: parsed.data.to }, { phone: normalized }],
+          },
         });
         if (contact) contactId = contact.id;
       }
@@ -166,13 +175,11 @@ export async function whatsappRoutes(app: FastifyInstance) {
         {} as Record<string, number>
       );
 
-      return reply.send({ summary, total: contacts.length });
+      return reply.send({ campaignId: parsed.data.campaignId, summary, total: contacts.length });
     }
   );
 
-  // ── Webhook verification (GET) ───────────────────────────────────────────────
-  // Meta calls this with the verify_token you set in Meta console.
-  // We match it against any active workspace's metaWebhookVerifyToken.
+  // ── Webhook verification (GET) ────────────────────────────────────────────
   app.get("/webhook", async (request, reply) => {
     const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } =
       request.query as Record<string, string>;
@@ -193,8 +200,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
     return reply.send(Number(challenge));
   });
 
-  // ── Webhook inbound (POST) ────────────────────────────────────────────────────
-  // Routes each message to the workspace whose metaPhoneNumberId matches.
+  // ── Webhook inbound (POST) ────────────────────────────────────────────────
   app.post("/webhook", async (request, reply) => {
     const body = request.body as {
       entry?: Array<{
@@ -228,10 +234,12 @@ export async function whatsappRoutes(app: FastifyInstance) {
       const value = change.value;
       if (!value) continue;
 
+      // ── Status updates ─────────────────────────────────────────────────
       for (const s of value.statuses ?? []) {
         app.log.info({ messageId: s.id, status: s.status }, "Status update");
       }
 
+      // ── Inbound messages ────────────────────────────────────────────────
       for (const msg of value.messages ?? []) {
         const fromPhone = msg.from;
         const phoneNumberId = value.metadata?.phone_number_id;
@@ -245,7 +253,6 @@ export async function whatsappRoutes(app: FastifyInstance) {
         else if (msg.type === "sticker") bodyText = "[sticker]";
         else if (msg.type === "reaction") bodyText = msg.reaction?.emoji ?? "[reaction]";
 
-        // Route to the workspace that owns this phone number
         const workspaces = phoneNumberId
           ? await prisma.workspace.findMany({
               where: { metaPhoneNumberId: phoneNumberId, status: "active" },
@@ -254,32 +261,53 @@ export async function whatsappRoutes(app: FastifyInstance) {
           : [];
 
         for (const ws of workspaces) {
-          const existing = await prisma.inboundMessage.findUnique({
-            where: { messageId: msg.id },
-          });
-          if (existing) continue;
+          try {
+            const existing = await prisma.inboundMessage.findUnique({
+              where: { messageId: msg.id },
+            });
+            if (existing) continue;
 
-          const contact = await prisma.contact.findFirst({
-            where: { workspaceId: ws.id, phone: fromPhone },
-          });
+            // Contact lookup with phone normalisation fallback
+            const normalized = normalisePhone(fromPhone);
+            const contact = await prisma.contact.findFirst({
+              where: {
+                workspaceId: ws.id,
+                OR: [{ phone: fromPhone }, { phone: normalized }],
+              },
+            });
 
-          await prisma.inboundMessage.create({
-            data: {
-              workspaceId: ws.id,
-              contactId: contact?.id ?? null,
-              fromPhone,
-              messageId: msg.id,
-              type: msg.type,
-              body: bodyText,
-              replyToMessageId: msg.context?.id ?? null,
-              rawPayload: msg as object,
-            },
-          });
+            // Try to link reply to the most recent campaign that messaged this contact
+            let campaignId: string | null = null;
+            if (contact) {
+              const lastCampaignLog = await prisma.messageLog.findFirst({
+                where: { workspaceId: ws.id, contactId: contact.id, campaignId: { not: null } },
+                orderBy: { createdAt: "desc" },
+                select: { campaignId: true },
+              });
+              campaignId = lastCampaignLog?.campaignId ?? null;
+            }
 
-          app.log.info(
-            { from: fromPhone, type: msg.type, replyTo: msg.context?.id },
-            "Inbound message captured"
-          );
+            await prisma.inboundMessage.create({
+              data: {
+                workspaceId: ws.id,
+                contactId: contact?.id ?? null,
+                campaignId,
+                fromPhone,
+                messageId: msg.id,
+                type: msg.type,
+                body: bodyText,
+                replyToMessageId: msg.context?.id ?? null,
+                rawPayload: msg as object,
+              },
+            });
+
+            app.log.info(
+              { from: fromPhone, type: msg.type, campaignId, replyTo: msg.context?.id },
+              "Inbound message captured"
+            );
+          } catch (err) {
+            app.log.error({ err, msgId: msg.id }, "Failed to store inbound message");
+          }
         }
       }
     }
@@ -293,12 +321,13 @@ export async function whatsappRoutes(app: FastifyInstance) {
     { preHandler: [authenticate] },
     async (request, reply) => {
       const user = request.user as JwtPayload;
-      const { page = "1", limit = "20", unread } = request.query as Record<string, string>;
+      const { page = "1", limit = "20", unread, campaignId } = request.query as Record<string, string>;
 
       const skip = (Number(page) - 1) * Number(limit);
       const where = {
         workspaceId: user.workspaceId,
         ...(unread === "true" ? { read: false } : {}),
+        ...(campaignId ? { campaignId } : {}),
       };
 
       const [messages, total, totalUnread] = await Promise.all([
@@ -337,6 +366,41 @@ export async function whatsappRoutes(app: FastifyInstance) {
       });
 
       return reply.send({ marked: count });
+    }
+  );
+
+  // ── Campaign reply counts (for alert badges) ─────────────────────────────
+  app.get(
+    "/campaign-replies",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+
+      const replies = await prisma.inboundMessage.groupBy({
+        by: ["campaignId"],
+        where: { workspaceId: user.workspaceId, campaignId: { not: null } },
+        _count: { id: true },
+      });
+
+      const unreadReplies = await prisma.inboundMessage.groupBy({
+        by: ["campaignId"],
+        where: { workspaceId: user.workspaceId, campaignId: { not: null }, read: false },
+        _count: { id: true },
+      });
+
+      const unreadMap = unreadReplies.reduce<Record<string, number>>((acc, r) => {
+        if (r.campaignId) acc[r.campaignId] = r._count.id;
+        return acc;
+      }, {});
+
+      const result = replies.reduce<Record<string, { total: number; unread: number }>>((acc, r) => {
+        if (r.campaignId) {
+          acc[r.campaignId] = { total: r._count.id, unread: unreadMap[r.campaignId] ?? 0 };
+        }
+        return acc;
+      }, {});
+
+      return reply.send({ replies: result });
     }
   );
 }

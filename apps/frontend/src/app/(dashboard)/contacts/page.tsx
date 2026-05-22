@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
-import { Plus, Trash2, Phone, Upload, Download, X, Pencil } from "lucide-react";
+import Link from "next/link";
+import { Plus, Trash2, Phone, Upload, Download, X, Pencil, CheckSquare } from "lucide-react";
+import { SkeletonTableRow } from "@/components/Skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -13,6 +15,7 @@ interface Contact {
   id: string;
   name: string;
   phone: string;
+  email: string | null;
   tags: string[];
   optIn: boolean;
 }
@@ -20,6 +23,7 @@ interface Contact {
 const schema = z.object({
   name: z.string().min(1, "Name required"),
   phone: z.string().min(7, "Valid phone required"),
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
   tags: z.string().optional(),
   optIn: z.boolean().optional(),
 });
@@ -70,6 +74,7 @@ function EditModal({ contact, onClose, onSaved }: {
     defaultValues: {
       name: contact.name,
       phone: contact.phone,
+      email: contact.email ?? "",
       tags: contact.tags.join(", "),
       optIn: contact.optIn,
     },
@@ -80,6 +85,7 @@ function EditModal({ contact, onClose, onSaved }: {
       await api.patch(`/contacts/${contact.id}`, {
         name: data.name,
         phone: data.phone,
+        email: data.email || undefined,
         tags: data.tags ? data.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
         optIn: data.optIn ?? false,
       });
@@ -114,6 +120,11 @@ function EditModal({ contact, onClose, onSaved }: {
             </div>
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email (optional)</label>
+            <input {...register("email")} type="email" className="input" placeholder="contact@example.com" />
+            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tags (comma separated)</label>
             <input {...register("tags")} className="input" placeholder="vip, customer" />
           </div>
@@ -142,6 +153,8 @@ export default function ContactsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [editContact, setEditContact] = useState<Contact | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // CSV import state
   const [csvRows, setCsvRows] = useState<Omit<Contact, "id">[]>([]);
@@ -187,6 +200,7 @@ export default function ContactsPage() {
       await api.post("/contacts", {
         name: data.name,
         phone: data.phone,
+        email: data.email || undefined,
         tags: data.tags ? data.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
         optIn: data.optIn ?? false,
       });
@@ -204,9 +218,44 @@ export default function ContactsPage() {
     try {
       await api.delete(`/contacts/${id}`);
       toast.success("Deleted");
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
       load(page, search);
     } catch {
       toast.error("Failed to delete");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} contact${selectedIds.size > 1 ? "s" : ""}?`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => api.delete(`/contacts/${id}`)));
+      toast.success(`Deleted ${selectedIds.size} contacts`);
+      setSelectedIds(new Set());
+      load(1, search);
+      setPage(1);
+    } catch {
+      toast.error("Some deletions failed");
+      load(page, search);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === contacts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(contacts.map((c) => c.id)));
     }
   };
 
@@ -344,6 +393,11 @@ export default function ContactsPage() {
               </div>
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email (optional)</label>
+              <input {...register("email")} type="email" className="input" placeholder="john@example.com" />
+              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tags (comma separated)</label>
               <input {...register("tags")} className="input" placeholder="vip, customer" />
             </div>
@@ -443,17 +497,56 @@ export default function ContactsPage() {
       {/* ── Contact list ── */}
       {tab === "list" && (
         <div className="card">
-          <div className="mb-4">
+          <div className="flex items-center gap-3 mb-4">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="input max-w-sm"
               placeholder="Search by name or phone..."
             />
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="text-sm text-gray-600 flex items-center gap-1">
+                  <CheckSquare className="w-4 h-4 text-brand" />
+                  {selectedIds.size} selected
+                </span>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting}
+                  className="btn-danger flex items-center gap-2 text-sm"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {bulkDeleting ? "Deleting..." : `Delete ${selectedIds.size}`}
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="btn-secondary text-sm"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
           </div>
 
           {loading ? (
-            <p className="text-gray-400 text-sm py-8 text-center">Loading...</p>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="pb-3 w-8" />
+                  <th className="pb-3 text-left font-medium text-gray-500">Name</th>
+                  <th className="pb-3 text-left font-medium text-gray-500">Phone</th>
+                  <th className="pb-3 text-left font-medium text-gray-500">Email</th>
+                  <th className="pb-3 text-left font-medium text-gray-500">Tags</th>
+                  <th className="pb-3 text-left font-medium text-gray-500">Opt-in</th>
+                  <th className="pb-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} cols={7} />
+                ))}
+              </tbody>
+            </table>
           ) : contacts.length === 0 ? (
             <div className="text-center py-16">
               <Phone className="w-10 h-10 text-gray-300 mx-auto mb-3" />
@@ -469,8 +562,18 @@ export default function ContactsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className="pb-3 w-8">
+                      <input
+                        type="checkbox"
+                        checked={contacts.length > 0 && selectedIds.size === contacts.length}
+                        ref={(el) => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < contacts.length; }}
+                        onChange={toggleSelectAll}
+                        className="rounded accent-brand cursor-pointer"
+                      />
+                    </th>
                     <th className="pb-3 text-left font-medium text-gray-500">Name</th>
                     <th className="pb-3 text-left font-medium text-gray-500">Phone</th>
+                    <th className="pb-3 text-left font-medium text-gray-500">Email</th>
                     <th className="pb-3 text-left font-medium text-gray-500">Tags</th>
                     <th className="pb-3 text-left font-medium text-gray-500">Opt-in</th>
                     <th className="pb-3" />
@@ -478,9 +581,28 @@ export default function ContactsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {contacts.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-50/50">
-                      <td className="py-3 font-medium text-gray-900">{c.name}</td>
+                    <tr
+                      key={c.id}
+                      className={clsx(
+                        "hover:bg-gray-50/50 transition-colors",
+                        selectedIds.has(c.id) && "bg-brand/5"
+                      )}
+                    >
+                      <td className="py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(c.id)}
+                          onChange={() => toggleSelect(c.id)}
+                          className="rounded accent-brand cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-3 font-medium text-gray-900">
+                        <Link href={`/contacts/${c.id}`} className="hover:text-brand hover:underline">
+                          {c.name}
+                        </Link>
+                      </td>
                       <td className="py-3 text-gray-600 font-mono text-xs">{c.phone}</td>
+                      <td className="py-3 text-gray-500 text-xs">{c.email ?? <span className="text-gray-300">—</span>}</td>
                       <td className="py-3">
                         <div className="flex gap-1 flex-wrap">
                           {c.tags.map((tag) => (

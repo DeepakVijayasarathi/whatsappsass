@@ -48,12 +48,13 @@ export async function analyticsRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "asc" },
     });
 
+    const VALID_STATUSES = new Set(["sent", "delivered", "read", "failed"]);
     const grouped = logs.reduce(
       (acc, log) => {
         const date = log.createdAt.toISOString().split("T")[0];
         if (!acc[date]) acc[date] = { sent: 0, delivered: 0, read: 0, failed: 0 };
-        acc[date][log.status as keyof (typeof acc)[string]] =
-          (acc[date][log.status as keyof (typeof acc)[string]] || 0) + 1;
+        const key = VALID_STATUSES.has(log.status) ? log.status : "sent";
+        acc[date][key] = (acc[date][key] || 0) + 1;
         return acc;
       },
       {} as Record<string, Record<string, number>>

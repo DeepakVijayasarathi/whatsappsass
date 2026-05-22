@@ -33,7 +33,8 @@ export default function LoginPage() {
       const res = await api.post("/auth/login", data);
       setAuth(res.data.token, res.data.user, res.data.workspace);
       const from = searchParams.get("from");
-      router.push(from && from.startsWith("/") ? from : "/dashboard");
+      const safePath = from && /^\/[^/]/.test(from) ? from : "/dashboard";
+      router.push(safePath);
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
