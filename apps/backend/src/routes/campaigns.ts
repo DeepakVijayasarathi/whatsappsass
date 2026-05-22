@@ -26,7 +26,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         where,
         skip,
         take: Number(limit),
-        orderBy: { scheduledAt: "desc" },
+        orderBy: [{ createdAt: "desc" }],
       }),
       prisma.campaign.count({ where }),
     ]);

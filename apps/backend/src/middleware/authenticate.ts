@@ -13,7 +13,7 @@ export async function authenticate(
   try {
     await request.jwtVerify();
   } catch {
-    reply.status(401).send({ error: "Unauthorized" });
+    return reply.status(401).send({ error: "Unauthorized" });
   }
 }
 
@@ -21,9 +21,13 @@ export async function requireOwnerOrAdmin(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
-  await authenticate(request, reply);
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.status(401).send({ error: "Unauthorized" });
+  }
   const user = request.user as JwtPayload;
   if (!["owner", "admin"].includes(user.role)) {
-    reply.status(403).send({ error: "Forbidden: insufficient role" });
+    return reply.status(403).send({ error: "Forbidden: insufficient role" });
   }
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -20,16 +19,14 @@ type FormData = z.infer<typeof schema>;
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (data: FormData) => {
-    setLoading(true);
     try {
       const res = await api.post("/auth/register", data);
       setAuth(res.data.token, res.data.user, res.data.workspace);
@@ -40,8 +37,6 @@ export default function RegisterPage() {
         (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
         "Registration failed";
       toast.error(msg);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -103,8 +98,8 @@ export default function RegisterPage() {
             )}
           </div>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? "Creating account..." : "Create account"}
+          <button type="submit" disabled={isSubmitting} className="btn-primary w-full">
+            {isSubmitting ? "Creating account..." : "Create account"}
           </button>
         </form>
 

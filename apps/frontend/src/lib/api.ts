@@ -1,8 +1,10 @@
 import axios from "axios";
 import Cookies from "js-cookie";
 
+// All requests go to /api/* on the same origin.
+// Next.js rewrites /api/:path* → BACKEND_URL/:path* (server-side only — IP:port never reaches the browser).
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000",
+  baseURL: "/api",
   headers: { "Content-Type": "application/json" },
 });
 

@@ -17,6 +17,10 @@ type LicenseForm = z.infer<typeof licenseSchema>;
 const providerSchema = z.discriminatedUnion("whatsappProvider", [
   z.object({
     whatsappProvider: z.literal("meta"),
+    metaPhoneNumberId: z.string().min(1, "Phone Number ID required"),
+    metaWabaId: z.string().min(1, "WABA ID required"),
+    metaAccessToken: z.string().min(1, "Access Token required"),
+    metaWebhookVerifyToken: z.string().min(1, "Webhook Verify Token required"),
   }),
   z.object({
     whatsappProvider: z.literal("msg91"),
@@ -28,6 +32,9 @@ type ProviderForm = z.infer<typeof providerSchema>;
 
 interface ProviderConfig {
   whatsappProvider: "meta" | "msg91";
+  metaPhoneNumberId?: string | null;
+  metaWabaId?: string | null;
+  metaWebhookVerifyToken?: string | null;
   msg91IntegratedNumber?: string | null;
 }
 
@@ -50,10 +57,17 @@ export default function SettingsPage() {
     register: regProvider,
     handleSubmit: handleProvider,
     watch,
+    setValue,
     formState: { errors: providerErrors, isSubmitting: providerSubmitting },
   } = useForm<ProviderForm>({
     resolver: zodResolver(providerSchema),
-    defaultValues: { whatsappProvider: "meta" },
+    defaultValues: {
+      whatsappProvider: "meta",
+      metaPhoneNumberId: "",
+      metaWabaId: "",
+      metaAccessToken: "",
+      metaWebhookVerifyToken: "",
+    } as ProviderForm,
   });
 
   const selectedProvider = watch("whatsappProvider");
@@ -67,6 +81,17 @@ export default function SettingsPage() {
       setLicenseStatus(lic.data);
       setMetaEnabled(meta.data.metaWhatsappEnabled);
       setProviderConfig(prov.data);
+
+      // Pre-fill non-secret fields
+      const cfg: ProviderConfig = prov.data;
+      setValue("whatsappProvider", cfg.whatsappProvider);
+      if (cfg.whatsappProvider === "meta") {
+        setValue("metaPhoneNumberId" as never, cfg.metaPhoneNumberId ?? "");
+        setValue("metaWabaId" as never, cfg.metaWabaId ?? "");
+        setValue("metaWebhookVerifyToken" as never, cfg.metaWebhookVerifyToken ?? "");
+      } else {
+        setValue("msg91IntegratedNumber" as never, cfg.msg91IntegratedNumber ?? "");
+      }
     });
   };
 
@@ -188,7 +213,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Provider selection */}
+            {/* Provider selection + credentials */}
             <div className="card">
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
@@ -196,7 +221,7 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <p className="font-semibold text-gray-900">Provider configuration</p>
-                  <p className="text-xs text-gray-400">Choose Meta or MSG91 for sending</p>
+                  <p className="text-xs text-gray-400">All credentials are stored per workspace</p>
                 </div>
               </div>
 
@@ -229,59 +254,77 @@ export default function SettingsPage() {
                   ))}
                 </div>
 
-                {/* MSG91 fields */}
-                {selectedProvider === "msg91" && (
+                {/* Meta fields */}
+                {selectedProvider === "meta" && (
                   <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        MSG91 Auth Key
-                      </label>
-                      <input
-                        {...regProvider("msg91AuthKey" as never)}
-                        className="input font-mono text-xs"
-                        placeholder="your_msg91_auth_key"
-                      />
-                      {"msg91AuthKey" in providerErrors && providerErrors.msg91AuthKey && (
-                        <p className="text-red-500 text-xs mt-1">
-                          {(providerErrors as { msg91AuthKey?: { message?: string } }).msg91AuthKey?.message}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Integrated Number
-                      </label>
-                      <input
-                        {...regProvider("msg91IntegratedNumber" as never)}
-                        className="input"
-                        placeholder="91XXXXXXXXXX"
-                        defaultValue={providerConfig?.msg91IntegratedNumber ?? ""}
-                      />
-                      {"msg91IntegratedNumber" in providerErrors &&
-                        providerErrors.msg91IntegratedNumber && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {
-                              (
-                                providerErrors as {
-                                  msg91IntegratedNumber?: { message?: string };
-                                }
-                              ).msg91IntegratedNumber?.message
-                            }
-                          </p>
-                        )}
-                    </div>
+                    <Field
+                      label="Phone Number ID"
+                      placeholder="1234567890"
+                      mono
+                      {...regProvider("metaPhoneNumberId" as never)}
+                      error={"metaPhoneNumberId" in providerErrors
+                        ? (providerErrors as { metaPhoneNumberId?: { message?: string } }).metaPhoneNumberId?.message
+                        : undefined}
+                    />
+                    <Field
+                      label="WhatsApp Business Account (WABA) ID"
+                      placeholder="102290129340823"
+                      mono
+                      {...regProvider("metaWabaId" as never)}
+                      error={"metaWabaId" in providerErrors
+                        ? (providerErrors as { metaWabaId?: { message?: string } }).metaWabaId?.message
+                        : undefined}
+                    />
+                    <Field
+                      label="Access Token"
+                      placeholder="EAAxxxxxxxx..."
+                      mono
+                      type="password"
+                      {...regProvider("metaAccessToken" as never)}
+                      error={"metaAccessToken" in providerErrors
+                        ? (providerErrors as { metaAccessToken?: { message?: string } }).metaAccessToken?.message
+                        : undefined}
+                    />
+                    <Field
+                      label="Webhook Verify Token"
+                      placeholder="my_random_verify_token"
+                      mono
+                      {...regProvider("metaWebhookVerifyToken" as never)}
+                      error={"metaWebhookVerifyToken" in providerErrors
+                        ? (providerErrors as { metaWebhookVerifyToken?: { message?: string } }).metaWebhookVerifyToken?.message
+                        : undefined}
+                    />
                     <p className="text-xs text-gray-400">
-                      Auth key is stored securely and never returned to the client.
+                      Access Token is write-only and never returned by the API.
                     </p>
                   </div>
                 )}
 
-                {/* Meta note */}
-                {selectedProvider === "meta" && (
-                  <div className="p-4 bg-gray-50 rounded-lg text-xs text-gray-500">
-                    Meta credentials are set via server environment variables{" "}
-                    <code className="bg-gray-200 px-1 rounded">META_PHONE_NUMBER_ID</code> and{" "}
-                    <code className="bg-gray-200 px-1 rounded">META_ACCESS_TOKEN</code>.
+                {/* MSG91 fields */}
+                {selectedProvider === "msg91" && (
+                  <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
+                    <Field
+                      label="MSG91 Auth Key"
+                      placeholder="your_msg91_auth_key"
+                      mono
+                      type="password"
+                      {...regProvider("msg91AuthKey" as never)}
+                      error={"msg91AuthKey" in providerErrors
+                        ? (providerErrors as { msg91AuthKey?: { message?: string } }).msg91AuthKey?.message
+                        : undefined}
+                    />
+                    <Field
+                      label="Integrated Number"
+                      placeholder="91XXXXXXXXXX"
+                      {...regProvider("msg91IntegratedNumber" as never)}
+                      defaultValue={providerConfig?.msg91IntegratedNumber ?? ""}
+                      error={"msg91IntegratedNumber" in providerErrors
+                        ? (providerErrors as { msg91IntegratedNumber?: { message?: string } }).msg91IntegratedNumber?.message
+                        : undefined}
+                    />
+                    <p className="text-xs text-gray-400">
+                      Auth key is write-only and never returned by the API.
+                    </p>
                   </div>
                 )}
 
@@ -348,6 +391,22 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Reusable field component ───────────────────────────────────────────────────
+function Field({
+  label,
+  error,
+  mono,
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; mono?: boolean }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <input className={clsx("input", mono && "font-mono text-xs")} {...props} />
+      {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>
   );
 }

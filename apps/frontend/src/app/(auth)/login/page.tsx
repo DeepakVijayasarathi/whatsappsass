@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
 
@@ -18,6 +18,7 @@ type FormData = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
 
   const {
@@ -31,7 +32,8 @@ export default function LoginPage() {
     try {
       const res = await api.post("/auth/login", data);
       setAuth(res.data.token, res.data.user, res.data.workspace);
-      router.push("/dashboard");
+      const from = searchParams.get("from");
+      router.push(from && from.startsWith("/") ? from : "/dashboard");
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } }).response?.data?.error ||

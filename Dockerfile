@@ -25,9 +25,6 @@ RUN cd apps/backend && npm run build
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 
-ARG NEXT_PUBLIC_API_URL=http://localhost:4000
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-
 COPY apps/frontend/package.json ./
 RUN npm install
 
@@ -44,6 +41,7 @@ RUN apk add --no-cache openssl supervisor
 ENV NODE_ENV=production
 ENV BACKEND_PORT=4000
 ENV FRONTEND_PORT=3000
+ENV BACKEND_URL=http://127.0.0.1:4000
 
 # Backend
 COPY --from=backend-builder /app/apps/backend/dist         ./backend/dist

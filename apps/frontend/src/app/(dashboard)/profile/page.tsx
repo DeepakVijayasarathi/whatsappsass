@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { getUser, setAuth, getWorkspace } from "@/lib/auth";
+import { getUser, getToken, setAuth, getWorkspace } from "@/lib/auth";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -58,8 +58,7 @@ export default function ProfilePage() {
     try {
       const res = await api.patch("/workspace/profile", data);
       // Update local storage so sidebar reflects new name
-      const token = document.cookie.match(/token=([^;]+)/)?.[1] ?? "";
-      setAuth(token, { ...res.data, id: me!.id }, workspace!);
+      setAuth(getToken() ?? "", { ...res.data, id: me!.id }, workspace!);
       toast.success("Profile updated");
     } catch (err: unknown) {
       toast.error(

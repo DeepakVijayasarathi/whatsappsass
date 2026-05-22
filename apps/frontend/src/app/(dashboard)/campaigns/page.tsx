@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
-import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2 } from "lucide-react";
+import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import clsx from "clsx";
+import TemplatePicker, { type Template } from "@/components/TemplatePicker";
 
 interface Campaign {
   id: string;
@@ -232,23 +233,34 @@ function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [runTarget, setRunTarget] = useState<RunOptions | null>(null);
   const [statsTarget, setStatsTarget] = useState<{ id: string; name: string } | null>(null);
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } =
+  const PAGE_SIZE = 20;
+
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } =
     useForm<FormData>({ resolver: zodResolver(schema) });
 
-  const load = () => {
+  const watchedTemplate = watch("template");
+
+  const handleTemplateSelect = (t: Template) => {
+    setValue("template", t.name, { shouldValidate: true });
+    setShowTemplatePicker(false);
+  };
+
+  const load = useCallback((p: number) => {
     setLoading(true);
-    api.get("/campaigns?limit=50").then((r) => {
+    api.get(`/campaigns?page=${p}&limit=${PAGE_SIZE}`).then((r) => {
       setCampaigns(r.data.campaigns);
       setTotal(r.data.total);
     }).finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(load, []);
+  useEffect(() => { load(page); }, [page, load]);
 
   const onSubmit = async (data: FormData) => {
     try {
@@ -259,7 +271,8 @@ export default function CampaignsPage() {
       toast.success("Campaign created");
       reset();
       setShowForm(false);
-      load();
+      setPage(1);
+      load(1);
     } catch {
       toast.error("Failed to create campaign");
     }
@@ -268,7 +281,7 @@ export default function CampaignsPage() {
   const updateStatus = async (id: string, status: string) => {
     try {
       await api.patch(`/campaigns/${id}`, { status });
-      load();
+      load(page);
     } catch {
       toast.error("Failed to update status");
     }
@@ -279,19 +292,28 @@ export default function CampaignsPage() {
     try {
       await api.delete(`/campaigns/${id}`);
       toast.success("Deleted");
-      load();
+      if (campaigns.length === 1 && page > 1) {
+        setPage((p) => p - 1);
+      } else {
+        load(page);
+      }
     } catch {
       toast.error("Failed to delete");
     }
   };
 
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
   return (
     <div>
       {runTarget && (
-        <RunModal campaign={runTarget} onClose={() => setRunTarget(null)} onDone={load} />
+        <RunModal campaign={runTarget} onClose={() => setRunTarget(null)} onDone={() => load(page)} />
       )}
       {statsTarget && (
         <StatsModal id={statsTarget.id} name={statsTarget.name} onClose={() => setStatsTarget(null)} />
+      )}
+      {showTemplatePicker && (
+        <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />
       )}
 
       <div className="flex items-center justify-between mb-8">
@@ -315,8 +337,21 @@ export default function CampaignsPage() {
                 {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp template</label>
-                <input {...register("template")} className="input" placeholder="hello_world" />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">WhatsApp template</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplatePicker(true)}
+                    className="text-xs text-brand font-medium flex items-center gap-1 hover:underline"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Browse
+                  </button>
+                </div>
+                <input {...register("template")} className="input font-mono" placeholder="hello_world" />
+                {watchedTemplate && (
+                  <p className="text-xs text-gray-400 mt-1 font-mono">Selected: {watchedTemplate}</p>
+                )}
                 {errors.template && <p className="text-red-500 text-xs mt-1">{errors.template.message}</p>}
               </div>
             </div>
@@ -419,6 +454,31 @@ export default function CampaignsPage() {
               })}
             </tbody>
           </table>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+            <p className="text-sm text-gray-500">
+              Page {page} of {totalPages} · {total} campaigns
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="btn-secondary text-sm disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="btn-secondary text-sm disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

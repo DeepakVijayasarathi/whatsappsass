@@ -29,15 +29,14 @@ async function sendViaMeta(
   opts: SendTemplateOptions,
   config: ProviderConfig
 ): Promise<SendResult> {
-  const phoneNumberId = config.metaPhoneNumberId || process.env.META_PHONE_NUMBER_ID;
-  const accessToken = config.metaAccessToken || process.env.META_ACCESS_TOKEN;
+  const { metaPhoneNumberId, metaAccessToken } = config;
 
-  if (!phoneNumberId || !accessToken) {
-    throw new Error("Meta credentials not configured (META_PHONE_NUMBER_ID, META_ACCESS_TOKEN)");
+  if (!metaPhoneNumberId || !metaAccessToken) {
+    throw new Error("Meta credentials not configured for this workspace");
   }
 
   const { data } = await axios.post(
-    `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+    `https://graph.facebook.com/v19.0/${metaPhoneNumberId}/messages`,
     {
       messaging_product: "whatsapp",
       to: opts.to,
@@ -50,7 +49,7 @@ async function sendViaMeta(
     },
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${metaAccessToken}`,
         "Content-Type": "application/json",
       },
     }
@@ -64,20 +63,16 @@ async function sendViaMsg91(
   opts: SendTemplateOptions,
   config: ProviderConfig
 ): Promise<SendResult> {
-  const authKey = config.msg91AuthKey || process.env.MSG91_AUTH_KEY;
-  const integratedNumber =
-    config.msg91IntegratedNumber || process.env.MSG91_INTEGRATED_NUMBER;
+  const { msg91AuthKey, msg91IntegratedNumber } = config;
 
-  if (!authKey || !integratedNumber) {
-    throw new Error(
-      "MSG91 credentials not configured (MSG91_AUTH_KEY, MSG91_INTEGRATED_NUMBER)"
-    );
+  if (!msg91AuthKey || !msg91IntegratedNumber) {
+    throw new Error("MSG91 credentials not configured for this workspace");
   }
 
   const { data } = await axios.post(
     "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
     {
-      integrated_number: integratedNumber,
+      integrated_number: msg91IntegratedNumber,
       content_type: "template",
       payload: {
         to: opts.to,
@@ -91,7 +86,7 @@ async function sendViaMsg91(
     },
     {
       headers: {
-        authkey: authKey,
+        authkey: msg91AuthKey,
         "Content-Type": "application/json",
       },
     }

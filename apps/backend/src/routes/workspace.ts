@@ -233,38 +233,60 @@ export async function workspaceRoutes(app: FastifyInstance) {
     { preHandler: [requireOwnerOrAdmin] },
     async (request, reply) => {
       const user = request.user as JwtPayload;
-      const schema = z.object({
-        whatsappProvider: z.enum(["meta", "msg91"]),
-        msg91AuthKey: z.string().optional(),
-        msg91IntegratedNumber: z.string().optional(),
-      });
+      const schema = z.discriminatedUnion("whatsappProvider", [
+        z.object({
+          whatsappProvider: z.literal("meta"),
+          metaPhoneNumberId: z.string().min(1, "Phone Number ID required"),
+          metaWabaId: z.string().min(1, "WABA ID required"),
+          metaAccessToken: z.string().min(1, "Access Token required"),
+          metaWebhookVerifyToken: z.string().min(1, "Webhook Verify Token required"),
+        }),
+        z.object({
+          whatsappProvider: z.literal("msg91"),
+          msg91AuthKey: z.string().min(1, "Auth key required"),
+          msg91IntegratedNumber: z.string().min(7, "Integrated number required"),
+        }),
+      ]);
 
       const parsed = schema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      if (parsed.data.whatsappProvider === "msg91") {
-        if (!parsed.data.msg91AuthKey || !parsed.data.msg91IntegratedNumber) {
-          return reply.status(400).send({
-            error: "msg91AuthKey and msg91IntegratedNumber are required for MSG91",
-          });
-        }
-      }
+      const updateData =
+        parsed.data.whatsappProvider === "meta"
+          ? {
+              whatsappProvider: "meta" as const,
+              metaPhoneNumberId: parsed.data.metaPhoneNumberId,
+              metaWabaId: parsed.data.metaWabaId,
+              metaAccessToken: parsed.data.metaAccessToken,
+              metaWebhookVerifyToken: parsed.data.metaWebhookVerifyToken,
+              msg91AuthKey: null,
+              msg91IntegratedNumber: null,
+            }
+          : {
+              whatsappProvider: "msg91" as const,
+              msg91AuthKey: parsed.data.msg91AuthKey,
+              msg91IntegratedNumber: parsed.data.msg91IntegratedNumber,
+              metaPhoneNumberId: null,
+              metaWabaId: null,
+              metaAccessToken: null,
+              metaWebhookVerifyToken: null,
+            };
 
       const workspace = await prisma.workspace.update({
         where: { id: user.workspaceId },
-        data: {
-          whatsappProvider: parsed.data.whatsappProvider,
-          msg91AuthKey: parsed.data.msg91AuthKey ?? null,
-          msg91IntegratedNumber: parsed.data.msg91IntegratedNumber ?? null,
-        },
+        data: updateData,
         select: {
           whatsappProvider: true,
+          metaPhoneNumberId: true,
+          metaWabaId: true,
+          metaWebhookVerifyToken: true,
           msg91IntegratedNumber: true,
         },
       });
 
+      // Never return secrets (access token, auth key) in the response
       return reply.send({ message: "Provider updated", ...workspace });
     }
   );
@@ -276,8 +298,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
       const user = request.user as JwtPayload;
       const workspace = await prisma.workspace.findUnique({
         where: { id: user.workspaceId },
+        // Omit secret fields (metaAccessToken, msg91AuthKey) from response
         select: {
           whatsappProvider: true,
+          metaPhoneNumberId: true,
+          metaWabaId: true,
+          metaWebhookVerifyToken: true,
           msg91IntegratedNumber: true,
         },
       });

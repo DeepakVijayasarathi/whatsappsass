@@ -19,6 +19,7 @@ interface InboundMessage {
 export default function InboxPage() {
   const [messages, setMessages] = useState<InboundMessage[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalUnread, setTotalUnread] = useState(0);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -29,6 +30,7 @@ export default function InboxPage() {
       .then((res) => {
         setMessages(res.data.messages);
         setTotal(res.data.total);
+        setTotalUnread(res.data.totalUnread);
       })
       .finally(() => setLoading(false));
   };
@@ -47,9 +49,8 @@ export default function InboxPage() {
     setMessages((prev) =>
       prev.map((m) => (m.id === id ? { ...m, read: true } : m))
     );
+    setTotalUnread((n) => Math.max(0, n - 1));
   };
-
-  const unreadCount = messages.filter((m) => !m.read).length;
 
   return (
     <div>
@@ -57,7 +58,7 @@ export default function InboxPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Inbox</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {total} total · {unreadCount} unread
+            {total} total · {totalUnread} unread
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -70,7 +71,7 @@ export default function InboxPage() {
             />
             Unread only
           </label>
-          {unreadCount > 0 && (
+          {totalUnread > 0 && (
             <button onClick={markAllRead} className="btn-secondary flex items-center gap-2 text-sm">
               <CheckCheck className="w-4 h-4" />
               Mark all read
@@ -100,14 +101,12 @@ export default function InboxPage() {
                   !msg.read && "bg-brand/5"
                 )}
               >
-                {/* Avatar */}
                 <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
                   <span className="text-sm font-bold text-gray-600">
                     {(msg.contact?.name ?? msg.fromPhone)[0].toUpperCase()}
                   </span>
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="font-semibold text-sm text-gray-900">
@@ -143,7 +142,6 @@ export default function InboxPage() {
                   </p>
                 </div>
 
-                {/* Actions */}
                 {!msg.read && (
                   <button
                     onClick={() => markRead(msg.id)}

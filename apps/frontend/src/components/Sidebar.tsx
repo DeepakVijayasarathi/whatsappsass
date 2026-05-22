@@ -15,6 +15,7 @@ import {
   MessageSquare,
   UserCircle,
   UsersRound,
+  FileText,
 } from "lucide-react";
 import { clearAuth, getUser, getWorkspace } from "@/lib/auth";
 
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/campaigns",  icon: Megaphone,        label: "Campaigns",    roles: ["owner", "admin", "marketer"] },
   { href: "/send",       icon: Send,             label: "Send Message", roles: ["owner", "admin", "marketer"] },
   { href: "/inbox",      icon: Inbox,            label: "Inbox",        roles: ["owner", "admin", "marketer"] },
+  { href: "/templates",  icon: FileText,         label: "Templates",    roles: ["owner", "admin", "marketer"] },
   { href: "/analytics",  icon: BarChart2,        label: "Analytics",    roles: ["owner", "admin", "marketer"] },
   { href: "/team",       icon: UsersRound,       label: "Team",         roles: ["owner", "admin"] },
   { href: "/settings",   icon: Settings,         label: "Settings",     roles: ["owner", "admin"] },

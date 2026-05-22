@@ -21,6 +21,8 @@ async function getProviderConfig(workspaceId: string): Promise<ProviderConfig> {
     where: { id: workspaceId },
     select: {
       whatsappProvider: true,
+      metaPhoneNumberId: true,
+      metaAccessToken: true,
       msg91AuthKey: true,
       msg91IntegratedNumber: true,
     },
@@ -28,6 +30,8 @@ async function getProviderConfig(workspaceId: string): Promise<ProviderConfig> {
 
   return {
     provider: (ws?.whatsappProvider as "meta" | "msg91") || "meta",
+    metaPhoneNumberId: ws?.metaPhoneNumberId ?? undefined,
+    metaAccessToken: ws?.metaAccessToken ?? undefined,
     msg91AuthKey: ws?.msg91AuthKey ?? undefined,
     msg91IntegratedNumber: ws?.msg91IntegratedNumber ?? undefined,
   };
@@ -166,20 +170,31 @@ export async function whatsappRoutes(app: FastifyInstance) {
     }
   );
 
-  app.get(
-    "/webhook",
-    async (request, reply) => {
-      const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } =
-        request.query as Record<string, string>;
+  // ── Webhook verification (GET) ───────────────────────────────────────────────
+  // Meta calls this with the verify_token you set in Meta console.
+  // We match it against any active workspace's metaWebhookVerifyToken.
+  app.get("/webhook", async (request, reply) => {
+    const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } =
+      request.query as Record<string, string>;
 
-      if (mode === "subscribe" && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
-        return reply.send(Number(challenge));
-      }
-
+    if (mode !== "subscribe" || !token) {
       return reply.status(403).send({ error: "Forbidden" });
     }
-  );
 
+    const match = await prisma.workspace.findFirst({
+      where: { metaWebhookVerifyToken: token, status: "active" },
+      select: { id: true },
+    });
+
+    if (!match) {
+      return reply.status(403).send({ error: "Forbidden" });
+    }
+
+    return reply.send(Number(challenge));
+  });
+
+  // ── Webhook inbound (POST) ────────────────────────────────────────────────────
+  // Routes each message to the workspace whose metaPhoneNumberId matches.
   app.post("/webhook", async (request, reply) => {
     const body = request.body as {
       entry?: Array<{
@@ -213,16 +228,14 @@ export async function whatsappRoutes(app: FastifyInstance) {
       const value = change.value;
       if (!value) continue;
 
-      // ── Delivery status updates ──────────────────────────────────────────
       for (const s of value.statuses ?? []) {
         app.log.info({ messageId: s.id, status: s.status }, "Status update");
       }
 
-      // ── Inbound messages / replies ───────────────────────────────────────
       for (const msg of value.messages ?? []) {
         const fromPhone = msg.from;
+        const phoneNumberId = value.metadata?.phone_number_id;
 
-        // Resolve body text from any message type
         let bodyText: string | null = null;
         if (msg.type === "text") bodyText = msg.text?.body ?? null;
         else if (msg.type === "image") bodyText = msg.image?.caption ?? "[image]";
@@ -232,20 +245,15 @@ export async function whatsappRoutes(app: FastifyInstance) {
         else if (msg.type === "sticker") bodyText = "[sticker]";
         else if (msg.type === "reaction") bodyText = msg.reaction?.emoji ?? "[reaction]";
 
-        // Match contact by phone across all workspaces tied to this phone number
-        const phoneNumberId = value.metadata?.phone_number_id;
-
-        // Find workspace(s) that own this phone number — look up via META_PHONE_NUMBER_ID env
-        // In single-tenant-per-instance deployments one workspace matches; resolve by env var
+        // Route to the workspace that owns this phone number
         const workspaces = phoneNumberId
           ? await prisma.workspace.findMany({
-              where: { status: "active" },
+              where: { metaPhoneNumberId: phoneNumberId, status: "active" },
               select: { id: true },
             })
           : [];
 
         for (const ws of workspaces) {
-          // Avoid duplicate inserts (unique on messageId)
           const existing = await prisma.inboundMessage.findUnique({
             where: { messageId: msg.id },
           });
@@ -279,7 +287,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
     return reply.send({ received: true });
   });
 
-  // ── Inbox: list inbound messages ─────────────────────────────────────────
+  // ── Inbox: list inbound messages ──────────────────────────────────────────
   app.get(
     "/inbox",
     { preHandler: [authenticate] },
@@ -293,7 +301,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
         ...(unread === "true" ? { read: false } : {}),
       };
 
-      const [messages, total] = await Promise.all([
+      const [messages, total, totalUnread] = await Promise.all([
         prisma.inboundMessage.findMany({
           where,
           skip,
@@ -304,13 +312,14 @@ export async function whatsappRoutes(app: FastifyInstance) {
           },
         }),
         prisma.inboundMessage.count({ where }),
+        prisma.inboundMessage.count({ where: { workspaceId: user.workspaceId, read: false } }),
       ]);
 
-      return reply.send({ messages, total, page: Number(page), limit: Number(limit) });
+      return reply.send({ messages, total, totalUnread, page: Number(page), limit: Number(limit) });
     }
   );
 
-  // ── Mark message(s) as read ──────────────────────────────────────────────
+  // ── Mark message(s) as read ───────────────────────────────────────────────
   app.patch(
     "/inbox/read",
     { preHandler: [authenticate] },

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
-import { Plus, Trash2, Phone, Upload, Download, X } from "lucide-react";
+import { Plus, Trash2, Phone, Upload, Download, X, Pencil } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -26,6 +26,8 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 type Tab = "list" | "add" | "import";
+
+const PAGE_SIZE = 20;
 
 function parseCsvLine(line: string): string[] {
   const result: string[] = [];
@@ -57,12 +59,89 @@ function parseCsv(text: string): Omit<Contact, "id">[] {
   }).filter((r) => r.name && r.phone);
 }
 
+// ── Edit Modal ────────────────────────────────────────────────────────────────
+function EditModal({ contact, onClose, onSaved }: {
+  contact: Contact;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: contact.name,
+      phone: contact.phone,
+      tags: contact.tags.join(", "),
+      optIn: contact.optIn,
+    },
+  });
+
+  const onSubmit = async (data: FormData) => {
+    try {
+      await api.patch(`/contacts/${contact.id}`, {
+        name: data.name,
+        phone: data.phone,
+        tags: data.tags ? data.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+        optIn: data.optIn ?? false,
+      });
+      toast.success("Contact updated");
+      onSaved();
+      onClose();
+    } catch {
+      toast.error("Failed to update contact");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">Edit Contact</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+              <input {...register("name")} className="input" />
+              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <input {...register("phone")} className="input" />
+              {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tags (comma separated)</label>
+            <input {...register("tags")} className="input" placeholder="vip, customer" />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+            <input {...register("optIn")} type="checkbox" className="rounded accent-brand" />
+            Opted in to receive messages
+          </label>
+          <div className="flex gap-3 pt-1">
+            <button type="submit" disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? "Saving..." : "Save Changes"}
+            </button>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [total, setTotal] = useState(0);
   const [tab, setTab] = useState<Tab>("list");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [editContact, setEditContact] = useState<Contact | null>(null);
 
   // CSV import state
   const [csvRows, setCsvRows] = useState<Omit<Contact, "id">[]>([]);
@@ -76,21 +155,32 @@ export default function ContactsPage() {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
-  const load = () => {
+  const mountedRef = useRef(false);
+
+  const load = useCallback((p: number, q: string) => {
     setLoading(true);
-    api.get("/contacts?limit=100").then((res) => {
+    const params = new URLSearchParams({
+      page: String(p),
+      limit: String(PAGE_SIZE),
+      ...(q ? { search: q } : {}),
+    });
+    api.get(`/contacts?${params}`).then((res) => {
       setContacts(res.data.contacts);
       setTotal(res.data.total);
     }).finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(load, []);
+  // Load when page changes (search changes are handled by the debounce effect below)
+  useEffect(() => { load(page, search); }, [page, load]);
 
-  const filtered = contacts.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.includes(search)
-  );
+  // Debounced search — skip initial mount to avoid double-fetch, reset to page 1
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return; }
+    const t = setTimeout(() => { setPage(1); load(1, search); }, 300);
+    return () => clearTimeout(t);
+  }, [search, load]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const onSubmit = async (data: FormData) => {
     try {
@@ -103,7 +193,7 @@ export default function ContactsPage() {
       toast.success("Contact added");
       reset();
       setTab("list");
-      load();
+      load(1, search);
     } catch {
       toast.error("Failed to add contact");
     }
@@ -114,7 +204,7 @@ export default function ContactsPage() {
     try {
       await api.delete(`/contacts/${id}`);
       toast.success("Deleted");
-      load();
+      load(page, search);
     } catch {
       toast.error("Failed to delete");
     }
@@ -146,7 +236,7 @@ export default function ContactsPage() {
       toast.success(`Imported ${res.data.created} contacts`);
       setCsvRows([]);
       setTab("list");
-      load();
+      load(1, search);
     } catch {
       toast.error("Import failed");
     } finally {
@@ -163,6 +253,33 @@ export default function ContactsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const exportContacts = async () => {
+    try {
+      let all: Contact[] = [];
+      let pg = 1;
+      const exportLimit = 500;
+      while (true) {
+        const res = await api.get(`/contacts?page=${pg}&limit=${exportLimit}`);
+        all = [...all, ...res.data.contacts];
+        if (all.length >= res.data.total) break;
+        pg++;
+      }
+      const header = "name,phone,tags,optIn";
+      const rows = all.map((c) =>
+        `"${c.name}","${c.phone}","${c.tags.join("|")}",${c.optIn}`
+      );
+      const csv = [header, ...rows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "contacts.csv"; a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${all.length} contacts`);
+    } catch {
+      toast.error("Export failed");
+    }
+  };
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "list", label: `All Contacts (${total})` },
     { id: "add", label: "Add Contact" },
@@ -171,12 +288,23 @@ export default function ContactsPage() {
 
   return (
     <div>
+      {editContact && (
+        <EditModal
+          contact={editContact}
+          onClose={() => setEditContact(null)}
+          onSaved={() => load(page, search)}
+        />
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Contacts</h1>
           <p className="text-gray-500 text-sm mt-1">{total} total contacts</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={exportContacts} className="btn-secondary flex items-center gap-2 text-sm">
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
           <button onClick={() => setTab("import")} className="btn-secondary flex items-center gap-2 text-sm">
             <Upload className="w-4 h-4" /> Import CSV
           </button>
@@ -326,50 +454,93 @@ export default function ContactsPage() {
 
           {loading ? (
             <p className="text-gray-400 text-sm py-8 text-center">Loading...</p>
-          ) : filtered.length === 0 ? (
+          ) : contacts.length === 0 ? (
             <div className="text-center py-16">
               <Phone className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">No contacts found</p>
-              <p className="text-gray-400 text-sm mt-1">Add contacts or import a CSV file</p>
+              <p className="text-gray-500 font-medium">
+                {search ? "No contacts match your search" : "No contacts found"}
+              </p>
+              <p className="text-gray-400 text-sm mt-1">
+                {search ? "Try a different search term" : "Add contacts or import a CSV file"}
+              </p>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="pb-3 text-left font-medium text-gray-500">Name</th>
-                  <th className="pb-3 text-left font-medium text-gray-500">Phone</th>
-                  <th className="pb-3 text-left font-medium text-gray-500">Tags</th>
-                  <th className="pb-3 text-left font-medium text-gray-500">Opt-in</th>
-                  <th className="pb-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filtered.map((c) => (
-                  <tr key={c.id} className="hover:bg-gray-50/50">
-                    <td className="py-3 font-medium text-gray-900">{c.name}</td>
-                    <td className="py-3 text-gray-600 font-mono text-xs">{c.phone}</td>
-                    <td className="py-3">
-                      <div className="flex gap-1 flex-wrap">
-                        {c.tags.map((tag) => (
-                          <span key={tag} className="badge-gray">{tag}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-3">
-                      <span className={c.optIn ? "badge-green" : "badge-red"}>
-                        {c.optIn ? "Yes" : "No"}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right">
-                      <button onClick={() => handleDelete(c.id)}
-                        className="text-gray-400 hover:text-red-500 transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
+            <>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="pb-3 text-left font-medium text-gray-500">Name</th>
+                    <th className="pb-3 text-left font-medium text-gray-500">Phone</th>
+                    <th className="pb-3 text-left font-medium text-gray-500">Tags</th>
+                    <th className="pb-3 text-left font-medium text-gray-500">Opt-in</th>
+                    <th className="pb-3" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {contacts.map((c) => (
+                    <tr key={c.id} className="hover:bg-gray-50/50">
+                      <td className="py-3 font-medium text-gray-900">{c.name}</td>
+                      <td className="py-3 text-gray-600 font-mono text-xs">{c.phone}</td>
+                      <td className="py-3">
+                        <div className="flex gap-1 flex-wrap">
+                          {c.tags.map((tag) => (
+                            <span key={tag} className="badge-gray">{tag}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-3">
+                        <span className={c.optIn ? "badge-green" : "badge-red"}>
+                          {c.optIn ? "Yes" : "No"}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setEditContact(c)}
+                            className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(c.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm text-gray-500">
+                    Page {page} of {totalPages} · {total} contacts
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="btn-secondary text-sm disabled:opacity-40"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="btn-secondary text-sm disabled:opacity-40"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

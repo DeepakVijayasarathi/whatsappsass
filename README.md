@@ -88,9 +88,7 @@ docker run -d \
   -p 4000:4000 \
   -e DATABASE_URL="postgresql://user:pass@host:5432/whatsapp_saas" \
   -e JWT_SECRET="your-long-random-secret" \
-  -e META_PHONE_NUMBER_ID="your_phone_number_id" \
-  -e META_ACCESS_TOKEN="your_access_token" \
-  -e META_WEBHOOK_VERIFY_TOKEN="your_verify_token" \
+  -e BACKEND_URL="http://127.0.0.1:4000" \
   --name whatsapp-saas \
   whatsapp-saas
 ```

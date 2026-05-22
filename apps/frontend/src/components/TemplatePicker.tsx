@@ -1,0 +1,165 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import { X, Search, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import clsx from "clsx";
+
+export interface Template {
+  id: string;
+  name: string;
+  status: string;
+  language: string;
+  category: string;
+  body: string | null;
+  provider: "meta" | "msg91";
+}
+
+interface Props {
+  onSelect: (template: Template) => void;
+  onClose: () => void;
+}
+
+const statusStyle: Record<string, { badge: string; icon: React.ElementType }> = {
+  APPROVED:  { badge: "bg-green-100 text-green-700",  icon: CheckCircle2 },
+  PENDING:   { badge: "bg-yellow-100 text-yellow-700", icon: Clock },
+  REJECTED:  { badge: "bg-red-100 text-red-600",      icon: AlertCircle },
+  PAUSED:    { badge: "bg-gray-100 text-gray-600",     icon: AlertCircle },
+  DISABLED:  { badge: "bg-gray-100 text-gray-500",     icon: AlertCircle },
+};
+
+export default function TemplatePicker({ onSelect, onClose }: Props) {
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"ALL" | "APPROVED">("APPROVED");
+
+  useEffect(() => {
+    api.get("/templates")
+      .then((r) => setTemplates(r.data.templates))
+      .catch((e) => setError(e.response?.data?.error ?? "Failed to load templates"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = templates.filter((t) => {
+    const matchStatus = filterStatus === "ALL" || t.status === filterStatus;
+    const matchSearch = !search || t.name.toLowerCase().includes(search.toLowerCase());
+    return matchStatus && matchSearch;
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Select Template</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Choose from your approved WhatsApp templates</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input pl-9 text-sm"
+              placeholder="Search templates..."
+            />
+          </div>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0">
+            {(["APPROVED", "ALL"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className={clsx(
+                  "px-3 py-1.5 text-xs font-medium transition-colors",
+                  filterStatus === s
+                    ? "bg-brand text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                )}
+              >
+                {s === "ALL" ? "All statuses" : "Approved only"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
+              Loading templates...
+            </div>
+          ) : error ? (
+            <div className="p-6">
+              <div className="p-4 bg-red-50 rounded-lg text-sm text-red-700 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-medium">Could not load templates</p>
+                  <p className="mt-0.5 text-red-600">{error}</p>
+                </div>
+              </div>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-sm">
+              <p>No templates found</p>
+              {search && <p className="text-xs mt-1">Try a different search term</p>}
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {filtered.map((t) => {
+                const style = statusStyle[t.status] ?? { badge: "bg-gray-100 text-gray-600", icon: AlertCircle };
+                const StatusIcon = style.icon;
+                const isApproved = t.status === "APPROVED";
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => isApproved && onSelect(t)}
+                    disabled={!isApproved}
+                    className={clsx(
+                      "w-full text-left px-5 py-4 transition-colors",
+                      isApproved
+                        ? "hover:bg-brand/5 cursor-pointer"
+                        : "opacity-60 cursor-not-allowed"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-semibold text-sm text-gray-900 font-mono">{t.name}</span>
+                          <span className={clsx("inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full", style.badge)}>
+                            <StatusIcon className="w-3 h-3" />
+                            {t.status}
+                          </span>
+                          <span className="text-[11px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{t.language}</span>
+                          <span className="text-[11px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full capitalize">{t.category.toLowerCase()}</span>
+                        </div>
+                        {t.body && (
+                          <p className="text-xs text-gray-500 line-clamp-2">{t.body}</p>
+                        )}
+                      </div>
+                      {isApproved && (
+                        <span className="text-xs text-brand font-medium shrink-0 self-center">Select →</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400">
+          {!loading && !error && `${filtered.length} of ${templates.length} templates shown`}
+        </div>
+      </div>
+    </div>
+  );
+}

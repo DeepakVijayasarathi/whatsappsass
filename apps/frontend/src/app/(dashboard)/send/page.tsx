@@ -6,7 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
 import { api } from "@/lib/api";
-import { Send } from "lucide-react";
+import { Send, BookOpen } from "lucide-react";
+import TemplatePicker, { type Template } from "@/components/TemplatePicker";
 
 const schema = z.object({
   to: z.string().min(7, "Phone number required"),
@@ -16,17 +17,26 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export default function SendPage() {
-  const [loading, setLoading] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    setValue,
+    watch,
+    formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { languageCode: "en_US" } });
 
+  const templateName = watch("templateName");
+
+  const onSelect = (t: Template) => {
+    setValue("templateName", t.name, { shouldValidate: true });
+    setValue("languageCode", t.language, { shouldValidate: true });
+    setShowPicker(false);
+  };
+
   const onSubmit = async (data: FormData) => {
-    setLoading(true);
     try {
       await api.post("/whatsapp/send", data);
       toast.success("Message sent!");
@@ -36,13 +46,15 @@ export default function SendPage() {
         (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
         "Failed to send message";
       toast.error(msg);
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <div>
+      {showPicker && (
+        <TemplatePicker onSelect={onSelect} onClose={() => setShowPicker(false)} />
+      )}
+
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Send Message</h1>
         <p className="text-gray-500 text-sm mt-1">
@@ -77,14 +89,27 @@ export default function SendPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Template name
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Template name
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowPicker(true)}
+                className="text-xs text-brand font-medium flex items-center gap-1 hover:underline"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                Browse templates
+              </button>
+            </div>
             <input
               {...register("templateName")}
-              className="input"
+              className="input font-mono"
               placeholder="hello_world"
             />
+            {templateName && (
+              <p className="text-xs text-gray-400 mt-1 font-mono">Selected: {templateName}</p>
+            )}
             {errors.templateName && (
               <p className="text-red-500 text-xs mt-1">{errors.templateName.message}</p>
             )}
@@ -101,9 +126,9 @@ export default function SendPage() {
             />
           </div>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2">
+          <button type="submit" disabled={isSubmitting} className="btn-primary w-full flex items-center justify-center gap-2">
             <Send className="w-4 h-4" />
-            {loading ? "Sending..." : "Send Message"}
+            {isSubmitting ? "Sending..." : "Send Message"}
           </button>
         </form>
       </div>

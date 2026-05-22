@@ -14,13 +14,21 @@ const contactSchema = z.object({
 export async function contactRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
-    const { page = "1", limit = "20", tag } = request.query as Record<string, string>;
+    const { page = "1", limit = "20", tag, search } = request.query as Record<string, string>;
 
     const skip = (Number(page) - 1) * Number(limit);
 
     const where = {
       workspaceId: user.workspaceId,
       ...(tag ? { tags: { has: tag } } : {}),
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: "insensitive" as const } },
+              { phone: { contains: search } },
+            ],
+          }
+        : {}),
     };
 
     const [contacts, total] = await Promise.all([
