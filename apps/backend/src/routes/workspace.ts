@@ -357,7 +357,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const user = request.user as JwtPayload;
 
-      const [workspace, contactCount, templateCount] = await Promise.all([
+      const [workspace, contactCount, campaignCount] = await Promise.all([
         prisma.workspace.findUnique({
           where: { id: user.workspaceId },
           select: {
@@ -370,7 +370,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
           },
         }),
         prisma.contact.count({ where: { workspaceId: user.workspaceId } }),
-        prisma.messageTemplate.count({ where: { workspaceId: user.workspaceId } }),
+        prisma.campaign.count({ where: { workspaceId: user.workspaceId } }),
       ]);
 
       if (!workspace) return reply.status(404).send({ error: "Not found" });
@@ -385,9 +385,9 @@ export async function workspaceRoutes(app: FastifyInstance) {
           providerConfigured,
           whatsappEnabled: workspace.metaWhatsappEnabled,
           hasContacts: contactCount > 0,
-          hasTemplates: templateCount > 0,
+          hasTemplates: campaignCount > 0,
         },
-        counts: { contacts: contactCount, templates: templateCount },
+        counts: { contacts: contactCount, templates: campaignCount },
       });
     }
   );
