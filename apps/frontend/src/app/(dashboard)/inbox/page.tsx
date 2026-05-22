@@ -28,6 +28,32 @@ type TimelineEntry =
   | { type: "sent"; id: string; status: string; campaign: { id: string; name: string } | null; createdAt: string }
   | { type: "received"; id: string; body: string | null; msgType: string; replyToMessageId: string | null; createdAt: string };
 
+const AVATAR_COLORS = [
+  "bg-blue-100 text-blue-700",
+  "bg-purple-100 text-purple-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-orange-100 text-orange-700",
+  "bg-pink-100 text-pink-700",
+  "bg-cyan-100 text-cyan-700",
+  "bg-amber-100 text-amber-700",
+];
+
+function nameToColor(name: string) {
+  return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+}
+
+function formatRelativeTime(dateStr: string) {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 export default function InboxPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<Conversation | null>(null);
@@ -127,7 +153,7 @@ export default function InboxPage() {
           )}
         >
           <div className="p-4 border-b border-gray-100">
-            <h1 className="text-xl font-bold text-gray-900 mb-3">Inbox</h1>
+            <h1 className="text-lg font-bold text-gray-900 mb-3">Inbox</h1>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -159,31 +185,34 @@ export default function InboxPage() {
               filtered.map((convo) => {
                 const name = convo.contact?.name ?? convo.fromPhone;
                 const isSelected = selected?.fromPhone === convo.fromPhone;
+                const avatarCls = nameToColor(name);
                 return (
                   <button
                     key={convo.fromPhone}
                     onClick={() => openConversation(convo)}
                     className={clsx(
-                      "w-full p-4 border-b border-gray-50 flex items-start gap-3 text-left hover:bg-gray-50 transition-colors",
-                      isSelected && "bg-brand/5 border-l-2 border-l-brand"
+                      "w-full px-4 py-3 border-b border-gray-50 flex items-start gap-3 text-left transition-colors",
+                      isSelected
+                        ? "bg-brand/5 border-l-2 border-l-brand"
+                        : "hover:bg-gray-50"
                     )}
                   >
-                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-                      <span className="text-sm font-bold text-gray-600">{name[0].toUpperCase()}</span>
+                    <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-sm font-bold", avatarCls)}>
+                      {name[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="font-medium text-sm text-gray-900 truncate">{name}</span>
-                        <span className="text-[10px] text-gray-400 shrink-0 ml-2">
-                          {new Date(convo.latestMessage.receivedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                        <span className={clsx("text-sm truncate", convo.unreadCount > 0 ? "font-bold text-gray-900" : "font-medium text-gray-800")}>{name}</span>
+                        <span className="text-[10px] text-gray-400 shrink-0 ml-2 tabular-nums">
+                          {formatRelativeTime(convo.latestMessage.receivedAt)}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-500 truncate">
+                      <p className={clsx("text-xs truncate", convo.unreadCount > 0 ? "text-gray-700 font-medium" : "text-gray-400")}>
                         {convo.latestMessage.body ?? `[${convo.latestMessage.type}]`}
                       </p>
                     </div>
                     {convo.unreadCount > 0 && (
-                      <span className="min-w-[18px] h-[18px] bg-brand text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shrink-0">
+                      <span className="min-w-[18px] h-[18px] bg-brand text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shrink-0 mt-0.5">
                         {convo.unreadCount}
                       </span>
                     )}
@@ -205,10 +234,8 @@ export default function InboxPage() {
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-                <span className="text-sm font-bold text-gray-600">
-                  {(selected.contact?.name ?? selected.fromPhone)[0].toUpperCase()}
-                </span>
+              <div className={clsx("w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold", nameToColor(selected.contact?.name ?? selected.fromPhone))}>
+                {(selected.contact?.name ?? selected.fromPhone)[0].toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm text-gray-900 truncate">
@@ -289,7 +316,7 @@ export default function InboxPage() {
               <div className="flex gap-2 items-center">
                 <button
                   onClick={() => setShowPicker(true)}
-                  className="p-2 text-gray-400 hover:text-brand hover:bg-brand/10 rounded-lg transition-colors shrink-0"
+                  className="p-2 text-gray-400 hover:text-brand hover:bg-brand/10 rounded-xl transition-colors shrink-0"
                   title="Browse templates"
                 >
                   <Bot className="w-5 h-5" />
@@ -298,18 +325,31 @@ export default function InboxPage() {
                   value={replyTemplate}
                   onChange={(e) => setReplyTemplate(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendReply()}
-                  className="input flex-1 text-sm"
+                  className="input flex-1 text-sm font-mono"
                   placeholder="Template name (e.g. hello_world)"
                 />
+                <select
+                  value={replyLang}
+                  onChange={(e) => setReplyLang(e.target.value)}
+                  className="input w-24 text-xs shrink-0"
+                >
+                  <option value="en_US">en_US</option>
+                  <option value="en">en</option>
+                  <option value="hi">hi</option>
+                  <option value="es">es</option>
+                </select>
                 <button
                   onClick={sendReply}
                   disabled={replying || !replyTemplate.trim()}
-                  className="btn-primary flex items-center gap-2 shrink-0"
+                  className="btn-primary shrink-0"
                 >
                   <Send className="w-4 h-4" />
                   <span className="hidden sm:inline">{replying ? "Sending…" : "Send"}</span>
                 </button>
               </div>
+              <p className="text-[10px] text-gray-400 mt-1.5 pl-1">
+                Only approved WhatsApp templates can be sent as replies
+              </p>
             </div>
           </div>
         ) : (

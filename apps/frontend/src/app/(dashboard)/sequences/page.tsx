@@ -41,10 +41,10 @@ interface Contact {
   optIn: boolean;
 }
 
-const STATUS_BADGE: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-600",
-  active: "bg-green-100 text-green-700",
-  paused: "bg-amber-100 text-amber-700",
+const STATUS_CONFIG: Record<string, { badge: string; dot: string; label: string }> = {
+  draft:  { badge: "badge-gray",   dot: "bg-gray-400",   label: "Draft" },
+  active: { badge: "badge-green",  dot: "bg-emerald-500",label: "Active" },
+  paused: { badge: "badge-yellow", dot: "bg-amber-500",  label: "Paused" },
 };
 
 // ── Step form row ──────────────────────────────────────────────────────────────
@@ -451,10 +451,8 @@ export default function SequencesPage() {
 
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Drip Sequences</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Automate multi-step WhatsApp template campaigns over time
-          </p>
+          <h1 className="page-title">Drip Sequences</h1>
+          <p className="page-subtitle">Automate multi-step WhatsApp campaigns sent over days</p>
         </div>
         <button
           onClick={() => setShowBuilder(true)}
@@ -475,25 +473,25 @@ export default function SequencesPage() {
           ))}
         </div>
       ) : sequences.length === 0 ? (
-        <div className="card text-center py-16">
-          <GitBranch className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">No sequences yet</p>
-          <p className="text-gray-400 text-sm mt-1">
-            Build a drip sequence to automatically send follow-up messages over days
-          </p>
+        <div className="card empty-state py-16">
+          <GitBranch className="empty-icon" />
+          <p className="empty-title">No sequences yet</p>
+          <p className="empty-desc">Build a drip sequence to send follow-up messages over days</p>
         </div>
       ) : (
         <div className="space-y-4">
           {sequences.map((seq) => {
             const isExpanded = expanded.has(seq.id);
+            const statusCfg = STATUS_CONFIG[seq.status] ?? STATUS_CONFIG.draft;
             return (
-              <div key={seq.id} className="card">
+              <div key={seq.id} className="card hover:shadow-md transition-shadow duration-200">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold text-gray-900">{seq.name}</h3>
-                      <span className={clsx("badge text-xs", STATUS_BADGE[seq.status])}>
-                        {seq.status}
+                      <span className={clsx("badge flex items-center gap-1", statusCfg.badge)}>
+                        <span className={clsx("w-1.5 h-1.5 rounded-full", statusCfg.dot)} />
+                        {statusCfg.label}
                       </span>
                     </div>
                     <div className="flex items-center gap-4 mt-1 text-xs text-gray-400">
@@ -582,14 +580,21 @@ export default function SequencesPage() {
         </div>
       )}
 
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
-        <p className="font-semibold mb-1">How drip sequences work</p>
-        <ul className="list-disc list-inside space-y-1 text-blue-700 text-xs">
-          <li>Activate a sequence, then enroll contacts into it</li>
-          <li>The scheduler sends each step after the configured delay</li>
-          <li>Contacts only receive opted-in sends — opt-outs are respected automatically</li>
-          <li>Each contact can only be enrolled once per sequence</li>
-        </ul>
+      <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
+        <p className="text-sm font-semibold text-blue-800 mb-2">How drip sequences work</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {[
+            "Activate a sequence, then enroll contacts into it",
+            "The scheduler sends each step after the configured delay",
+            "Opt-outs are respected — only opted-in contacts receive messages",
+            "Each contact can only be enrolled once per sequence",
+          ].map((tip, i) => (
+            <div key={i} className="flex items-start gap-2 text-xs text-blue-700">
+              <span className="w-4 h-4 bg-blue-200 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-bold text-blue-800">{i + 1}</span>
+              <span>{tip}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

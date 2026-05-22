@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
 import Link from "next/link";
-import { Plus, Trash2, Phone, Upload, Download, X, Pencil, CheckSquare } from "lucide-react";
+import { Plus, Trash2, Phone, Upload, Download, X, Pencil, CheckSquare, Search } from "lucide-react";
 import { SkeletonTableRow } from "@/components/Skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -143,6 +143,20 @@ function EditModal({ contact, onClose, onSaved }: {
       </div>
     </div>
   );
+}
+
+const AVATAR_COLORS = [
+  "bg-blue-100 text-blue-700",
+  "bg-purple-100 text-purple-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-orange-100 text-orange-700",
+  "bg-pink-100 text-pink-700",
+  "bg-cyan-100 text-cyan-700",
+];
+
+function avatarColor(name: string) {
+  const idx = name.charCodeAt(0) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[idx];
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -348,8 +362,8 @@ export default function ContactsPage() {
 
       <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Contacts</h1>
-          <p className="text-gray-500 text-sm mt-1">{total} total contacts</p>
+          <h1 className="page-title">Contacts</h1>
+          <p className="page-subtitle">{total.toLocaleString()} total contacts</p>
         </div>
         <div className="flex gap-2 shrink-0 flex-wrap justify-end">
           <button onClick={exportContacts} className="btn-secondary flex items-center gap-2 text-sm">
@@ -499,12 +513,15 @@ export default function ContactsPage() {
       {tab === "list" && (
         <div className="card">
           <div className="flex items-center gap-3 mb-4">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="input max-w-sm"
-              placeholder="Search by name or phone..."
-            />
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="input pl-9"
+                placeholder="Search by name or phone..."
+              />
+            </div>
             {selectedIds.size > 0 && (
               <div className="flex items-center gap-2 ml-auto">
                 <span className="text-sm text-gray-600 flex items-center gap-1">
@@ -551,13 +568,13 @@ export default function ContactsPage() {
             </table>
             </div>
           ) : contacts.length === 0 ? (
-            <div className="text-center py-16">
-              <Phone className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">
-                {search ? "No contacts match your search" : "No contacts found"}
+            <div className="empty-state">
+              <Phone className="empty-icon" />
+              <p className="empty-title">
+                {search ? "No contacts match your search" : "No contacts yet"}
               </p>
-              <p className="text-gray-400 text-sm mt-1">
-                {search ? "Try a different search term" : "Add contacts or import a CSV file"}
+              <p className="empty-desc">
+                {search ? "Try a different search term" : "Add contacts manually or import a CSV file"}
               </p>
             </div>
           ) : (
@@ -600,12 +617,17 @@ export default function ContactsPage() {
                           className="rounded accent-brand cursor-pointer"
                         />
                       </td>
-                      <td className="py-3 font-medium text-gray-900">
-                        <Link href={`/contacts/${c.id}`} className="hover:text-brand hover:underline">
-                          {c.name}
-                        </Link>
+                      <td className="py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${avatarColor(c.name)}`}>
+                            {c.name[0]?.toUpperCase()}
+                          </div>
+                          <Link href={`/contacts/${c.id}`} className="font-medium text-gray-900 hover:text-brand transition-colors">
+                            {c.name}
+                          </Link>
+                        </div>
                       </td>
-                      <td className="py-3 text-gray-600 font-mono text-xs">{c.phone}</td>
+                      <td className="py-3 text-gray-500 font-mono text-xs">{c.phone}</td>
                       <td className="py-3 text-gray-500 text-xs hidden md:table-cell">{c.email ?? <span className="text-gray-300">—</span>}</td>
                       <td className="py-3 hidden lg:table-cell">
                         <div className="flex gap-1 flex-wrap">

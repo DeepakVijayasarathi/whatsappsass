@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
-import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle } from "lucide-react";
+import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle, Clock } from "lucide-react";
+import { SkeletonTableRow } from "@/components/Skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -40,10 +41,10 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 const statusConfig: Record<string, { label: string; badge: string; icon: React.ElementType }> = {
-  draft:     { label: "Draft",     badge: "badge-gray",   icon: Megaphone },
+  draft:     { label: "Draft",     badge: "badge-gray",   icon: Clock },
   running:   { label: "Running",   badge: "badge-green",  icon: Play },
   paused:    { label: "Paused",    badge: "badge-yellow", icon: Pause },
-  completed: { label: "Completed", badge: "badge-green",  icon: CheckCircle2 },
+  completed: { label: "Completed", badge: "badge-blue",   icon: CheckCircle2 },
 };
 
 function extractVariables(body: string | null): number[] {
@@ -370,8 +371,8 @@ export default function CampaignsPage() {
 
       <div className="flex items-start justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Campaigns</h1>
-          <p className="text-gray-500 text-sm mt-1">{total} total campaigns</p>
+          <h1 className="page-title">WA Campaigns</h1>
+          <p className="page-subtitle">{total} total campaigns</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary flex items-center gap-2 shrink-0">
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New Campaign</span><span className="sm:hidden">New</span>
@@ -423,44 +424,62 @@ export default function CampaignsPage() {
 
       <div className="card">
         {loading ? (
-          <p className="text-gray-400 text-sm py-8 text-center">Loading...</p>
-        ) : campaigns.length === 0 ? (
-          <div className="text-center py-16">
-            <Megaphone className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No campaigns yet</p>
-            <p className="text-gray-400 text-sm mt-1">Create your first campaign to start sending</p>
-          </div>
-        ) : (
           <div className="overflow-x-auto -mx-4 sm:mx-0">
           <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="border-b border-gray-100">
-                <th className="pb-3 text-left font-medium text-gray-500 pl-4 sm:pl-0">Name</th>
-                <th className="pb-3 text-left font-medium text-gray-500 hidden sm:table-cell">Template</th>
-                <th className="pb-3 text-left font-medium text-gray-500">Status</th>
-                <th className="pb-3 text-left font-medium text-gray-500 hidden md:table-cell">Replies</th>
-                <th className="pb-3 text-left font-medium text-gray-500 hidden lg:table-cell">Scheduled</th>
-                <th className="pb-3 text-right font-medium text-gray-500 pr-4 sm:pr-0">Actions</th>
+                <th className="pb-3 text-left font-medium text-gray-400 pl-4 sm:pl-0 text-xs uppercase tracking-wider">Name</th>
+                <th className="pb-3 text-left font-medium text-gray-400 hidden sm:table-cell text-xs uppercase tracking-wider">Template</th>
+                <th className="pb-3 text-left font-medium text-gray-400 text-xs uppercase tracking-wider">Status</th>
+                <th className="pb-3 text-right font-medium text-gray-400 pr-4 sm:pr-0 text-xs uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
+              {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} cols={4} />)}
+            </tbody>
+          </table>
+          </div>
+        ) : campaigns.length === 0 ? (
+          <div className="empty-state py-16">
+            <Megaphone className="empty-icon" />
+            <p className="empty-title">No campaigns yet</p>
+            <p className="empty-desc">Create your first campaign to start sending bulk messages</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <table className="w-full text-sm min-w-[560px]">
+            <thead className="tbl-head">
+              <tr>
+                <th className="tbl-th pl-4 sm:pl-0">Name</th>
+                <th className="tbl-th hidden sm:table-cell">Template</th>
+                <th className="tbl-th">Status</th>
+                <th className="tbl-th hidden md:table-cell">Replies</th>
+                <th className="tbl-th hidden lg:table-cell">Scheduled</th>
+                <th className="tbl-th text-right pr-4 sm:pr-0">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
               {campaigns.map((c) => {
                 const cfg = statusConfig[c.status] ?? statusConfig.draft;
+                const CfgIcon = cfg.icon;
                 return (
-                  <tr key={c.id} className="hover:bg-gray-50/50">
-                    <td className="py-3 font-medium text-gray-900 pl-4 sm:pl-0">
+                  <tr key={c.id} className="tbl-row">
+                    <td className="tbl-td font-medium text-gray-900 pl-4 sm:pl-0">
                       <div>{c.name}</div>
                       <div className="sm:hidden mt-0.5">
                         <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{c.template}</code>
                       </div>
                     </td>
-                    <td className="py-3 hidden sm:table-cell">
-                      <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{c.template}</code>
+                    <td className="tbl-td hidden sm:table-cell">
+                      <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">{c.template}</code>
                     </td>
-                    <td className="py-3">
-                      <span className={clsx("badge", cfg.badge)}>{cfg.label}</span>
+                    <td className="tbl-td">
+                      <span className={clsx("badge flex items-center gap-1 w-fit", cfg.badge)}>
+                        <CfgIcon className="w-3 h-3" />
+                        {cfg.label}
+                      </span>
                     </td>
-                    <td className="py-3 hidden md:table-cell">
+                    <td className="tbl-td hidden md:table-cell">
                       {replyCounts[c.id] ? (
                         <div className="flex items-center gap-1.5 text-xs text-gray-600">
                           <MessageCircle className="w-3.5 h-3.5 text-gray-400" />
@@ -475,10 +494,10 @@ export default function CampaignsPage() {
                         <span className="text-xs text-gray-300">—</span>
                       )}
                     </td>
-                    <td className="py-3 text-gray-500 text-xs hidden lg:table-cell">
-                      {c.scheduledAt ? new Date(c.scheduledAt).toLocaleString() : "—"}
+                    <td className="tbl-td text-gray-500 text-xs hidden lg:table-cell">
+                      {c.scheduledAt ? new Date(c.scheduledAt).toLocaleString() : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="py-3 pr-4 sm:pr-0">
+                    <td className="tbl-td text-right pr-4 sm:pr-0">
                       <div className="flex items-center justify-end gap-2">
                         {/* Stats */}
                         <button
