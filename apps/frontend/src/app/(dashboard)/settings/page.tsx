@@ -38,7 +38,7 @@ export default function SettingsPage() {
   const [metaEnabled, setMetaEnabled] = useState(false);
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
   const [toggling, setToggling] = useState(false);
-  const [activeTab, setActiveTab] = useState<"provider" | "license">("provider");
+  const [activeTab, setActiveTab] = useState<"provider" | "workspace" | "license">("provider");
 
   const {
     register: regLicense,
