@@ -192,3 +192,5 @@ Generate and insert keys directly into the `license_keys` table, or via the seed
 5. Set `META_WEBHOOK_VERIFY_TOKEN` to any random string (must match what you enter in Meta console)
 6. Enable WhatsApp in workspace Settings page
 "# whatsappsass" 
+
+
