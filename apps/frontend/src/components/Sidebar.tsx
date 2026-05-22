@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Users, Megaphone, Send, Inbox, BarChart2,
   Settings, LogOut, MessageSquare, UserCircle, UsersRound,
   FileText, Mail, ClipboardList, Shield, LineChart, Kanban,
-  X, Bot, Webhook, GitBranch,
+  X, Bot, Webhook, GitBranch, BookOpen,
 } from "lucide-react";
 import { clearAuth, getUser, getWorkspace } from "@/lib/auth";
 import { useInboxNotifications } from "@/lib/useInboxNotifications";
@@ -24,6 +24,7 @@ const navItems = [
   { href: "/templates",        icon: FileText,        label: "Templates",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/analytics",        icon: BarChart2,       label: "Analytics",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/sequences",        icon: GitBranch,       label: "Drip Sequences",  roles: ["owner","admin","marketer"], badge: null,    group: "main" },
+  { href: "/guide",            icon: BookOpen,        label: "How to Use",      roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/auto-replies",     icon: Bot,             label: "Auto-Replies",    roles: ["owner","admin"],            badge: null,    group: "admin" },
   { href: "/webhooks",         icon: Webhook,         label: "Webhooks",        roles: ["owner","admin"],            badge: null,    group: "admin" },
   { href: "/admin/metrics",    icon: LineChart,       label: "Metrics",         roles: ["owner","admin"],            badge: null,    group: "admin" },
