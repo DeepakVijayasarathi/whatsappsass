@@ -20,7 +20,7 @@ export async function logAudit(opts: AuditOptions) {
         action: opts.action,
         entityType: opts.entityType ?? null,
         entityId: opts.entityId ?? null,
-        meta: opts.meta ?? null,
+        meta: opts.meta ?? undefined,
       },
     });
   } catch {
