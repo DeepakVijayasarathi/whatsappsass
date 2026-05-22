@@ -8,6 +8,7 @@ COPY package.json ./
 COPY packages/database/package.json ./packages/database/
 COPY apps/backend/package.json ./apps/backend/
 
+# npm workspaces hoists everything into /app/node_modules
 RUN npm install --workspace=packages/database --workspace=apps/backend
 
 COPY packages/database ./packages/database
@@ -41,9 +42,9 @@ ENV NODE_ENV=production
 ENV BACKEND_PORT=4000
 ENV FRONTEND_PORT=3000
 
-# Backend
+# Backend — node_modules are hoisted to /app/node_modules by npm workspaces
 COPY --from=backend-builder /app/apps/backend/dist ./backend/dist
-COPY --from=backend-builder /app/apps/backend/node_modules ./backend/node_modules
+COPY --from=backend-builder /app/node_modules ./backend/node_modules
 COPY --from=backend-builder /app/packages/database/prisma ./backend/prisma
 COPY --from=backend-builder /app/apps/backend/package.json ./backend/package.json
 
@@ -54,7 +55,6 @@ COPY --from=frontend-builder /app/public ./frontend/public
 
 COPY supervisord.conf /etc/supervisord.conf
 
-# Ports are set via BACKEND_PORT / FRONTEND_PORT env vars at runtime
 EXPOSE ${BACKEND_PORT} ${FRONTEND_PORT}
 
 CMD ["supervisord", "-c", "/etc/supervisord.conf"]
