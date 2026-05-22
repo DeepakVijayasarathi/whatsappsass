@@ -15,7 +15,7 @@ const contactSchema = z.object({
 export async function contactRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
-    const { page = "1", limit = "20", tag, search } = request.query as Record<string, string>;
+    const { page = "1", limit = "20", tag, search, sort } = request.query as Record<string, string>;
 
     const skip = (Number(page) - 1) * Number(limit);
 
@@ -32,12 +32,14 @@ export async function contactRoutes(app: FastifyInstance) {
         : {}),
     };
 
+    const orderBy = sort === "recent" ? { createdAt: "desc" as const } : { name: "asc" as const };
+
     const [contacts, total] = await Promise.all([
       prisma.contact.findMany({
         where,
         skip,
         take: Number(limit),
-        orderBy: { name: "asc" },
+        orderBy,
       }),
       prisma.contact.count({ where }),
     ]);
@@ -92,6 +94,19 @@ export async function contactRoutes(app: FastifyInstance) {
     });
 
     return reply.send(contact);
+  });
+
+  // ── Bulk delete ───────────────────────────────────────────────────────────
+  app.delete("/bulk", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const parsed = z.object({ ids: z.array(z.string().uuid()).min(1).max(500) }).safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const result = await prisma.contact.deleteMany({
+      where: { id: { in: parsed.data.ids }, workspaceId: user.workspaceId },
+    });
+
+    return reply.send({ deleted: result.count });
   });
 
   app.delete("/:id", { preHandler: [authenticate] }, async (request, reply) => {

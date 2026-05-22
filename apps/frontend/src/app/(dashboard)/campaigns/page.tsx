@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
-import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle, Clock } from "lucide-react";
+import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle, Clock, Copy } from "lucide-react";
 import { SkeletonTableRow } from "@/components/Skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -340,6 +340,16 @@ export default function CampaignsPage() {
     }
   };
 
+  const duplicateCampaign = async (id: string, name: string) => {
+    try {
+      await api.post(`/campaigns/${id}/duplicate`);
+      toast.success(`Duplicated "${name}"`);
+      load(page);
+    } catch {
+      toast.error("Failed to duplicate");
+    }
+  };
+
   const deleteCampaign = async (id: string, name: string) => {
     if (!confirm(`Delete campaign "${name}"?`)) return;
     try {
@@ -506,6 +516,15 @@ export default function CampaignsPage() {
                           title="View stats"
                         >
                           <BarChart2 className="w-4 h-4" />
+                        </button>
+
+                        {/* Duplicate */}
+                        <button
+                          onClick={() => duplicateCampaign(c.id, c.name)}
+                          className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
+                          title="Duplicate"
+                        >
+                          <Copy className="w-4 h-4" />
                         </button>
 
                         {/* Run */}

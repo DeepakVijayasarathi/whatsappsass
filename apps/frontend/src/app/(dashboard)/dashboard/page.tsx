@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import {
   Users, Megaphone, MessageSquare, CheckCircle2,
   Send, Inbox, Plus, ArrowRight, TrendingUp,
-  RefreshCw, Zap, Eye,
+  RefreshCw, Zap, Eye, Clock, Activity,
 } from "lucide-react";
 import Link from "next/link";
 import { SkeletonStatCard } from "@/components/Skeleton";
@@ -17,6 +17,20 @@ interface OverviewData {
   totalCampaigns: number;
   totalMessages: number;
   messagesByStatus: Record<string, number>;
+}
+
+interface RecentCampaign {
+  id: string;
+  name: string;
+  status: string;
+  scheduledAt: string | null;
+}
+
+interface RecentContact {
+  id: string;
+  name: string;
+  phone: string;
+  createdAt: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -65,6 +79,8 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing]         = useState(false);
   const [error, setError]                   = useState(false);
   const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
+  const [recentCampaigns, setRecentCampaigns] = useState<RecentCampaign[]>([]);
+  const [recentContacts, setRecentContacts]   = useState<RecentContact[]>([]);
   const user = getUser();
 
   const load = useCallback((silent = false) => {
@@ -74,10 +90,14 @@ export default function DashboardPage() {
     Promise.all([
       api.get("/analytics/overview"),
       api.get("/meta/status"),
+      api.get("/campaigns?limit=5"),
+      api.get("/contacts?limit=5&sort=recent"),
     ])
-      .then(([overview, meta]) => {
+      .then(([overview, meta, campaigns, contacts]) => {
         setData(overview.data);
         setWhatsappEnabled(meta.data.metaWhatsappEnabled);
+        setRecentCampaigns(campaigns.data.campaigns ?? []);
+        setRecentContacts(contacts.data.contacts ?? []);
         setLastUpdated(new Date());
       })
       .catch(() => setError(true))
@@ -269,6 +289,75 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* ── Recent activity ── */}
+      {!loading && (recentCampaigns.length > 0 || recentContacts.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+          {/* Recent campaigns */}
+          {recentCampaigns.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-purple-500" />
+                  Recent Campaigns
+                </h2>
+                <Link href="/campaigns" className="text-xs text-brand hover:underline font-medium">View all</Link>
+              </div>
+              <div className="space-y-2">
+                {recentCampaigns.map((c) => {
+                  const STATUS_BADGE: Record<string, string> = {
+                    draft: "badge badge-gray", running: "badge badge-blue", paused: "badge badge-yellow",
+                    completed: "badge badge-green",
+                  };
+                  return (
+                    <div key={c.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-800 truncate">{c.name}</p>
+                        {c.scheduledAt && (
+                          <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
+                            <Clock className="w-3 h-3" />
+                            {new Date(c.scheduledAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                          </p>
+                        )}
+                      </div>
+                      <span className={STATUS_BADGE[c.status] ?? "badge badge-gray"}>
+                        {c.status}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Recently added contacts */}
+          {recentContacts.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-blue-500" />
+                  Recent Contacts
+                </h2>
+                <Link href="/contacts" className="text-xs text-brand hover:underline font-medium">View all</Link>
+              </div>
+              <div className="space-y-2">
+                {recentContacts.map((c) => (
+                  <div key={c.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
+                      {c.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-800 truncate">{c.name}</p>
+                      <p className="text-[11px] text-gray-400">{c.phone}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Empty CTA ── */}
       {!loading && (data?.totalCampaigns ?? 0) === 0 && (

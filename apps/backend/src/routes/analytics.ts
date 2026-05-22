@@ -34,15 +34,23 @@ export async function analyticsRoutes(app: FastifyInstance) {
 
   app.get("/messages", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
-    const { days = "7" } = request.query as { days?: string };
+    const { days = "7", from, to } = request.query as { days?: string; from?: string; to?: string };
 
-    const since = new Date();
-    since.setDate(since.getDate() - Number(days));
+    let since: Date;
+    let until: Date = new Date();
+    if (from && to) {
+      since = new Date(from);
+      until = new Date(to);
+      until.setHours(23, 59, 59, 999);
+    } else {
+      since = new Date();
+      since.setDate(since.getDate() - Number(days));
+    }
 
     const logs = await prisma.messageLog.findMany({
       where: {
         workspaceId: user.workspaceId,
-        createdAt: { gte: since },
+        createdAt: { gte: since, lte: until },
       },
       select: { status: true, createdAt: true },
       orderBy: { createdAt: "asc" },
@@ -60,7 +68,48 @@ export async function analyticsRoutes(app: FastifyInstance) {
       {} as Record<string, Record<string, number>>
     );
 
-    return reply.send({ days: Number(days), data: grouped });
+    return reply.send({ days: Number(days), from: since.toISOString(), to: until.toISOString(), data: grouped });
+  });
+
+  // ── Export analytics as CSV ────────────────────────────────────────────────
+  app.get("/export", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { from, to, days = "30" } = request.query as { from?: string; to?: string; days?: string };
+
+    let since: Date;
+    let until: Date = new Date();
+    if (from && to) {
+      since = new Date(from);
+      until = new Date(to);
+      until.setHours(23, 59, 59, 999);
+    } else {
+      since = new Date();
+      since.setDate(since.getDate() - Number(days));
+    }
+
+    const logs = await prisma.messageLog.findMany({
+      where: { workspaceId: user.workspaceId, createdAt: { gte: since, lte: until } },
+      select: { status: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const grouped = logs.reduce((acc, log) => {
+      const date = log.createdAt.toISOString().split("T")[0];
+      if (!acc[date]) acc[date] = { sent: 0, delivered: 0, read: 0, failed: 0 };
+      const key = ["sent","delivered","read","failed"].includes(log.status) ? log.status : "sent";
+      acc[date][key] = (acc[date][key] || 0) + 1;
+      return acc;
+    }, {} as Record<string, Record<string, number>>);
+
+    const header = "date,sent,delivered,read,failed";
+    const rows = Object.entries(grouped).map(([date, s]) =>
+      `${date},${s.sent ?? 0},${s.delivered ?? 0},${s.read ?? 0},${s.failed ?? 0}`
+    );
+
+    return reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="analytics-${Date.now()}.csv"`)
+      .send([header, ...rows].join("\n"));
   });
 
   app.get("/contacts", { preHandler: [authenticate] }, async (request, reply) => {

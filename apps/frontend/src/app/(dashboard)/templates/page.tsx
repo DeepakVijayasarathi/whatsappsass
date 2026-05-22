@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { FileText, RefreshCw, CheckCircle2, AlertCircle, Clock, Search } from "lucide-react";
+import { FileText, RefreshCw, CheckCircle2, AlertCircle, Clock, Search, X, Eye } from "lucide-react";
 import clsx from "clsx";
 import type { Template } from "@/components/TemplatePicker";
 
@@ -14,6 +14,48 @@ const statusStyle: Record<string, { badge: string; icon: React.ElementType; labe
   DISABLED: { badge: "bg-gray-100 text-gray-500",     icon: AlertCircle,  label: "Disabled" },
 };
 
+function TemplatePreviewModal({ template, onClose }: { template: Template; onClose: () => void }) {
+  const style = statusStyle[template.status] ?? { badge: "bg-gray-100 text-gray-600", icon: AlertCircle, label: template.status };
+  const Icon = style.icon;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between p-5 border-b border-gray-100">
+          <div>
+            <p className="text-xs text-gray-400 mb-1 font-medium uppercase tracking-wide">Template preview</p>
+            <code className="text-sm font-bold text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{template.name}</code>
+          </div>
+          <button onClick={onClose} className="icon-btn mt-0.5">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="flex items-center gap-4 text-xs text-gray-500">
+            <span><span className="font-medium text-gray-700">Category:</span> {template.category}</span>
+            <span><span className="font-medium text-gray-700">Language:</span> {template.language}</span>
+            <span className={clsx("inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full", style.badge)}>
+              <Icon className="w-3 h-3" />
+              {style.label}
+            </span>
+          </div>
+          {/* WhatsApp-style bubble */}
+          <div className="bg-[#e5ddd5] rounded-xl p-4">
+            <div className="bg-white rounded-xl rounded-tl-none px-4 py-3 shadow-sm max-w-[90%]">
+              <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                {template.body ?? <span className="italic text-gray-400">No body text</span>}
+              </p>
+              <p className="text-[10px] text-gray-400 text-right mt-1.5">WhatsApp template</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,6 +63,7 @@ export default function TemplatesPage() {
   const [provider, setProvider] = useState<string>("");
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
+  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -51,6 +94,7 @@ export default function TemplatesPage() {
 
   return (
     <div>
+      {previewTemplate && <TemplatePreviewModal template={previewTemplate} onClose={() => setPreviewTemplate(null)} />}
       <div className="flex items-start justify-between mb-6 gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Templates</h1>
@@ -171,9 +215,16 @@ export default function TemplatesPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3.5 max-w-xs">
-                      <p className="text-xs text-gray-500 truncate">
-                        {t.body ?? <span className="italic text-gray-300">No body text</span>}
-                      </p>
+                      <button
+                        onClick={() => setPreviewTemplate(t)}
+                        className="flex items-center gap-1.5 text-left group w-full"
+                        title="Preview template"
+                      >
+                        <p className="text-xs text-gray-500 truncate flex-1 group-hover:text-gray-700 transition-colors">
+                          {t.body ?? <span className="italic text-gray-300">No body text</span>}
+                        </p>
+                        {t.body && <Eye className="w-3.5 h-3.5 text-gray-300 group-hover:text-brand transition-colors shrink-0" />}
+                      </button>
                     </td>
                   </tr>
                 );

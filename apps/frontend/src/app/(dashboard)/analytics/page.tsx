@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import {
   BarChart2, TrendingUp, Users, MessageSquare,
-  Eye, CheckCircle2, XCircle, Clock, RefreshCw,
+  Eye, CheckCircle2, XCircle, Clock, RefreshCw, Download, Calendar,
 } from "lucide-react";
 import { SkeletonStatCard } from "@/components/Skeleton";
 
@@ -19,6 +19,14 @@ interface ContactAnalytics {
   total: number;
   optedIn: number;
   tagCounts: Record<string, number>;
+}
+
+interface DailyStats {
+  date: string;
+  sent: number;
+  delivered: number;
+  read: number;
+  failed: number;
 }
 
 const STATUS_ORDER = ["read", "delivered", "sent", "pending", "failed"];
@@ -56,11 +64,35 @@ function StatusBar({ status, count, total }: { status: string; count: number; to
   );
 }
 
+function toInputDate(d: Date) {
+  return d.toISOString().split("T")[0];
+}
+
 export default function AnalyticsPage() {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [contacts, setContacts] = useState<ContactAnalytics | null>(null);
+  const [trend, setTrend] = useState<DailyStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [trendLoading, setTrendLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const defaultTo = toInputDate(new Date());
+  const defaultFrom = toInputDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+  const [dateFrom, setDateFrom] = useState(defaultFrom);
+  const [dateTo, setDateTo] = useState(defaultTo);
+
+  const loadTrend = (from: string, to: string) => {
+    setTrendLoading(true);
+    api.get(`/analytics/messages?from=${from}&to=${to}`)
+      .then((r) => {
+        const data: DailyStats[] = Object.entries(r.data.data as Record<string, Record<string, number>>)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, s]) => ({ date, sent: s.sent ?? 0, delivered: s.delivered ?? 0, read: s.read ?? 0, failed: s.failed ?? 0 }));
+        setTrend(data);
+      })
+      .finally(() => setTrendLoading(false));
+  };
 
   const load = (silent = false) => {
     if (silent) setRefreshing(true);
@@ -74,6 +106,24 @@ export default function AnalyticsPage() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => { loadTrend(dateFrom, dateTo); }, [dateFrom, dateTo]);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get(`/analytics/export?from=${dateFrom}&to=${dateTo}`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `analytics-${dateFrom}-${dateTo}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const trendMax = trend.reduce((m, d) => Math.max(m, d.sent + d.delivered + d.read + d.failed), 1);
 
   const total = overview?.totalMessages ?? 0;
   const delivered = overview?.messagesByStatus?.delivered ?? 0;
@@ -112,19 +162,48 @@ export default function AnalyticsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="page-title">Analytics</h1>
           <p className="page-subtitle">Insights into your messaging performance</p>
         </div>
-        <button
-          onClick={() => load(true)}
-          disabled={refreshing}
-          className="icon-btn"
-          title="Refresh"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-sm shadow-sm">
+            <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="outline-none text-gray-700 bg-transparent text-xs"
+            />
+            <span className="text-gray-300 text-xs">—</span>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="outline-none text-gray-700 bg-transparent text-xs"
+            />
+          </div>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="btn-secondary flex items-center gap-1.5 text-xs py-1.5 px-3"
+            title="Export CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {exporting ? "Exporting…" : "Export CSV"}
+          </button>
+          <button
+            onClick={() => load(true)}
+            disabled={refreshing}
+            className="icon-btn"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* Stat cards */}
@@ -143,6 +222,68 @@ export default function AnalyticsPage() {
                 </div>
               </div>
             ))}
+      </div>
+
+      {/* Message trend chart */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-semibold text-gray-900">Message Trend</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{dateFrom} — {dateTo}</p>
+          </div>
+          <div className="flex items-center gap-3 text-[11px]">
+            {[{ color: "bg-blue-400", label: "Sent" }, { color: "bg-emerald-500", label: "Delivered" }, { color: "bg-brand", label: "Read" }, { color: "bg-red-400", label: "Failed" }].map(({ color, label }) => (
+              <div key={label} className="flex items-center gap-1">
+                <span className={`w-2 h-2 rounded-full ${color}`} />
+                <span className="text-gray-500">{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        {trendLoading ? (
+          <div className="h-40 flex items-end gap-1">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="flex-1 animate-pulse bg-gray-100 rounded-t" style={{ height: `${30 + Math.random() * 70}%` }} />
+            ))}
+          </div>
+        ) : trend.length === 0 ? (
+          <div className="empty-state py-8">
+            <BarChart2 className="empty-icon" />
+            <p className="empty-title">No data for this period</p>
+            <p className="empty-desc">Try a different date range</p>
+          </div>
+        ) : (
+          <div className="flex items-end gap-1 h-40 overflow-x-auto">
+            {trend.map((d) => {
+              const dayTotal = d.sent + d.delivered + d.read + d.failed;
+              const pct = trendMax > 0 ? (dayTotal / trendMax) * 100 : 0;
+              return (
+                <div key={d.date} className="flex-1 min-w-[28px] flex flex-col items-center group relative">
+                  <div
+                    className="w-full rounded-t flex flex-col overflow-hidden transition-all duration-300"
+                    style={{ height: `${Math.max(pct, 2)}%` }}
+                  >
+                    {d.failed > 0 && <div className="bg-red-400" style={{ flex: d.failed }} />}
+                    {d.sent > 0 && <div className="bg-blue-400" style={{ flex: d.sent }} />}
+                    {d.delivered > 0 && <div className="bg-emerald-500" style={{ flex: d.delivered }} />}
+                    {d.read > 0 && <div className="bg-brand" style={{ flex: d.read }} />}
+                  </div>
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 bg-gray-900 text-white text-[10px] rounded-lg px-2 py-1.5 whitespace-nowrap shadow-lg">
+                    <p className="font-semibold mb-0.5">{d.date}</p>
+                    <p>Sent: {d.sent}</p>
+                    <p>Delivered: {d.delivered}</p>
+                    <p>Read: {d.read}</p>
+                    {d.failed > 0 && <p className="text-red-300">Failed: {d.failed}</p>}
+                  </div>
+                  <span className="text-[9px] text-gray-400 mt-1 hidden sm:block truncate w-full text-center">
+                    {d.date.slice(5)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Charts row */}

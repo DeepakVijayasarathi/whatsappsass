@@ -61,6 +61,7 @@ export default function InboxPage() {
   const [loadingConvos, setLoadingConvos] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
   const [search, setSearch] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [replyTemplate, setReplyTemplate] = useState("");
   const [replyLang, setReplyLang] = useState("en_US");
   const [replying, setReplying] = useState(false);
@@ -133,12 +134,11 @@ export default function InboxPage() {
     setShowPicker(false);
   };
 
-  const filtered = search
-    ? conversations.filter((c) =>
-        c.fromPhone.includes(search) ||
-        c.contact?.name.toLowerCase().includes(search.toLowerCase())
-      )
-    : conversations;
+  const filtered = conversations.filter((c) => {
+    if (unreadOnly && c.unreadCount === 0) return false;
+    if (search && !c.fromPhone.includes(search) && !c.contact?.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   return (
     <>
@@ -153,7 +153,20 @@ export default function InboxPage() {
           )}
         >
           <div className="p-4 border-b border-gray-100">
-            <h1 className="text-lg font-bold text-gray-900 mb-3">Inbox</h1>
+            <div className="flex items-center justify-between mb-3">
+              <h1 className="text-lg font-bold text-gray-900">Inbox</h1>
+              <button
+                onClick={() => setUnreadOnly((v) => !v)}
+                className={clsx(
+                  "text-xs font-medium px-2.5 py-1 rounded-full border transition-colors",
+                  unreadOnly
+                    ? "bg-brand text-white border-brand"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-brand hover:text-brand"
+                )}
+              >
+                Unread
+              </button>
+            </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input

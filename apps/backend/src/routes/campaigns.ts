@@ -123,6 +123,33 @@ export async function campaignRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── Duplicate campaign ────────────────────────────────────────────────────
+  app.post(
+    "/:id/duplicate",
+    { preHandler: [checkPermission("can_run_campaigns")] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+      const { id } = request.params as { id: string };
+
+      const existing = await prisma.campaign.findFirst({
+        where: { id, workspaceId: user.workspaceId },
+      });
+      if (!existing) return reply.status(404).send({ error: "Campaign not found" });
+
+      const copy = await prisma.campaign.create({
+        data: {
+          name: `${existing.name} (copy)`,
+          template: existing.template,
+          workspaceId: user.workspaceId,
+          status: "draft",
+          scheduledAt: null,
+        },
+      });
+
+      return reply.status(201).send(copy);
+    }
+  );
+
   app.get(
     "/:id/stats",
     { preHandler: [authenticate] },

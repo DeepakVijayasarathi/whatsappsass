@@ -242,16 +242,16 @@ export default function ContactsPage() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Delete ${selectedIds.size} contact${selectedIds.size > 1 ? "s" : ""}?`)) return;
+    if (!confirm(`Delete ${selectedIds.size} contact${selectedIds.size > 1 ? "s" : ""}? This cannot be undone.`)) return;
     setBulkDeleting(true);
     try {
-      await Promise.all(Array.from(selectedIds).map((id) => api.delete(`/contacts/${id}`)));
-      toast.success(`Deleted ${selectedIds.size} contacts`);
+      const res = await api.delete("/contacts/bulk", { data: { ids: Array.from(selectedIds) } });
+      toast.success(`Deleted ${res.data.deleted} contacts`);
       setSelectedIds(new Set());
-      load(1, search);
       setPage(1);
+      load(1, search);
     } catch {
-      toast.error("Some deletions failed");
+      toast.error("Bulk delete failed");
       load(page, search);
     } finally {
       setBulkDeleting(false);
