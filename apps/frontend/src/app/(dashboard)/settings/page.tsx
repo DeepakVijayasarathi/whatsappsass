@@ -84,13 +84,15 @@ export default function SettingsPage() {
 
       // Pre-fill non-secret fields
       const cfg: ProviderConfig = prov.data;
-      setValue("whatsappProvider", cfg.whatsappProvider);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sv = setValue as (name: string, value: any) => void;
+      sv("whatsappProvider", cfg.whatsappProvider);
       if (cfg.whatsappProvider === "meta") {
-        setValue("metaPhoneNumberId" as never, cfg.metaPhoneNumberId ?? "");
-        setValue("metaWabaId" as never, cfg.metaWabaId ?? "");
-        setValue("metaWebhookVerifyToken" as never, cfg.metaWebhookVerifyToken ?? "");
+        sv("metaPhoneNumberId", cfg.metaPhoneNumberId ?? "");
+        sv("metaWabaId", cfg.metaWabaId ?? "");
+        sv("metaWebhookVerifyToken", cfg.metaWebhookVerifyToken ?? "");
       } else {
-        setValue("msg91IntegratedNumber" as never, cfg.msg91IntegratedNumber ?? "");
+        sv("msg91IntegratedNumber", cfg.msg91IntegratedNumber ?? "");
       }
     });
   };
