@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "@whatsapp-saas/database": "*",
     "bcryptjs": "^2.4.3",
     "fastify": "^4.28.1",
     "@fastify/cors": "^9.0.1",
