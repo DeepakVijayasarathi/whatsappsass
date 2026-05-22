@@ -23,6 +23,9 @@ import {
   LineChart,
   Kanban,
   X,
+  Bot,
+  Webhook,
+  GitBranch,
 } from "lucide-react";
 import { clearAuth, getUser, getWorkspace } from "@/lib/auth";
 import { useInboxNotifications } from "@/lib/useInboxNotifications";
@@ -37,6 +40,9 @@ const navItems = [
   { href: "/crm",              icon: Kanban,          label: "CRM Pipeline",    roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
   { href: "/templates",        icon: FileText,        label: "Templates",       roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
   { href: "/analytics",        icon: BarChart2,       label: "Analytics",       roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/sequences",        icon: GitBranch,       label: "Drip Sequences",  roles: ["owner", "admin", "marketer"], badge: null,    group: "main" },
+  { href: "/auto-replies",     icon: Bot,             label: "Auto-Replies",    roles: ["owner", "admin"],             badge: null,    group: "admin" },
+  { href: "/webhooks",         icon: Webhook,         label: "Webhooks",        roles: ["owner", "admin"],             badge: null,    group: "admin" },
   { href: "/admin/metrics",    icon: LineChart,       label: "Metrics",         roles: ["owner", "admin"],             badge: null,    group: "admin" },
   { href: "/admin/audit-log",  icon: ClipboardList,   label: "Audit Log",       roles: ["owner", "admin"],             badge: null,    group: "admin" },
   { href: "/admin/workspaces", icon: Shield,          label: "Super Admin",     roles: ["owner"],                      badge: null,    group: "admin" },
