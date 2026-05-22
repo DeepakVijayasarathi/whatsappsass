@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import { SkeletonStatCard } from "@/components/Skeleton";
 import { getUser } from "@/lib/auth";
+import OnboardingChecklist from "@/components/OnboardingChecklist";
 
 interface OverviewData {
   totalContacts: number;
@@ -109,6 +110,9 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+
+      {/* ── Onboarding checklist (shown only until all steps complete) ── */}
+      <OnboardingChecklist />
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4">

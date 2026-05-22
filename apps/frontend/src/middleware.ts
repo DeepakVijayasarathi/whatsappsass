@@ -12,6 +12,17 @@ export function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get("token")?.value;
+
+  // Landing page — always public; logged-in users go straight to dashboard
+  if (pathname === "/") {
+    if (token) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
+
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   // Unauthenticated user hitting a protected route → login

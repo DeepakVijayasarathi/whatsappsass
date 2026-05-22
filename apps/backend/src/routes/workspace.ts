@@ -349,4 +349,46 @@ export async function workspaceRoutes(app: FastifyInstance) {
       return reply.send(workspace);
     }
   );
+
+  // ── Onboarding status ──────────────────────────────────────────────────────
+  app.get(
+    "/onboarding-status",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+
+      const [workspace, contactCount, templateCount] = await Promise.all([
+        prisma.workspace.findUnique({
+          where: { id: user.workspaceId },
+          select: {
+            metaPhoneNumberId: true,
+            metaAccessToken: true,
+            msg91AuthKey: true,
+            whatsappProvider: true,
+            metaWhatsappEnabled: true,
+            smtpHost: true,
+          },
+        }),
+        prisma.contact.count({ where: { workspaceId: user.workspaceId } }),
+        prisma.messageTemplate.count({ where: { workspaceId: user.workspaceId } }),
+      ]);
+
+      if (!workspace) return reply.status(404).send({ error: "Not found" });
+
+      const providerConfigured =
+        workspace.whatsappProvider === "meta"
+          ? !!(workspace.metaPhoneNumberId && workspace.metaAccessToken)
+          : !!(workspace.msg91AuthKey);
+
+      return reply.send({
+        steps: {
+          providerConfigured,
+          whatsappEnabled: workspace.metaWhatsappEnabled,
+          hasContacts: contactCount > 0,
+          hasTemplates: templateCount > 0,
+        },
+        counts: { contacts: contactCount, templates: templateCount },
+      });
+    }
+  );
 }
