@@ -8,10 +8,12 @@
     "packages/database"
   ],
   "scripts": {
+    "setup": "node scripts/setup.js",
     "dev": "concurrently \"npm run dev --workspace=apps/backend\" \"npm run dev --workspace=apps/frontend\"",
     "build": "npm run build --workspace=packages/database && npm run build --workspace=apps/backend && npm run build --workspace=apps/frontend",
     "db:generate": "npm run generate --workspace=packages/database",
     "db:migrate": "npm run migrate --workspace=packages/database",
+    "db:migrate:dev": "npm run migrate:dev --workspace=packages/database",
     "db:seed": "npm run seed --workspace=packages/database",
     "db:studio": "npm run studio --workspace=packages/database"
   },
