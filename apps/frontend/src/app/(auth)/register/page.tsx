@@ -2,6 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,7 +12,10 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
 import { brand } from "@/lib/brand";
-import { MessageSquare, ArrowRight, CheckCircle2, Megaphone, Inbox, BarChart2, GitBranch } from "lucide-react";
+import {
+  MessageSquare, ArrowRight, ArrowLeft, CheckCircle2,
+  Megaphone, Inbox, BarChart2, GitBranch, Eye, EyeOff,
+} from "lucide-react";
 
 const schema = z.object({
   name: z.string().min(1, "Name required"),
@@ -22,14 +26,15 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 const leftPerks = [
-  { icon: Megaphone,  text: "WhatsApp & Email campaigns" },
-  { icon: Inbox,      text: "Two-way inbox with auto-replies" },
-  { icon: BarChart2,  text: "Analytics, CRM & drip sequences" },
-  { icon: GitBranch,  text: "No per-message fees, ever" },
+  { icon: Megaphone, text: "WhatsApp & Email campaigns" },
+  { icon: Inbox,     text: "Two-way inbox with auto-replies" },
+  { icon: BarChart2, text: "Analytics, CRM & drip sequences" },
+  { icon: GitBranch, text: "No per-message fees, ever" },
 ];
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [showPass, setShowPass] = useState(false);
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -51,57 +56,53 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen flex bg-white">
 
-      {/* ── Left panel — dark brand ── */}
-      <div className="hidden lg:flex lg:w-[44%] bg-gray-950 flex-col justify-between p-12 relative overflow-hidden">
-        {/* Glow layers */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_0%_0%,rgba(37,211,102,0.20),transparent)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_100%_100%,rgba(18,140,126,0.14),transparent)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.015)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.015)_1px,transparent_1px)] bg-[size:48px_48px]" />
+      {/* ── Left panel ── */}
+      <div className="hidden lg:flex lg:w-[42%] flex-col bg-gray-950 p-14 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_0%_0%,rgba(16,185,129,0.18),transparent)]" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-[radial-gradient(circle,rgba(16,185,129,0.07),transparent_70%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.012)_1px,transparent_1px)] bg-[size:48px_48px]" />
 
         {/* Logo */}
-        <div className="relative">
+        <div className="relative mb-auto">
           <Link href="/" className="inline-flex items-center gap-2.5 group">
-            <div className="w-9 h-9 bg-gradient-to-br from-brand to-brand-dark rounded-xl flex items-center justify-center shadow-lg shadow-brand/30">
-              <MessageSquare style={{ width: 18, height: 18 }} className="text-white" />
+            <div className="w-9 h-9 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/50">
+              <MessageSquare className="text-white" style={{ width: 18, height: 18 }} />
             </div>
-            <span className="font-black text-white tracking-tight group-hover:text-brand transition-colors">
+            <span className="font-black text-white tracking-tight group-hover:text-emerald-400 transition-colors">
               {brand.name}
             </span>
           </Link>
         </div>
 
         {/* Content */}
-        <div className="relative space-y-8">
-          <div>
-            <p className="text-brand text-xs font-black uppercase tracking-widest mb-3">Free forever</p>
-            <h2 className="text-4xl font-black text-white leading-tight">
-              Everything you need<br />to grow on WhatsApp
-            </h2>
-            <p className="text-gray-400 text-sm leading-relaxed mt-4 max-w-xs">
-              One dashboard for campaigns, inbox, CRM, and automation. Self-hosted, no per-message fees.
-            </p>
-          </div>
-
-          <ul className="space-y-3">
+        <div className="relative py-16">
+          <p className="text-emerald-500 text-[11px] font-black uppercase tracking-widest mb-4">Free forever</p>
+          <h2 className="text-4xl font-black text-white leading-tight mb-5">
+            Everything you need<br />to grow on WhatsApp
+          </h2>
+          <p className="text-gray-400 text-sm leading-relaxed mb-10 max-w-xs">
+            One dashboard for campaigns, inbox, CRM, and automation. Self-hosted, no per-message fees.
+          </p>
+          <ul className="space-y-4 mb-10">
             {leftPerks.map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-lg bg-brand/15 flex items-center justify-center shrink-0">
-                  <Icon className="w-3.5 h-3.5 text-brand" />
+                <div className="w-7 h-7 rounded-lg bg-emerald-600/20 border border-emerald-600/20 flex items-center justify-center shrink-0">
+                  <Icon className="w-3.5 h-3.5 text-emerald-400" />
                 </div>
-                <span className="text-sm text-gray-300 font-medium">{text}</span>
+                <span className="text-sm text-gray-300">{text}</span>
               </li>
             ))}
           </ul>
 
-          {/* Mini stat strip */}
-          <div className="grid grid-cols-2 gap-3 pt-2">
+          {/* Stat grid */}
+          <div className="grid grid-cols-2 gap-3">
             {[
-              { v: "∞", l: "Contacts" },
+              { v: "∞",  l: "Contacts" },
               { v: "0₹", l: "Per-message" },
               { v: "9+", l: "Features" },
-              { v: "2", l: "Providers" },
+              { v: "2",  l: "Providers" },
             ].map(({ v, l }) => (
-              <div key={l} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+              <div key={l} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3">
                 <p className="text-xl font-black text-white">{v}</p>
                 <p className="text-[11px] text-gray-500 font-medium mt-0.5">{l}</p>
               </div>
@@ -109,164 +110,148 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Bottom */}
         <div className="relative">
           <p className="text-gray-600 text-xs">Self-hosted · Your data, your rules</p>
         </div>
       </div>
 
-      {/* ── Right panel — form ── */}
-      <div className="flex-1 flex items-center justify-center p-6 bg-gray-50 relative">
-        {/* Back to home */}
-        <Link
-          href="/"
-          className="absolute top-6 left-6 text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1.5 transition-colors"
-        >
-          ← Home
-        </Link>
-
-        <div className="w-full max-w-md">
+      {/* ── Right panel ── */}
+      <div className="flex-1 flex flex-col bg-gray-50">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 bg-white">
+          <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors font-medium">
+            <ArrowLeft className="w-4 h-4" />
+            Home
+          </Link>
           {/* Mobile logo */}
-          <div className="flex items-center gap-2 mb-10 lg:hidden">
-            <div className="w-8 h-8 bg-gradient-to-br from-brand to-brand-dark rounded-xl flex items-center justify-center shadow-sm shadow-brand/30">
-              <MessageSquare className="w-4 h-4 text-white" />
+          <div className="flex items-center gap-2 lg:hidden">
+            <div className="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center">
+              <MessageSquare className="w-3.5 h-3.5 text-white" />
             </div>
-            <span className="font-black text-gray-900">{brand.name}</span>
+            <span className="font-black text-gray-900 text-sm">{brand.name}</span>
           </div>
+          <div className="text-sm text-gray-500">
+            Have an account?{" "}
+            <Link href="/login" className="text-emerald-600 font-bold hover:text-emerald-700 transition-colors">
+              Sign in
+            </Link>
+          </div>
+        </div>
 
-          {/* Heading */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-black text-gray-900">Create your account</h1>
-            <p className="text-gray-500 text-sm mt-2">
-              Already have one?{" "}
-              <Link href="/login" className="text-brand font-bold hover:underline underline-offset-2">
-                Sign in →
-              </Link>
+        {/* Form area */}
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="w-full max-w-md">
+            <div className="mb-8">
+              <h1 className="text-2xl font-black text-gray-900">Create your account</h1>
+              <p className="text-gray-500 text-sm mt-1.5">Start free — no credit card required</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+
+                {/* Name + Workspace row */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Full name</label>
+                    <input
+                      {...register("name")}
+                      className="w-full px-3.5 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all placeholder:text-gray-400"
+                      placeholder="Jane Doe"
+                      autoFocus
+                      autoComplete="name"
+                    />
+                    {errors.name && (
+                      <p className="text-red-500 text-xs mt-1.5">{errors.name.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Workspace</label>
+                    <input
+                      {...register("workspaceName")}
+                      className="w-full px-3.5 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all placeholder:text-gray-400"
+                      placeholder="My Business"
+                      autoComplete="organization"
+                    />
+                    {errors.workspaceName && (
+                      <p className="text-red-500 text-xs mt-1.5">{errors.workspaceName.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Work email</label>
+                  <input
+                    {...register("email")}
+                    type="email"
+                    className="w-full px-3.5 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all placeholder:text-gray-400"
+                    placeholder="you@company.com"
+                    autoComplete="email"
+                  />
+                  {errors.email && (
+                    <p className="text-red-500 text-xs mt-1.5">{errors.email.message}</p>
+                  )}
+                </div>
+
+                {/* Password */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-gray-700">Password</label>
+                    <span className="text-[11px] text-gray-400">min. 8 characters</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      {...register("password")}
+                      type={showPass ? "text" : "password"}
+                      className="w-full px-3.5 py-2.5 pr-11 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all placeholder:text-gray-400"
+                      placeholder="••••••••"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {errors.password && (
+                    <p className="text-red-500 text-xs mt-1.5">{errors.password.message}</p>
+                  )}
+                </div>
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2.5 rounded-xl shadow-sm shadow-emerald-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-60 disabled:translate-y-0 disabled:shadow-none mt-1"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Creating account…
+                    </>
+                  ) : (
+                    <>Create free account <ArrowRight className="w-4 h-4" /></>
+                  )}
+                </button>
+              </form>
+
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center justify-center gap-4">
+                {brand.authPerks.slice(0, 3).map((perk) => (
+                  <div key={perk} className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    <span className="text-[11px] text-gray-500 font-medium">{perk}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-center text-xs text-gray-400 mt-4">
+              By creating an account you agree to our terms of service.
             </p>
           </div>
-
-          {/* Form card */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-7">
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-
-              {/* Name + Workspace row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
-                    Full name
-                  </label>
-                  <input
-                    {...register("name")}
-                    className="input"
-                    placeholder="Jane Doe"
-                    autoFocus
-                    autoComplete="name"
-                  />
-                  {errors.name && (
-                    <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1">
-                      <span className="w-1 h-1 rounded-full bg-red-500 shrink-0" />
-                      {errors.name.message}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
-                    Workspace
-                  </label>
-                  <input
-                    {...register("workspaceName")}
-                    className="input"
-                    placeholder="My Business"
-                    autoComplete="organization"
-                  />
-                  {errors.workspaceName && (
-                    <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1">
-                      <span className="w-1 h-1 rounded-full bg-red-500 shrink-0" />
-                      {errors.workspaceName.message}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
-                  Work email
-                </label>
-                <input
-                  {...register("email")}
-                  type="email"
-                  className="input"
-                  placeholder="you@company.com"
-                  autoComplete="email"
-                />
-                {errors.email && (
-                  <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1">
-                    <span className="w-1 h-1 rounded-full bg-red-500 shrink-0" />
-                    {errors.email.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Password */}
-              <div>
-                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
-                  Password
-                  <span className="ml-1.5 text-gray-400 normal-case font-normal tracking-normal">min. 8 characters</span>
-                </label>
-                <input
-                  {...register("password")}
-                  type="password"
-                  className="input"
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                />
-                {errors.password && (
-                  <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1">
-                    <span className="w-1 h-1 rounded-full bg-red-500 shrink-0" />
-                    {errors.password.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-brand to-brand-dark text-white font-bold py-3 rounded-xl shadow-md shadow-brand/25 hover:shadow-lg hover:shadow-brand/30 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-60 disabled:translate-y-0 disabled:shadow-none mt-2"
-              >
-                {isSubmitting ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Creating account…
-                  </span>
-                ) : (
-                  <>Create free account <ArrowRight className="w-4 h-4" /></>
-                )}
-              </button>
-            </form>
-
-            {/* Divider */}
-            <div className="flex items-center gap-3 mt-5">
-              <div className="flex-1 h-px bg-gray-100" />
-              <span className="text-xs text-gray-400 font-medium">no credit card required</span>
-              <div className="flex-1 h-px bg-gray-100" />
-            </div>
-
-            {/* Perks row */}
-            <div className="mt-4 flex flex-wrap justify-center gap-3">
-              {brand.authPerks.slice(0, 3).map((perk) => (
-                <div key={perk} className="flex items-center gap-1.5 text-[11px] text-gray-500 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-brand shrink-0" />
-                  {perk}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <p className="text-center text-xs text-gray-400 mt-4">
-            By creating an account you agree to our terms of service.
-          </p>
         </div>
       </div>
     </div>
