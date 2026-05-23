@@ -242,12 +242,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
           whatsappProvider: z.literal("meta"),
           metaPhoneNumberId: z.string().min(1, "Phone Number ID required"),
           metaWabaId: z.string().min(1, "WABA ID required"),
-          metaAccessToken: z.string().min(1, "Access Token required"),
+          metaAccessToken: z.string().optional(),
           metaWebhookVerifyToken: z.string().min(1, "Webhook Verify Token required"),
         }),
         z.object({
           whatsappProvider: z.literal("msg91"),
-          msg91AuthKey: z.string().min(1, "Auth key required"),
+          msg91AuthKey: z.string().optional(),
           msg91IntegratedNumber: z.string().min(7, "Integrated number required"),
         }),
       ]);
@@ -257,20 +257,32 @@ export async function workspaceRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
+      // Fetch existing workspace so we can keep the stored secret if none provided
+      const existing = await prisma.workspace.findUnique({
+        where: { id: user.workspaceId },
+        select: { metaAccessToken: true, msg91AuthKey: true },
+      });
+
       const updateData =
         parsed.data.whatsappProvider === "meta"
           ? {
               whatsappProvider: "meta" as const,
               metaPhoneNumberId: parsed.data.metaPhoneNumberId,
               metaWabaId: parsed.data.metaWabaId,
-              metaAccessToken: parsed.data.metaAccessToken,
+              metaAccessToken:
+                parsed.data.metaAccessToken && parsed.data.metaAccessToken.length > 0
+                  ? parsed.data.metaAccessToken
+                  : (existing?.metaAccessToken ?? ""),
               metaWebhookVerifyToken: parsed.data.metaWebhookVerifyToken,
               msg91AuthKey: null,
               msg91IntegratedNumber: null,
             }
           : {
               whatsappProvider: "msg91" as const,
-              msg91AuthKey: parsed.data.msg91AuthKey,
+              msg91AuthKey:
+                parsed.data.msg91AuthKey && parsed.data.msg91AuthKey.length > 0
+                  ? parsed.data.msg91AuthKey
+                  : (existing?.msg91AuthKey ?? ""),
               msg91IntegratedNumber: parsed.data.msg91IntegratedNumber,
               metaPhoneNumberId: null,
               metaWabaId: null,

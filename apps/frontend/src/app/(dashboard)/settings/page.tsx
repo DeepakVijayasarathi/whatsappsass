@@ -19,12 +19,12 @@ const providerSchema = z.discriminatedUnion("whatsappProvider", [
     whatsappProvider: z.literal("meta"),
     metaPhoneNumberId: z.string().min(1, "Phone Number ID required"),
     metaWabaId: z.string().min(1, "WABA ID required"),
-    metaAccessToken: z.string().min(1, "Access Token required"),
+    metaAccessToken: z.string().optional(),
     metaWebhookVerifyToken: z.string().min(1, "Webhook Verify Token required"),
   }),
   z.object({
     whatsappProvider: z.literal("msg91"),
-    msg91AuthKey: z.string().min(1, "Auth key required"),
+    msg91AuthKey: z.string().optional(),
     msg91IntegratedNumber: z.string().min(7, "Integrated number required"),
   }),
 ]);
@@ -279,8 +279,8 @@ export default function SettingsPage() {
                         : undefined}
                     />
                     <Field
-                      label="Access Token"
-                      placeholder="EAAxxxxxxxx..."
+                      label="Access Token (leave blank to keep existing)"
+                      placeholder="EAAxxxxxxxx…  (only fill to change)"
                       mono
                       type="password"
                       {...regProvider("metaAccessToken" as never)}
@@ -298,7 +298,7 @@ export default function SettingsPage() {
                         : undefined}
                     />
                     <p className="text-xs text-gray-400">
-                      Access Token is write-only and never returned by the API.
+                      Access Token is write-only. Leave blank to keep the stored token.
                     </p>
                   </div>
                 )}
@@ -307,8 +307,8 @@ export default function SettingsPage() {
                 {selectedProvider === "msg91" && (
                   <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
                     <Field
-                      label="MSG91 Auth Key"
-                      placeholder="your_msg91_auth_key"
+                      label="MSG91 Auth Key (leave blank to keep existing)"
+                      placeholder="your_msg91_auth_key  (only fill to change)"
                       mono
                       type="password"
                       {...regProvider("msg91AuthKey" as never)}
@@ -326,7 +326,7 @@ export default function SettingsPage() {
                         : undefined}
                     />
                     <p className="text-xs text-gray-400">
-                      Auth key is write-only and never returned by the API.
+                      Auth key is write-only. Leave blank to keep the stored key.
                     </p>
                   </div>
                 )}
