@@ -14,20 +14,27 @@ const licenseSchema = z.object({
 });
 type LicenseForm = z.infer<typeof licenseSchema>;
 
-const providerSchema = z.discriminatedUnion("whatsappProvider", [
-  z.object({
-    whatsappProvider: z.literal("meta"),
-    metaPhoneNumberId: z.string().min(1, "Phone Number ID required"),
-    metaWabaId: z.string().min(1, "WABA ID required"),
-    metaAccessToken: z.string().optional(),
-    metaWebhookVerifyToken: z.string().min(1, "Webhook Verify Token required"),
-  }),
-  z.object({
-    whatsappProvider: z.literal("msg91"),
-    msg91AuthKey: z.string().optional(),
-    msg91IntegratedNumber: z.string().min(7, "Integrated number required"),
-  }),
-]);
+const providerSchema = z.object({
+  whatsappProvider: z.enum(["meta", "msg91"]),
+  metaPhoneNumberId: z.string().optional(),
+  metaWabaId: z.string().optional(),
+  metaAccessToken: z.string().optional(),
+  metaWebhookVerifyToken: z.string().optional(),
+  msg91AuthKey: z.string().optional(),
+  msg91IntegratedNumber: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.whatsappProvider === "meta") {
+    if (!data.metaPhoneNumberId?.trim())
+      ctx.addIssue({ path: ["metaPhoneNumberId"], code: "custom", message: "Phone Number ID required" });
+    if (!data.metaWabaId?.trim())
+      ctx.addIssue({ path: ["metaWabaId"], code: "custom", message: "WABA ID required" });
+    if (!data.metaWebhookVerifyToken?.trim())
+      ctx.addIssue({ path: ["metaWebhookVerifyToken"], code: "custom", message: "Webhook Verify Token required" });
+  } else {
+    if (!data.msg91IntegratedNumber?.trim() || data.msg91IntegratedNumber.trim().length < 7)
+      ctx.addIssue({ path: ["msg91IntegratedNumber"], code: "custom", message: "Integrated number required" });
+  }
+});
 type ProviderForm = z.infer<typeof providerSchema>;
 
 interface ProviderConfig {
@@ -58,6 +65,7 @@ export default function SettingsPage() {
     handleSubmit: handleProvider,
     watch,
     setValue,
+    clearErrors,
     formState: { errors: providerErrors, isSubmitting: providerSubmitting },
   } = useForm<ProviderForm>({
     resolver: zodResolver(providerSchema),
@@ -67,7 +75,9 @@ export default function SettingsPage() {
       metaWabaId: "",
       metaAccessToken: "",
       metaWebhookVerifyToken: "",
-    } as ProviderForm,
+      msg91AuthKey: "",
+      msg91IntegratedNumber: "",
+    },
   });
 
   const selectedProvider = watch("whatsappProvider");
@@ -84,18 +94,13 @@ export default function SettingsPage() {
 
       // Pre-fill non-secret fields
       const cfg: ProviderConfig = prov.data;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sv = setValue as (name: string, value: any) => void;
-      sv("whatsappProvider", cfg.whatsappProvider);
-      if (cfg.whatsappProvider === "meta") {
-        sv("metaPhoneNumberId", cfg.metaPhoneNumberId ?? "");
-        sv("metaWabaId", cfg.metaWabaId ?? "");
-        sv("metaWebhookVerifyToken", cfg.metaWebhookVerifyToken ?? "");
-        sv("metaAccessToken", "");
-      } else {
-        sv("msg91IntegratedNumber", cfg.msg91IntegratedNumber ?? "");
-        sv("msg91AuthKey", "");
-      }
+      setValue("whatsappProvider", cfg.whatsappProvider);
+      setValue("metaPhoneNumberId", cfg.metaPhoneNumberId ?? "");
+      setValue("metaWabaId", cfg.metaWabaId ?? "");
+      setValue("metaWebhookVerifyToken", cfg.metaWebhookVerifyToken ?? "");
+      setValue("metaAccessToken", "");
+      setValue("msg91IntegratedNumber", cfg.msg91IntegratedNumber ?? "");
+      setValue("msg91AuthKey", "");
     });
   };
 
@@ -248,6 +253,10 @@ export default function SettingsPage() {
                         type="radio"
                         value={p}
                         className="accent-brand"
+                        onChange={(e) => {
+                          regProvider("whatsappProvider").onChange(e);
+                          clearErrors();
+                        }}
                       />
                       <div>
                         <p className="text-sm font-semibold text-gray-900 uppercase">{p}</p>
@@ -266,38 +275,30 @@ export default function SettingsPage() {
                       label="Phone Number ID"
                       placeholder="1234567890"
                       mono
-                      {...regProvider("metaPhoneNumberId" as never)}
-                      error={"metaPhoneNumberId" in providerErrors
-                        ? (providerErrors as { metaPhoneNumberId?: { message?: string } }).metaPhoneNumberId?.message
-                        : undefined}
+                      {...regProvider("metaPhoneNumberId")}
+                      error={providerErrors.metaPhoneNumberId?.message}
                     />
                     <Field
                       label="WhatsApp Business Account (WABA) ID"
                       placeholder="102290129340823"
                       mono
-                      {...regProvider("metaWabaId" as never)}
-                      error={"metaWabaId" in providerErrors
-                        ? (providerErrors as { metaWabaId?: { message?: string } }).metaWabaId?.message
-                        : undefined}
+                      {...regProvider("metaWabaId")}
+                      error={providerErrors.metaWabaId?.message}
                     />
                     <Field
                       label="Access Token (leave blank to keep existing)"
                       placeholder="EAAxxxxxxxx…  (only fill to change)"
                       mono
                       type="password"
-                      {...regProvider("metaAccessToken" as never)}
-                      error={"metaAccessToken" in providerErrors
-                        ? (providerErrors as { metaAccessToken?: { message?: string } }).metaAccessToken?.message
-                        : undefined}
+                      {...regProvider("metaAccessToken")}
+                      error={providerErrors.metaAccessToken?.message}
                     />
                     <Field
                       label="Webhook Verify Token"
                       placeholder="my_random_verify_token"
                       mono
-                      {...regProvider("metaWebhookVerifyToken" as never)}
-                      error={"metaWebhookVerifyToken" in providerErrors
-                        ? (providerErrors as { metaWebhookVerifyToken?: { message?: string } }).metaWebhookVerifyToken?.message
-                        : undefined}
+                      {...regProvider("metaWebhookVerifyToken")}
+                      error={providerErrors.metaWebhookVerifyToken?.message}
                     />
                     <p className="text-xs text-gray-400">
                       Access Token is write-only. Leave blank to keep the stored token.
@@ -313,18 +314,14 @@ export default function SettingsPage() {
                       placeholder="your_msg91_auth_key  (only fill to change)"
                       mono
                       type="password"
-                      {...regProvider("msg91AuthKey" as never)}
-                      error={"msg91AuthKey" in providerErrors
-                        ? (providerErrors as { msg91AuthKey?: { message?: string } }).msg91AuthKey?.message
-                        : undefined}
+                      {...regProvider("msg91AuthKey")}
+                      error={providerErrors.msg91AuthKey?.message}
                     />
                     <Field
                       label="Integrated Number"
                       placeholder="91XXXXXXXXXX"
-                      {...regProvider("msg91IntegratedNumber" as never)}
-                      error={"msg91IntegratedNumber" in providerErrors
-                        ? (providerErrors as { msg91IntegratedNumber?: { message?: string } }).msg91IntegratedNumber?.message
-                        : undefined}
+                      {...regProvider("msg91IntegratedNumber")}
+                      error={providerErrors.msg91IntegratedNumber?.message}
                     />
                     <p className="text-xs text-gray-400">
                       Auth key is write-only. Leave blank to keep the stored key.
