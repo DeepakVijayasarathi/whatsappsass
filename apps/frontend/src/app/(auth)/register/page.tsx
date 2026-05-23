@@ -14,7 +14,7 @@ import { setAuth } from "@/lib/auth";
 import { brand } from "@/lib/brand";
 import {
   MessageSquare, ArrowRight, ArrowLeft, CheckCircle2,
-  Megaphone, Inbox, BarChart2, GitBranch, Eye, EyeOff,
+  Megaphone, Inbox, BarChart2, Kanban, Eye, EyeOff, Shield,
 } from "lucide-react";
 
 const schema = z.object({
@@ -28,8 +28,9 @@ type FormData = z.infer<typeof schema>;
 const leftPerks = [
   { icon: Megaphone, text: "WhatsApp & Email campaigns" },
   { icon: Inbox,     text: "Two-way inbox with auto-replies" },
-  { icon: BarChart2, text: "Analytics, CRM & drip sequences" },
-  { icon: GitBranch, text: "No per-message fees, ever" },
+  { icon: Kanban,    text: "CRM pipeline + drip sequences" },
+  { icon: BarChart2, text: "Analytics, audit log & webhooks" },
+  { icon: Shield,    text: "Self-hosted — no per-message fees" },
 ];
 
 export default function RegisterPage() {
@@ -54,16 +55,16 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex bg-white">
+    <div className="h-screen flex bg-white overflow-hidden">
 
       {/* ── Left panel ── */}
-      <div className="hidden lg:flex lg:w-[42%] flex-col bg-gray-950 p-14 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-[42%] flex-col bg-gray-950 p-14 relative overflow-hidden overflow-y-auto">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_0%_0%,rgba(16,185,129,0.18),transparent)]" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-[radial-gradient(circle,rgba(16,185,129,0.07),transparent_70%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.012)_1px,transparent_1px)] bg-[size:48px_48px]" />
 
         {/* Logo */}
-        <div className="relative mb-auto">
+        <div className="relative shrink-0">
           <Link href="/" className="inline-flex items-center gap-2.5 group">
             <div className="w-9 h-9 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/50">
               <MessageSquare className="text-white" style={{ width: 18, height: 18 }} />
@@ -75,15 +76,15 @@ export default function RegisterPage() {
         </div>
 
         {/* Content */}
-        <div className="relative py-16">
+        <div className="relative flex-1 flex flex-col justify-center py-10">
           <p className="text-emerald-500 text-[11px] font-black uppercase tracking-widest mb-4">Free forever</p>
-          <h2 className="text-4xl font-black text-white leading-tight mb-5">
-            Everything you need<br />to grow on WhatsApp
+          <h2 className="text-3xl font-black text-white leading-tight mb-4">
+            14 features,<br />one dashboard
           </h2>
-          <p className="text-gray-400 text-sm leading-relaxed mb-10 max-w-xs">
-            One dashboard for campaigns, inbox, CRM, and automation. Self-hosted, no per-message fees.
+          <p className="text-gray-400 text-sm leading-relaxed mb-8 max-w-xs">
+            Campaigns, inbox, CRM, drip sequences, analytics, team roles — all self-hosted on your server.
           </p>
-          <ul className="space-y-4 mb-10">
+          <ul className="space-y-3 mb-8">
             {leftPerks.map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-lg bg-emerald-600/20 border border-emerald-600/20 flex items-center justify-center shrink-0">
@@ -97,14 +98,14 @@ export default function RegisterPage() {
           {/* Stat grid */}
           <div className="grid grid-cols-2 gap-3">
             {[
-              { v: "∞",  l: "Contacts" },
-              { v: "0₹", l: "Per-message" },
-              { v: "9+", l: "Features" },
-              { v: "2",  l: "Providers" },
+              { v: "∞",   l: "Contacts" },
+              { v: "0₹",  l: "Per-message" },
+              { v: "14",  l: "Features" },
+              { v: "2",   l: "WA providers" },
             ].map(({ v, l }) => (
-              <div key={l} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3">
+              <div key={l} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
                 <p className="text-xl font-black text-white">{v}</p>
-                <p className="text-[11px] text-gray-500 font-medium mt-0.5">{l}</p>
+                <p className="text-[11px] text-gray-400 font-medium mt-0.5">{l}</p>
               </div>
             ))}
           </div>
@@ -117,9 +118,9 @@ export default function RegisterPage() {
       </div>
 
       {/* ── Right panel ── */}
-      <div className="flex-1 flex flex-col bg-gray-50">
+      <div className="flex-1 flex flex-col bg-gray-50 overflow-y-auto">
         {/* Top bar */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 bg-white">
+        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 bg-white shrink-0">
           <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors font-medium">
             <ArrowLeft className="w-4 h-4" />
             Home

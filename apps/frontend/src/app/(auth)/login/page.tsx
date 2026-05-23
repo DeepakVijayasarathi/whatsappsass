@@ -10,7 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
 import { brand } from "@/lib/brand";
-import { MessageSquare, ArrowRight, ArrowLeft, Eye, EyeOff, Zap, Shield, Globe } from "lucide-react";
+import { MessageSquare, ArrowRight, ArrowLeft, Eye, EyeOff, Megaphone, Inbox, BarChart2, Shield } from "lucide-react";
 
 const schema = z.object({
   email: z.string().email("Invalid email"),
@@ -19,9 +19,10 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 const perks = [
-  { icon: Zap,    text: "Meta Cloud API & MSG91 supported" },
-  { icon: Shield, text: "Multi-tenant workspaces" },
-  { icon: Globe,  text: "Self-hosted — your data, your rules" },
+  { icon: Megaphone, text: "Campaigns, inbox & CRM in one place" },
+  { icon: Inbox,     text: "Two-way inbox with auto-replies" },
+  { icon: BarChart2, text: "Analytics, audit log & webhooks" },
+  { icon: Shield,    text: "Self-hosted — your data, your rules" },
 ];
 
 function LoginForm() {
@@ -52,7 +53,7 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex bg-white">
+    <div className="h-screen flex bg-white overflow-hidden">
 
       {/* ── Left panel ── */}
       <div className="hidden lg:flex lg:w-[45%] flex-col bg-gray-950 p-14 relative overflow-hidden">
@@ -61,7 +62,7 @@ function LoginForm() {
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.012)_1px,transparent_1px)] bg-[size:48px_48px]" />
 
         {/* Logo */}
-        <div className="relative mb-auto">
+        <div className="relative shrink-0">
           <Link href="/" className="inline-flex items-center gap-2.5 group">
             <div className="w-9 h-9 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/50">
               <MessageSquare className="text-white" style={{ width: 18, height: 18 }} />
@@ -73,15 +74,15 @@ function LoginForm() {
         </div>
 
         {/* Content */}
-        <div className="relative py-16">
+        <div className="relative flex-1 flex flex-col justify-center py-10">
           <p className="text-emerald-500 text-[11px] font-black uppercase tracking-widest mb-4">Welcome back</p>
-          <h2 className="text-4xl font-black text-white leading-tight mb-5">
+          <h2 className="text-3xl font-black text-white leading-tight mb-4">
             Your workspace<br />is waiting
           </h2>
-          <p className="text-gray-400 text-sm leading-relaxed mb-10 max-w-xs">
-            Sign in to manage campaigns, contacts, and conversations — all in one place.
+          <p className="text-gray-400 text-sm leading-relaxed mb-8 max-w-xs">
+            14 features. One dashboard. Your server.
           </p>
-          <ul className="space-y-4">
+          <ul className="space-y-3.5">
             {perks.map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-lg bg-emerald-600/20 border border-emerald-600/20 flex items-center justify-center shrink-0">
@@ -100,9 +101,9 @@ function LoginForm() {
       </div>
 
       {/* ── Right panel ── */}
-      <div className="flex-1 flex flex-col bg-gray-50">
+      <div className="flex-1 flex flex-col bg-gray-50 overflow-y-auto">
         {/* Top bar */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 bg-white">
+        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 bg-white shrink-0">
           <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors font-medium">
             <ArrowLeft className="w-4 h-4" />
             Home
