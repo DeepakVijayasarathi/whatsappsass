@@ -91,8 +91,10 @@ export default function SettingsPage() {
         sv("metaPhoneNumberId", cfg.metaPhoneNumberId ?? "");
         sv("metaWabaId", cfg.metaWabaId ?? "");
         sv("metaWebhookVerifyToken", cfg.metaWebhookVerifyToken ?? "");
+        sv("metaAccessToken", "");
       } else {
         sv("msg91IntegratedNumber", cfg.msg91IntegratedNumber ?? "");
+        sv("msg91AuthKey", "");
       }
     });
   };
@@ -320,7 +322,6 @@ export default function SettingsPage() {
                       label="Integrated Number"
                       placeholder="91XXXXXXXXXX"
                       {...regProvider("msg91IntegratedNumber" as never)}
-                      defaultValue={providerConfig?.msg91IntegratedNumber ?? ""}
                       error={"msg91IntegratedNumber" in providerErrors
                         ? (providerErrors as { msg91IntegratedNumber?: { message?: string } }).msg91IntegratedNumber?.message
                         : undefined}
