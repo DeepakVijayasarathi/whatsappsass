@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Shield, Key, Wifi, RefreshCw, Building2, Mail, CheckCircle2 } from "lucide-react";
+import { Shield, Key, Wifi, RefreshCw, Building2, Mail, CheckCircle2, UserCog, Eye, EyeOff } from "lucide-react";
 import clsx from "clsx";
 
 const licenseSchema = z.object({
@@ -58,7 +58,7 @@ export default function SettingsPage() {
   const [metaEnabled, setMetaEnabled] = useState(false);
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
   const [toggling, setToggling] = useState(false);
-  const [activeTab, setActiveTab] = useState<"provider" | "email" | "workspace" | "license">("provider");
+  const [activeTab, setActiveTab] = useState<"provider" | "email" | "workspace" | "account" | "license">("provider");
 
   const {
     register: regLicense,
@@ -164,6 +164,7 @@ export default function SettingsPage() {
     { id: "provider",  label: "WhatsApp Provider" },
     { id: "email",     label: "Email (SMTP)" },
     { id: "workspace", label: "Workspace" },
+    { id: "account",   label: "Account" },
     { id: "license",   label: "License" },
   ] as const;
 
@@ -357,6 +358,9 @@ export default function SettingsPage() {
           <WorkspaceSettings />
         )}
 
+        {/* ── Account tab ── */}
+        {activeTab === "account" && <AccountSettings />}
+
         {/* ── License tab ── */}
         {activeTab === "license" && (
           <div className="card">
@@ -504,6 +508,157 @@ function WorkspaceSettings() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Account / password settings sub-component ─────────────────────────────────
+function AccountSettings() {
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew]         = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const schema = z.object({
+    name:            z.string().min(1, "Name is required"),
+    currentPassword: z.string().min(1, "Enter your current password"),
+    newPassword:     z.string().min(8, "At least 8 characters"),
+    confirmPassword: z.string(),
+  }).refine((d) => d.newPassword === d.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match",
+  });
+  type AccountForm = z.infer<typeof schema>;
+
+  // Load current user name
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<AccountForm>({
+    resolver: zodResolver(schema),
+    defaultValues: async () => {
+      try {
+        const r = await api.get("/workspace/profile");
+        return { name: r.data.name ?? "", currentPassword: "", newPassword: "", confirmPassword: "" };
+      } catch {
+        return { name: "", currentPassword: "", newPassword: "", confirmPassword: "" };
+      }
+    },
+  });
+
+  const save = async (data: AccountForm) => {
+    try {
+      await api.patch("/workspace/profile", {
+        name: data.name.trim(),
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+      });
+      toast.success("Password changed successfully");
+      reset({ name: data.name.trim(), currentPassword: "", newPassword: "", confirmPassword: "" });
+    } catch (err: unknown) {
+      toast.error(
+        (err as { response?: { data?: { error?: string } } }).response?.data?.error ??
+          "Failed to update account"
+      );
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-9 h-9 bg-indigo-50 rounded-xl flex items-center justify-center">
+          <UserCog className="w-5 h-5 text-indigo-500" />
+        </div>
+        <div>
+          <p className="font-semibold text-gray-900">Account</p>
+          <p className="text-xs text-gray-400">Update your display name and password</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit(save)} className="space-y-4">
+        {/* Name */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Display name</label>
+          <input {...register("name")} className="input" placeholder="Your name" />
+          {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-sm font-medium text-gray-700 mb-3">Change password</p>
+
+          {/* Current password */}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Current password</label>
+              <div className="relative">
+                <input
+                  {...register("currentPassword")}
+                  type={showCurrent ? "text" : "password"}
+                  className="input pr-10"
+                  placeholder="Enter current password"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrent((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {errors.currentPassword && <p className="text-red-500 text-xs mt-1">{errors.currentPassword.message}</p>}
+            </div>
+
+            {/* New password */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">New password</label>
+              <div className="relative">
+                <input
+                  {...register("newPassword")}
+                  type={showNew ? "text" : "password"}
+                  className="input pr-10"
+                  placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNew((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {errors.newPassword && <p className="text-red-500 text-xs mt-1">{errors.newPassword.message}</p>}
+            </div>
+
+            {/* Confirm password */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
+              <div className="relative">
+                <input
+                  {...register("confirmPassword")}
+                  type={showConfirm ? "text" : "password"}
+                  className="input pr-10"
+                  placeholder="Re-enter new password"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword.message}</p>}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-3 bg-amber-50 rounded-lg text-xs text-amber-700">
+          Default credentials are <span className="font-mono font-semibold">admin@demo.com / admin123</span> — change your password immediately after first login.
+        </div>
+
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
+          {isSubmitting ? "Saving..." : "Save changes"}
+        </button>
+      </form>
     </div>
   );
 }
