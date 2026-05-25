@@ -252,7 +252,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <form onSubmit={handleProvider(saveProvider)} className="space-y-4">
+              <form onSubmit={handleProvider(saveProvider)} className="space-y-4" autoComplete="off">
                 {/* Provider toggle buttons */}
                 <div className="grid grid-cols-2 gap-3">
                   {(["meta", "msg91"] as const).map((p) => (
@@ -311,6 +311,7 @@ export default function SettingsPage() {
                         : "EAAxxxxxxxx…"}
                       mono
                       type="password"
+                      autoComplete="new-password"
                       {...regProvider("metaAccessToken")}
                       error={providerErrors.metaAccessToken}
                     />
@@ -339,12 +340,14 @@ export default function SettingsPage() {
                         : "Enter your MSG91 auth key"}
                       mono
                       type="password"
+                      autoComplete="new-password"
                       {...regProvider("msg91AuthKey")}
                       error={providerErrors.msg91AuthKey}
                     />
                     <Field
                       label="Integrated Number"
                       placeholder="91XXXXXXXXXX"
+                      autoComplete="off"
                       {...regProvider("msg91IntegratedNumber")}
                       error={providerErrors.msg91IntegratedNumber}
                     />
