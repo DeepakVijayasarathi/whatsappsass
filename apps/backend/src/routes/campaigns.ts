@@ -28,12 +28,8 @@ export async function campaignRoutes(app: FastifyInstance) {
         where,
         skip,
         take: limit,
-        // scheduledAt is nullable; nulls sort last
-        // Secondary createdAt sort written as a separate object to satisfy strict Prisma typings
-        orderBy: [
-          { scheduledAt: "desc" as const },
-          { createdAt: "desc" as const },
-        ],
+        // scheduledAt is nullable — Campaign has no createdAt field in the schema
+        orderBy: { scheduledAt: "desc" as const },
       }),
       prisma.campaign.count({ where }),
     ]);
