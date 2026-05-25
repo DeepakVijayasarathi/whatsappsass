@@ -29,9 +29,9 @@ const MATCH_BADGE: Record<string, string> = {
 };
 
 type MatchType = "exact" | "contains" | "starts_with";
-type FormData = { keyword: string; matchType: MatchType; templateName: string; languageCode: string; isActive: boolean };
+type RuleFormData = { keyword: string; matchType: MatchType; templateName: string; languageCode: string; isActive: boolean };
 
-const defaultForm: FormData = { keyword: "", matchType: "exact", templateName: "", languageCode: "en_US", isActive: true };
+const defaultForm: RuleFormData = { keyword: "", matchType: "exact", templateName: "", languageCode: "en_US", isActive: true };
 
 function RuleModal({
   initial,
@@ -39,10 +39,10 @@ function RuleModal({
   onClose,
 }: {
   initial?: Partial<AutoReply>;
-  onSave: (data: FormData) => Promise<void>;
+  onSave: (data: RuleFormData) => Promise<void>;
   onClose: () => void;
 }) {
-  const [form, setForm] = useState<FormData>({ ...defaultForm, ...initial });
+  const [form, setForm] = useState<RuleFormData>({ ...defaultForm, ...initial });
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -163,7 +163,7 @@ export default function AutoRepliesPage() {
 
   useEffect(() => { load(); }, []);
 
-  const handleSave = async (data: FormData) => {
+  const handleSave = async (data: RuleFormData) => {
     try {
       if (modal && modal !== "create") {
         await api.patch(`/auto-replies/${modal.id}`, data);

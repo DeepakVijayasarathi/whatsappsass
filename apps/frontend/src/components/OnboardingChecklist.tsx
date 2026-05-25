@@ -82,16 +82,16 @@ export default function OnboardingChecklist() {
     setDismissed(true);
   };
 
-  if (dismissed || !steps) return null;
+  const completedCount = steps ? STEPS.filter((s) => steps[s.key]).length : 0;
+  const allDone = !!steps && completedCount === STEPS.length;
 
-  const completedCount = STEPS.filter((s) => steps[s.key]).length;
-  const allDone = completedCount === STEPS.length;
+  // Auto-dismiss once everything is done — must be in useEffect, not render body
+  useEffect(() => {
+    if (allDone) dismiss();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDone]);
 
-  // Auto-dismiss once everything is done
-  if (allDone) {
-    dismiss();
-    return null;
-  }
+  if (dismissed || !steps || allDone) return null;
 
   const pct = Math.round((completedCount / STEPS.length) * 100);
 

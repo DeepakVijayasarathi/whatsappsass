@@ -183,21 +183,6 @@ export async function workspaceRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── Get own profile ───────────────────────────────────────────────────────
-  app.get(
-    "/profile",
-    { preHandler: [authenticate] },
-    async (request, reply) => {
-      const actor = request.user as JwtPayload;
-      const user = await prisma.user.findUnique({
-        where: { id: actor.userId },
-        select: { id: true, name: true, email: true, role: true },
-      });
-      if (!user) return reply.status(404).send({ error: "User not found" });
-      return reply.send(user);
-    }
-  );
-
   // ── Update own profile / password ─────────────────────────────────────────
   app.patch(
     "/profile",

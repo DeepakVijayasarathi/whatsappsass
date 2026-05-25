@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, MessageSquare } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
+import { brand } from "@/lib/brand";
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -40,7 +41,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
             <div className="w-7 h-7 bg-brand rounded-lg flex items-center justify-center shrink-0">
               <MessageSquare className="w-4 h-4 text-white" />
             </div>
-            <span className="font-semibold text-gray-900 text-sm">WhatsApp SaaS</span>
+            <span className="font-semibold text-gray-900 text-sm">{brand.name}</span>
           </div>
         </header>
 

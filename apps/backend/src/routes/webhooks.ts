@@ -17,7 +17,10 @@ const VALID_EVENTS: WebhookEvent[] = [
 ];
 
 const bodySchema = z.object({
-  url:      z.string().url("Must be a valid HTTPS URL"),
+  url:      z.string().url("Must be a valid URL").refine(
+    (u) => u.startsWith("https://"),
+    { message: "Webhook URL must use HTTPS" }
+  ),
   secret:   z.string().optional(),
   events:   z.array(z.string()).min(1, "Select at least one event"),
   isActive: z.boolean().default(true),

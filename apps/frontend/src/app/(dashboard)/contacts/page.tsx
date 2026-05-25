@@ -369,11 +369,15 @@ export default function ContactsPage() {
       let all: Contact[] = [];
       let pg = 1;
       const exportLimit = 500;
-      while (true) {
+      const MAX_PAGES = 200; // safety guard — prevents infinite loop on pagination bugs
+      while (pg <= MAX_PAGES) {
         const res = await api.get(`/contacts?page=${pg}&limit=${exportLimit}`);
         all = [...all, ...res.data.contacts];
-        if (all.length >= res.data.total) break;
+        if (all.length >= res.data.total || res.data.contacts.length === 0) break;
         pg++;
+      }
+      if (pg > MAX_PAGES) {
+        toast.error("Export exceeded maximum page limit — only partial data exported");
       }
       const header = "name,phone,tags,optIn";
       const rows = all.map((c) =>

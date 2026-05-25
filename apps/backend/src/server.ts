@@ -29,13 +29,17 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
-const ALLOWED_ORIGIN = process.env.FRONTEND_URL || "http://localhost:3000";
+// Support comma-separated list of allowed origins for multi-domain setups
+const ALLOWED_ORIGINS = (process.env.FRONTEND_URL || "http://localhost:3000")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
 async function bootstrap() {
   await app.register(helmet, { global: true });
   await app.register(cors, {
     origin: (origin, cb) => {
-      if (!origin || origin === ALLOWED_ORIGIN) return cb(null, true);
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
       cb(new Error("Not allowed by CORS"), false);
     },
     credentials: true,

@@ -135,6 +135,8 @@ function RunModal({ campaign, onClose, onDone }: {
         (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
           "Failed to run campaign"
       );
+      // Revert campaign status so the user can retry
+      await api.patch(`/campaigns/${campaign.campaignId}`, { status: "paused" }).catch(() => {});
     } finally {
       setRunning(false);
     }
@@ -242,9 +244,16 @@ function RunModal({ campaign, onClose, onDone }: {
 
 function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: () => void }) {
   const [stats, setStats] = useState<CampaignStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(false);
 
   useEffect(() => {
-    api.get(`/campaigns/${id}/stats`).then((r) => setStats(r.data.stats));
+    setStatsLoading(true);
+    setStatsError(false);
+    api.get(`/campaigns/${id}/stats`)
+      .then((r) => setStats(r.data.stats))
+      .catch(() => setStatsError(true))
+      .finally(() => setStatsLoading(false));
   }, [id]);
 
   const total = stats ? Object.values(stats).reduce((a, b) => a + b, 0) : 0;
@@ -254,9 +263,11 @@ function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: 
       <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-sm p-5 sm:p-6">
         <h2 className="text-lg font-bold text-gray-900 mb-1">{name}</h2>
         <p className="text-sm text-gray-500 mb-5">Campaign statistics</p>
-        {!stats ? (
+        {statsLoading ? (
           <p className="text-gray-400 text-sm text-center py-4">Loading...</p>
-        ) : (
+        ) : statsError ? (
+          <p className="text-red-500 text-sm text-center py-4">Failed to load stats — please try again.</p>
+        ) : stats ? (
           <div className="space-y-3">
             {(["sent", "delivered", "read", "failed"] as const).map((s) => {
               const val = stats[s] ?? 0;
@@ -274,7 +285,7 @@ function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: 
               );
             })}
           </div>
-        )}
+        ) : null}
         <button onClick={onClose} className="btn-secondary w-full mt-5">Close</button>
       </div>
     </div>

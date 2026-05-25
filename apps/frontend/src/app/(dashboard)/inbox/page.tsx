@@ -73,6 +73,10 @@ export default function InboxPage() {
   const [replying, setReplying] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cancel any pending scroll timer on unmount
+  useEffect(() => () => { if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current); }, []);
 
   const loadConversations = () => {
     setLoadingConvos(true);
@@ -114,7 +118,8 @@ export default function InboxPage() {
     if (convo.unreadCount > 0) {
       api.patch("/whatsapp/inbox/read", { fromPhone: convo.fromPhone }).then(loadConversations).catch(() => {});
     }
-    setTimeout(() => {
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(() => {
       threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
     }, 150);
   };

@@ -111,9 +111,9 @@ export default function SettingsPage() {
 
       // Tell the schema which fields already have stored values so we don't
       // force the user to re-enter them on every save.
-      storedFlags.hasWebhookToken    = !!(cfg.metaWebhookVerifyToken);
+      storedFlags.hasWebhookToken     = !!(cfg.metaWebhookVerifyToken);
       storedFlags.hasIntegratedNumber = !!(cfg.msg91IntegratedNumber);
-      storedFlags.hasMsg91AuthKey    = !!(cfg.hasMsg91AuthKey);
+      storedFlags.hasMsg91AuthKey     = !!(cfg.hasMsg91AuthKey);
 
       setValue("whatsappProvider", cfg.whatsappProvider);
       setValue("metaPhoneNumberId", cfg.metaPhoneNumberId ?? "");
@@ -124,6 +124,8 @@ export default function SettingsPage() {
       setValue("msg91AuthKey", "");
       // Clear any stale validation errors now that fields are populated
       clearErrors();
+    }).catch(() => {
+      toast.error("Failed to load settings — please refresh the page");
     });
   };
 

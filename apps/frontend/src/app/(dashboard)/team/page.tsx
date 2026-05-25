@@ -192,7 +192,10 @@ export default function TeamPage() {
   });
 
   const load = () => {
-    api.get("/workspace/members").then((r) => setMembers(r.data)).finally(() => setLoading(false));
+    api.get("/workspace/members")
+      .then((r) => setMembers(r.data))
+      .catch(() => toast.error("Failed to load team members"))
+      .finally(() => setLoading(false));
   };
 
   useEffect(load, []);

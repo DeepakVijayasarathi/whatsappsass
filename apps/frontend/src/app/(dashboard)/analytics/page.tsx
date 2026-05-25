@@ -7,6 +7,7 @@ import {
   Eye, CheckCircle2, XCircle, Clock, RefreshCw, Download, Calendar,
 } from "lucide-react";
 import clsx from "clsx";
+import toast from "react-hot-toast";
 import { SkeletonStatCard } from "@/components/Skeleton";
 
 interface OverviewData {
@@ -137,6 +138,8 @@ export default function AnalyticsPage() {
       a.download = `analytics-${dateFrom}-${dateTo}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Export failed — please try again");
     } finally {
       setExporting(false);
     }
@@ -280,8 +283,8 @@ export default function AnalyticsPage() {
         </div>
         {trendLoading ? (
           <div className="h-40 flex items-end gap-1">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="flex-1 animate-pulse bg-gray-100 rounded-t" style={{ height: `${30 + Math.random() * 70}%` }} />
+            {[55, 70, 45, 80, 60, 75, 50].map((h, i) => (
+              <div key={i} className="flex-1 animate-pulse bg-gray-100 rounded-t" style={{ height: `${h}%` }} />
             ))}
           </div>
         ) : trend.length === 0 ? (

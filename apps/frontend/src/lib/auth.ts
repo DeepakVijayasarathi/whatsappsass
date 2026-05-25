@@ -56,5 +56,17 @@ export function getWorkspace(): AuthWorkspace | null {
 }
 
 export function isAuthenticated(): boolean {
-  return !!getToken();
+  const token = getToken();
+  if (!token) return false;
+  try {
+    // Decode JWT payload (no signature verification — just check expiry client-side)
+    const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number };
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      clearAuth(); // proactively clean up expired token
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }

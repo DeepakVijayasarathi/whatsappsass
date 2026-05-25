@@ -127,7 +127,7 @@ export default function WebhooksPage() {
     setLoading(true);
     api.get("/webhooks")
       .then((r) => setEndpoints(r.data.endpoints))
-      .catch(() => {})
+      .catch(() => toast.error("Failed to load webhooks"))
       .finally(() => setLoading(false));
   };
 
