@@ -11,6 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import clsx from "clsx";
 import { SkeletonTableRow } from "@/components/Skeleton";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface EmailCampaign {
   id: string;
@@ -212,6 +213,7 @@ export default function EmailCampaignsPage() {
   const [showForm, setShowForm] = useState(false);
   const [sendTarget, setSendTarget] = useState<EmailCampaign | null>(null);
   const [statsTarget, setStatsTarget] = useState<{ id: string; name: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } =
     useForm<FormData>({ resolver: zodResolver(schema) });
@@ -239,11 +241,11 @@ export default function EmailCampaignsPage() {
     }
   };
 
-  const deleteCampaign = async (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"?`)) return;
+  const deleteCampaign = async (id: string) => {
     try {
       await api.delete(`/email/campaigns/${id}`);
       toast.success("Deleted");
+      setConfirmDelete(null);
       load(page);
     } catch {
       toast.error("Failed to delete");
@@ -256,6 +258,15 @@ export default function EmailCampaignsPage() {
     <div>
       {sendTarget && <SendModal campaign={sendTarget} onClose={() => setSendTarget(null)} onDone={() => load(page)} />}
       {statsTarget && <StatsModal id={statsTarget.id} name={statsTarget.name} onClose={() => setStatsTarget(null)} />}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete email campaign?"
+          message={`"${confirmDelete.name}" will be permanently deleted.`}
+          confirmLabel="Delete"
+          onConfirm={() => deleteCampaign(confirmDelete.id)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
 
       <div className="flex items-start justify-between mb-6 gap-3">
         <div>
@@ -368,7 +379,7 @@ export default function EmailCampaignsPage() {
                           </button>
                         )}
                         {c.status !== "running" && (
-                          <button onClick={() => deleteCampaign(c.id, c.name)}
+                          <button onClick={() => setConfirmDelete({ id: c.id, name: c.name })}
                             className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
                             <Trash2 className="w-4 h-4" />
                           </button>

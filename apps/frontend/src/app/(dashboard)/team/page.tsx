@@ -10,6 +10,7 @@ import { z } from "zod";
 import { UserPlus, Trash2, Shield, Users, SlidersHorizontal, X } from "lucide-react";
 import clsx from "clsx";
 import { SkeletonTableRow } from "@/components/Skeleton";
+import ConfirmModal from "@/components/ConfirmModal";
 
 const AVATAR_COLORS = [
   "bg-violet-100 text-violet-600",
@@ -182,6 +183,7 @@ export default function TeamPage() {
   const [showInvite, setShowInvite] = useState(false);
   const [loading, setLoading] = useState(true);
   const [permTarget, setPermTarget] = useState<Member | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
   const me = getUser();
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<InviteForm>({
@@ -217,11 +219,11 @@ export default function TeamPage() {
     }
   };
 
-  const removeMember = async (id: string, name: string) => {
-    if (!confirm(`Remove ${name} from workspace?`)) return;
+  const removeMember = async (member: Member) => {
     try {
-      await api.delete(`/workspace/members/${id}`);
-      toast.success(`${name} removed`);
+      await api.delete(`/workspace/members/${member.id}`);
+      toast.success(`${member.name} removed`);
+      setConfirmRemove(null);
       load();
     } catch (err: unknown) {
       toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || "Failed to remove member");
@@ -234,6 +236,15 @@ export default function TeamPage() {
     <div>
       {permTarget && (
         <PermissionsModal member={permTarget} onClose={() => setPermTarget(null)} onSaved={load} />
+      )}
+      {confirmRemove && (
+        <ConfirmModal
+          title="Remove team member?"
+          message={`${confirmRemove.name} will lose access to this workspace immediately.`}
+          confirmLabel="Remove member"
+          onConfirm={() => removeMember(confirmRemove)}
+          onCancel={() => setConfirmRemove(null)}
+        />
       )}
 
       <div className="flex items-start justify-between mb-6 gap-3">
@@ -371,7 +382,7 @@ export default function TeamPage() {
                         )}
                         {m.role !== "owner" && m.id !== me?.id && (
                           <button
-                            onClick={() => removeMember(m.id, m.name)}
+                            onClick={() => setConfirmRemove(m)}
                             className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                             title="Remove member"
                           >

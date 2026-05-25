@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
 import {
@@ -14,8 +14,10 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowDown,
+  Search,
 } from "lucide-react";
 import clsx from "clsx";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface SequenceStep {
   id: string;
@@ -394,6 +396,8 @@ export default function SequencesPage() {
   const [showBuilder, setShowBuilder] = useState(false);
   const [enrolling, setEnrolling] = useState<Sequence | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<Sequence | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -422,16 +426,22 @@ export default function SequencesPage() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this sequence and all enrollments?")) return;
+  const remove = async (seq: Sequence) => {
     try {
-      await api.delete(`/sequences/${id}`);
+      await api.delete(`/sequences/${seq.id}`);
       toast.success("Deleted");
-      setSequences((prev) => prev.filter((s) => s.id !== id));
+      setConfirmDelete(null);
+      setSequences((prev) => prev.filter((s) => s.id !== seq.id));
     } catch {
       toast.error("Failed to delete");
     }
   };
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return sequences;
+    const q = search.toLowerCase();
+    return sequences.filter((s) => s.name.toLowerCase().includes(q));
+  }, [sequences, search]);
 
   return (
     <div>
@@ -448,8 +458,17 @@ export default function SequencesPage() {
           onDone={() => { setEnrolling(null); load(); }}
         />
       )}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete sequence?"
+          message={`"${confirmDelete.name}" and all ${confirmDelete._count.enrollments} enrollment${confirmDelete._count.enrollments !== 1 ? "s" : ""} will be permanently deleted.`}
+          confirmLabel="Delete sequence"
+          onConfirm={() => remove(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
 
-      <div className="flex items-start justify-between mb-6 gap-4">
+      <div className="flex items-start justify-between mb-4 gap-4">
         <div>
           <h1 className="page-title">Drip Sequences</h1>
           <p className="page-subtitle">Automate multi-step WhatsApp campaigns sent over days</p>
@@ -462,6 +481,19 @@ export default function SequencesPage() {
           <span className="hidden sm:inline">New sequence</span>
         </button>
       </div>
+
+      {/* Search */}
+      {sequences.length > 0 && (
+        <div className="relative mb-5 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input pl-9 text-sm"
+            placeholder="Search sequences…"
+          />
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-4">
@@ -478,9 +510,14 @@ export default function SequencesPage() {
           <p className="empty-title">No sequences yet</p>
           <p className="empty-desc">Build a drip sequence to send follow-up messages over days</p>
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="card text-center py-12">
+          <Search className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">No sequences match &ldquo;{search}&rdquo;</p>
+        </div>
       ) : (
         <div className="space-y-4">
-          {sequences.map((seq) => {
+          {filtered.map((seq) => {
             const isExpanded = expanded.has(seq.id);
             const statusCfg = STATUS_CONFIG[seq.status] ?? STATUS_CONFIG.draft;
             return (
@@ -538,7 +575,7 @@ export default function SequencesPage() {
                       {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
                     <button
-                      onClick={() => remove(seq.id)}
+                      onClick={() => setConfirmDelete(seq)}
                       className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                       title="Delete"
                     >

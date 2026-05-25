@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Webhook, Plus, Trash2, X, CheckCircle, XCircle, Send, ToggleLeft, ToggleRight, Copy } from "lucide-react";
 import toast from "react-hot-toast";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface WebhookEndpoint {
   id: string;
@@ -120,6 +121,7 @@ export default function WebhooksPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<WebhookEndpoint | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -151,12 +153,12 @@ export default function WebhooksPage() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this webhook endpoint?")) return;
+  const remove = async (ep: WebhookEndpoint) => {
     try {
-      await api.delete(`/webhooks/${id}`);
+      await api.delete(`/webhooks/${ep.id}`);
       toast.success("Deleted");
-      setEndpoints((prev) => prev.filter((e) => e.id !== id));
+      setConfirmDelete(null);
+      setEndpoints((prev) => prev.filter((e) => e.id !== ep.id));
     } catch {
       toast.error("Failed to delete");
     }
@@ -182,6 +184,15 @@ export default function WebhooksPage() {
   return (
     <div>
       {showModal && <EndpointModal onSave={handleCreate} onClose={() => setShowModal(false)} />}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete webhook endpoint?"
+          message={`The endpoint "${confirmDelete.url}" will be permanently removed and will stop receiving events.`}
+          confirmLabel="Delete endpoint"
+          onConfirm={() => remove(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
 
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
@@ -245,7 +256,7 @@ export default function WebhooksPage() {
                       {ep.isActive ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                     </button>
                     <button
-                      onClick={() => remove(ep.id)}
+                      onClick={() => setConfirmDelete(ep)}
                       className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

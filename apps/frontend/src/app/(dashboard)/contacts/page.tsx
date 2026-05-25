@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import clsx from "clsx";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface Contact {
   id: string;
@@ -170,6 +171,7 @@ export default function ContactsPage() {
   const [editContact, setEditContact] = useState<Contact | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string } | "bulk" | null>(null);
 
   // CSV import state
   const [csvRows, setCsvRows] = useState<Omit<Contact, "id">[]>([]);
@@ -229,10 +231,10 @@ export default function ContactsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this contact?")) return;
     try {
       await api.delete(`/contacts/${id}`);
       toast.success("Deleted");
+      setConfirmDelete(null);
       setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
       load(page, search);
     } catch {
@@ -242,11 +244,11 @@ export default function ContactsPage() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Delete ${selectedIds.size} contact${selectedIds.size > 1 ? "s" : ""}? This cannot be undone.`)) return;
     setBulkDeleting(true);
     try {
       const res = await api.delete("/contacts/bulk", { data: { ids: Array.from(selectedIds) } });
       toast.success(`Deleted ${res.data.deleted} contacts`);
+      setConfirmDelete(null);
       setSelectedIds(new Set());
       setPage(1);
       load(1, search);
@@ -357,6 +359,24 @@ export default function ContactsPage() {
           contact={editContact}
           onClose={() => setEditContact(null)}
           onSaved={() => load(page, search)}
+        />
+      )}
+      {confirmDelete === "bulk" && (
+        <ConfirmModal
+          title={`Delete ${selectedIds.size} contact${selectedIds.size > 1 ? "s" : ""}?`}
+          message="This action cannot be undone. All selected contacts and their data will be permanently removed."
+          confirmLabel={`Delete ${selectedIds.size} contact${selectedIds.size > 1 ? "s" : ""}`}
+          onConfirm={handleBulkDelete}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+      {confirmDelete && confirmDelete !== "bulk" && (
+        <ConfirmModal
+          title="Delete contact?"
+          message="This contact and their message history will be permanently removed."
+          confirmLabel="Delete contact"
+          onConfirm={() => handleDelete(confirmDelete.id)}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
 
@@ -529,7 +549,7 @@ export default function ContactsPage() {
                   {selectedIds.size} selected
                 </span>
                 <button
-                  onClick={handleBulkDelete}
+                  onClick={() => setConfirmDelete("bulk")}
                   disabled={bulkDeleting}
                   className="btn-danger flex items-center gap-2 text-sm"
                 >
@@ -651,7 +671,7 @@ export default function ContactsPage() {
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleDelete(c.id)}
+                            onClick={() => setConfirmDelete({ id: c.id })}
                             className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                             title="Delete"
                           >

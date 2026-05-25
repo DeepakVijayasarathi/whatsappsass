@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { Bot, Plus, Pencil, Trash2, X, ToggleLeft, ToggleRight } from "lucide-react";
+import { Bot, Plus, Pencil, Trash2, X, ToggleLeft, ToggleRight, Search } from "lucide-react";
 import toast from "react-hot-toast";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface AutoReply {
   id: string;
@@ -19,6 +20,12 @@ const MATCH_LABELS: Record<string, string> = {
   exact: "Exact match",
   contains: "Contains",
   starts_with: "Starts with",
+};
+
+const MATCH_BADGE: Record<string, string> = {
+  exact:       "bg-blue-50 text-blue-700",
+  contains:    "bg-purple-50 text-purple-700",
+  starts_with: "bg-cyan-50 text-cyan-700",
 };
 
 type MatchType = "exact" | "contains" | "starts_with";
@@ -56,7 +63,9 @@ function RuleModal({
       <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md">
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <h2 className="text-lg font-bold text-gray-900">{initial?.id ? "Edit" : "New"} Auto-Reply Rule</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -67,7 +76,9 @@ function RuleModal({
               onChange={(e) => setForm({ ...form, keyword: e.target.value })}
               className="input"
               placeholder="e.g. YES, INFO, HELLO"
+              autoFocus
             />
+            <p className="text-xs text-gray-400 mt-1">The word or phrase that triggers this rule</p>
           </div>
 
           <div>
@@ -77,9 +88,9 @@ function RuleModal({
               onChange={(e) => setForm({ ...form, matchType: e.target.value as MatchType })}
               className="input"
             >
-              <option value="exact">Exact match</option>
-              <option value="contains">Contains</option>
-              <option value="starts_with">Starts with</option>
+              <option value="exact">Exact match — full message must equal keyword</option>
+              <option value="contains">Contains — message contains keyword anywhere</option>
+              <option value="starts_with">Starts with — message begins with keyword</option>
             </select>
           </div>
 
@@ -91,27 +102,37 @@ function RuleModal({
               className="input font-mono"
               placeholder="hello_world"
             />
+            <p className="text-xs text-gray-400 mt-1">Must be an approved WhatsApp template</p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Language code</label>
-            <input
-              value={form.languageCode}
-              onChange={(e) => setForm({ ...form, languageCode: e.target.value })}
-              className="input"
-              placeholder="en_US"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Language code</label>
+              <select
+                value={form.languageCode}
+                onChange={(e) => setForm({ ...form, languageCode: e.target.value })}
+                className="input"
+              >
+                <option value="en_US">en_US</option>
+                <option value="en">en</option>
+                <option value="hi">hi</option>
+                <option value="es">es</option>
+                <option value="pt_BR">pt_BR</option>
+                <option value="ar">ar</option>
+              </select>
+            </div>
+            <div className="flex items-end pb-0.5">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.isActive}
+                  onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                  className="rounded accent-brand w-4 h-4"
+                />
+                <span className="text-sm text-gray-700 font-medium">Active</span>
+              </label>
+            </div>
           </div>
-
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-              className="rounded accent-brand w-4 h-4"
-            />
-            <span className="text-sm text-gray-700">Active</span>
-          </label>
 
           <div className="flex gap-3 pt-1">
             <button onClick={handleSave} disabled={saving} className="btn-primary">
@@ -129,6 +150,8 @@ export default function AutoRepliesPage() {
   const [rules, setRules] = useState<AutoReply[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<"create" | AutoReply | null>(null);
+  const [search, setSearch] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<AutoReply | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -165,16 +188,28 @@ export default function AutoRepliesPage() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this auto-reply rule?")) return;
+  const remove = async (rule: AutoReply) => {
     try {
-      await api.delete(`/auto-replies/${id}`);
+      await api.delete(`/auto-replies/${rule.id}`);
       toast.success("Deleted");
-      setRules((prev) => prev.filter((r) => r.id !== id));
+      setConfirmDelete(null);
+      setRules((prev) => prev.filter((r) => r.id !== rule.id));
     } catch {
       toast.error("Failed to delete");
     }
   };
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return rules;
+    const q = search.toLowerCase();
+    return rules.filter(
+      (r) =>
+        r.keyword.toLowerCase().includes(q) ||
+        r.templateName.toLowerCase().includes(q)
+    );
+  }, [rules, search]);
+
+  const activeCount = rules.filter((r) => r.isActive).length;
 
   return (
     <div>
@@ -185,11 +220,24 @@ export default function AutoRepliesPage() {
           onClose={() => setModal(null)}
         />
       )}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete auto-reply rule?"
+          message={`The rule for keyword "${confirmDelete.keyword}" will be permanently removed.`}
+          confirmLabel="Delete rule"
+          onConfirm={() => remove(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
 
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="page-title">Auto-Reply Rules</h1>
-          <p className="page-subtitle">Automatically send a template when a contact's message matches a keyword</p>
+          <p className="page-subtitle">
+            {rules.length > 0
+              ? `${rules.length} rule${rules.length !== 1 ? "s" : ""} · ${activeCount} active`
+              : "Automatically send a template when a contact's message matches a keyword"}
+          </p>
         </div>
         <button
           onClick={() => setModal("create")}
@@ -199,6 +247,19 @@ export default function AutoRepliesPage() {
           <span className="hidden sm:inline">New rule</span>
         </button>
       </div>
+
+      {/* Search bar */}
+      {rules.length > 0 && (
+        <div className="relative mb-4 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input pl-9 text-sm"
+            placeholder="Search keywords or templates…"
+          />
+        </div>
+      )}
 
       <div className="card">
         {loading ? (
@@ -216,13 +277,19 @@ export default function AutoRepliesPage() {
             <p className="empty-title">No auto-reply rules yet</p>
             <p className="empty-desc">Create a rule to automatically respond when contacts message you</p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-10">
+            <Search className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">No rules match &ldquo;{search}&rdquo;</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="tbl-head">
+                  <th className="tbl-th w-6 text-center">#</th>
                   <th className="tbl-th">Keyword</th>
-                  <th className="tbl-th">Match</th>
+                  <th className="tbl-th hidden sm:table-cell">Match</th>
                   <th className="tbl-th">Template</th>
                   <th className="tbl-th hidden sm:table-cell">Language</th>
                   <th className="tbl-th">Status</th>
@@ -230,32 +297,42 @@ export default function AutoRepliesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {rules.map((rule) => (
-                  <tr key={rule.id} className="tbl-row">
-                    <td className="tbl-td font-medium text-gray-900">{rule.keyword}</td>
-                    <td className="tbl-td text-gray-500">{MATCH_LABELS[rule.matchType]}</td>
+                {filtered.map((rule, idx) => (
+                  <tr key={rule.id} className="tbl-row group">
+                    <td className="tbl-td text-center text-xs text-gray-300 font-mono">{idx + 1}</td>
+                    <td className="tbl-td font-semibold text-gray-900">{rule.keyword}</td>
+                    <td className="tbl-td hidden sm:table-cell">
+                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${MATCH_BADGE[rule.matchType] ?? "bg-gray-100 text-gray-600"}`}>
+                        {MATCH_LABELS[rule.matchType]}
+                      </span>
+                    </td>
                     <td className="tbl-td font-mono text-xs text-brand">{rule.templateName}</td>
                     <td className="tbl-td text-gray-400 hidden sm:table-cell">{rule.languageCode}</td>
                     <td className="tbl-td">
                       <button
                         onClick={() => toggleActive(rule)}
-                        className={rule.isActive ? "text-green-500" : "text-gray-300"}
+                        className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${rule.isActive ? "text-green-600" : "text-gray-400 hover:text-gray-600"}`}
                         title={rule.isActive ? "Active — click to disable" : "Inactive — click to enable"}
                       >
-                        {rule.isActive ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+                        {rule.isActive
+                          ? <ToggleRight className="w-5 h-5" />
+                          : <ToggleLeft className="w-5 h-5" />}
+                        <span className="hidden sm:inline">{rule.isActive ? "Active" : "Off"}</span>
                       </button>
                     </td>
                     <td className="tbl-td">
                       <div className="flex items-center gap-1 justify-end">
                         <button
                           onClick={() => setModal(rule)}
-                          className="p-1.5 text-gray-400 hover:text-brand hover:bg-brand/10 rounded-lg"
+                          className="p-1.5 text-gray-400 hover:text-brand hover:bg-brand/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                          title="Edit rule"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => remove(rule.id)}
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                          onClick={() => setConfirmDelete(rule)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                          title="Delete rule"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -273,7 +350,7 @@ export default function AutoRepliesPage() {
         <p className="font-semibold mb-1">How auto-replies work</p>
         <ul className="list-disc list-inside space-y-1 text-amber-700 text-xs">
           <li>When a contact sends a message matching your keyword, the template is sent automatically</li>
-          <li>Rules are checked in order — the first match wins</li>
+          <li>Rules are checked in order — the first match wins (use the # column to understand priority)</li>
           <li>Opt-out keywords (STOP, UNSUBSCRIBE, etc.) always take priority over auto-replies</li>
         </ul>
       </div>

@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
-import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle, Clock, Copy } from "lucide-react";
+import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle, Clock, Copy, Search } from "lucide-react";
 import { SkeletonTableRow } from "@/components/Skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import clsx from "clsx";
 import TemplatePicker, { type Template } from "@/components/TemplatePicker";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface Campaign {
   id: string;
@@ -280,6 +281,14 @@ function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: 
   );
 }
 
+const STATUS_TABS = [
+  { key: "", label: "All" },
+  { key: "draft", label: "Draft" },
+  { key: "running", label: "Running" },
+  { key: "paused", label: "Paused" },
+  { key: "completed", label: "Completed" },
+] as const;
+
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [total, setTotal] = useState(0);
@@ -290,6 +299,9 @@ export default function CampaignsPage() {
   const [runTarget, setRunTarget] = useState<RunOptions | null>(null);
   const [statsTarget, setStatsTarget] = useState<{ id: string; name: string } | null>(null);
   const [replyCounts, setReplyCounts] = useState<Record<string, { total: number; unread: number }>>({});
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   const PAGE_SIZE = 20;
 
@@ -305,16 +317,20 @@ export default function CampaignsPage() {
 
   const load = useCallback((p: number) => {
     setLoading(true);
+    const statusParam = statusFilter ? `&status=${statusFilter}` : "";
+    const searchParam = search ? `&search=${encodeURIComponent(search)}` : "";
     Promise.all([
-      api.get(`/campaigns?page=${p}&limit=${PAGE_SIZE}`),
+      api.get(`/campaigns?page=${p}&limit=${PAGE_SIZE}${statusParam}${searchParam}`),
       api.get("/whatsapp/campaign-replies").catch(() => ({ data: { replies: {} } })),
     ]).then(([r, rr]) => {
       setCampaigns(r.data.campaigns);
       setTotal(r.data.total);
       setReplyCounts(rr.data.replies ?? {});
     }).finally(() => setLoading(false));
-  }, []);
+  }, [statusFilter, search]);
 
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1); }, [statusFilter, search]);
   useEffect(() => { load(page); }, [page, load]);
 
   const onSubmit = async (data: FormData) => {
@@ -352,11 +368,11 @@ export default function CampaignsPage() {
     }
   };
 
-  const deleteCampaign = async (id: string, name: string) => {
-    if (!confirm(`Delete campaign "${name}"?`)) return;
+  const deleteCampaign = async (id: string) => {
     try {
       await api.delete(`/campaigns/${id}`);
       toast.success("Deleted");
+      setConfirmDelete(null);
       if (campaigns.length === 1 && page > 1) {
         setPage((p) => p - 1);
       } else {
@@ -380,8 +396,17 @@ export default function CampaignsPage() {
       {showTemplatePicker && (
         <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />
       )}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete campaign?"
+          message={`"${confirmDelete.name}" will be permanently deleted. This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => deleteCampaign(confirmDelete.id)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
 
-      <div className="flex items-start justify-between mb-6 gap-3">
+      <div className="flex items-start justify-between mb-4 gap-3">
         <div>
           <h1 className="page-title">WA Campaigns</h1>
           <p className="page-subtitle">{total} total campaigns</p>
@@ -389,6 +414,35 @@ export default function CampaignsPage() {
         <button onClick={() => setShowForm(!showForm)} className="btn-primary flex items-center gap-2 shrink-0">
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New Campaign</span><span className="sm:hidden">New</span>
         </button>
+      </div>
+
+      {/* Search + Filter tabs */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input pl-9 text-sm"
+            placeholder="Search campaigns…"
+          />
+        </div>
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 self-start sm:self-auto">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setStatusFilter(tab.key)}
+              className={clsx(
+                "px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
+                statusFilter === tab.key
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {showForm && (
@@ -554,7 +608,7 @@ export default function CampaignsPage() {
                         {/* Delete */}
                         {c.status !== "running" && (
                           <button
-                            onClick={() => deleteCampaign(c.id, c.name)}
+                            onClick={() => setConfirmDelete({ id: c.id, name: c.name })}
                             className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                             title="Delete"
                           >

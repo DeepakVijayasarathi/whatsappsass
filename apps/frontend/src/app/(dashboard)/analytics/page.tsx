@@ -6,6 +6,7 @@ import {
   BarChart2, TrendingUp, Users, MessageSquare,
   Eye, CheckCircle2, XCircle, Clock, RefreshCw, Download, Calendar,
 } from "lucide-react";
+import clsx from "clsx";
 import { SkeletonStatCard } from "@/components/Skeleton";
 
 interface OverviewData {
@@ -68,6 +69,13 @@ function toInputDate(d: Date) {
   return d.toISOString().split("T")[0];
 }
 
+const DATE_PRESETS = [
+  { label: "Today",   days: 0 },
+  { label: "7 days",  days: 7 },
+  { label: "30 days", days: 30 },
+  { label: "90 days", days: 90 },
+];
+
 export default function AnalyticsPage() {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [contacts, setContacts] = useState<ContactAnalytics | null>(null);
@@ -76,11 +84,20 @@ export default function AnalyticsPage() {
   const [trendLoading, setTrendLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [activePreset, setActivePreset] = useState<number>(7);
 
   const defaultTo = toInputDate(new Date());
   const defaultFrom = toInputDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(defaultTo);
+
+  const applyPreset = (days: number) => {
+    const to = new Date();
+    const from = days === 0 ? to : new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    setDateTo(toInputDate(to));
+    setDateFrom(toInputDate(from));
+    setActivePreset(days);
+  };
 
   const loadTrend = (from: string, to: string) => {
     setTrendLoading(true);
@@ -168,13 +185,32 @@ export default function AnalyticsPage() {
           <p className="page-subtitle">Insights into your messaging performance</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Quick presets */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {DATE_PRESETS.map((p) => (
+              <button
+                key={p.days}
+                onClick={() => applyPreset(p.days)}
+                className={clsx(
+                  "px-2.5 py-1 text-xs font-medium rounded-lg transition-colors",
+                  activePreset === p.days
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom date range */}
           <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-sm shadow-sm">
             <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" />
             <input
               type="date"
               value={dateFrom}
               max={dateTo}
-              onChange={(e) => setDateFrom(e.target.value)}
+              onChange={(e) => { setDateFrom(e.target.value); setActivePreset(-1); }}
               className="outline-none text-gray-700 bg-transparent text-xs"
             />
             <span className="text-gray-300 text-xs">—</span>
@@ -182,7 +218,7 @@ export default function AnalyticsPage() {
               type="date"
               value={dateTo}
               min={dateFrom}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => { setDateTo(e.target.value); setActivePreset(-1); }}
               className="outline-none text-gray-700 bg-transparent text-xs"
             />
           </div>
