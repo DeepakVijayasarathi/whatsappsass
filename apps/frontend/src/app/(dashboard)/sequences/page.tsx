@@ -271,6 +271,7 @@ function EnrollModal({
   useEffect(() => {
     api.get("/contacts?limit=500")
       .then((r) => setContacts(r.data.contacts))
+      .catch(() => toast.error("Failed to load contacts"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -280,18 +281,24 @@ function EnrollModal({
       c.phone.includes(search)
   );
 
-  const toggle = (id: string) =>
+  // Only opted-in contacts can be enrolled
+  const eligibleFiltered = filtered.filter((c) => c.optIn);
+
+  const toggle = (id: string) => {
+    const contact = contacts.find((c) => c.id === id);
+    if (!contact?.optIn) return; // silently block non-opted-in
     setSelected((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  };
 
   const toggleAll = () => {
-    if (selected.size === filtered.length) {
+    if (selected.size === eligibleFiltered.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(filtered.map((c) => c.id)));
+      setSelected(new Set(eligibleFiltered.map((c) => c.id)));
     }
   };
 
@@ -344,23 +351,32 @@ function EnrollModal({
               <div className="px-4 py-2 border-b border-gray-50 flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={filtered.length > 0 && selected.size === filtered.length}
+                  checked={eligibleFiltered.length > 0 && selected.size === eligibleFiltered.length}
                   onChange={toggleAll}
                   className="rounded accent-brand"
                 />
                 <span className="text-xs text-gray-500">
-                  {selected.size} selected of {filtered.length}
+                  {selected.size} selected of {eligibleFiltered.length} eligible
+                  {filtered.length > eligibleFiltered.length && (
+                    <span className="text-amber-500 ml-1">
+                      ({filtered.length - eligibleFiltered.length} without opt-in hidden)
+                    </span>
+                  )}
                 </span>
               </div>
               {filtered.map((c) => (
                 <label
                   key={c.id}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+                  className={clsx(
+                    "flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0",
+                    c.optIn ? "hover:bg-gray-50 cursor-pointer" : "opacity-40 cursor-not-allowed bg-gray-50"
+                  )}
                 >
                   <input
                     type="checkbox"
                     checked={selected.has(c.id)}
                     onChange={() => toggle(c.id)}
+                    disabled={!c.optIn}
                     className="rounded accent-brand shrink-0"
                   />
                   <div className="flex-1 min-w-0">

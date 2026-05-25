@@ -56,12 +56,12 @@ async function runScheduledCampaigns() {
       let sent = 0, failed = 0;
       for (const contact of contacts) {
         try {
-          await sendWhatsAppTemplate(
+          const result = await sendWhatsAppTemplate(
             { to: contact.phone, templateName: campaign.template, languageCode: "en_US", components: [] },
             config
           );
           await prisma.messageLog.create({
-            data: { workspaceId: campaign.workspaceId, contactId: contact.id, campaignId: campaign.id, status: "sent" },
+            data: { workspaceId: campaign.workspaceId, contactId: contact.id, campaignId: campaign.id, wamid: result.wamid, status: "sent" },
           });
           sent++;
         } catch {
@@ -140,13 +140,13 @@ async function runSequenceSteps() {
         msg91IntegratedNumber: ws.msg91IntegratedNumber ?? undefined,
       };
 
-      await sendWhatsAppTemplate(
+      const result = await sendWhatsAppTemplate(
         { to: contact.phone, templateName: nextStep.templateName, languageCode: nextStep.languageCode, components: [] },
         config
       );
 
       await prisma.messageLog.create({
-        data: { workspaceId: contact.workspaceId, contactId: contact.id, status: "sent" },
+        data: { workspaceId: contact.workspaceId, contactId: contact.id, wamid: result.wamid, status: "sent" },
       });
 
       await fireWebhooks(contact.workspaceId, "sequence.step_sent", {

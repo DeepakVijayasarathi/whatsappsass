@@ -171,6 +171,7 @@ model MessageLog {
   workspaceId String   @map("workspace_id")
   contactId   String   @map("contact_id")
   campaignId  String?  @map("campaign_id")
+  wamid       String?  @map("wamid") // Provider message ID (Meta wamid / MSG91 msgid) for delivery receipt matching
   status      String   @default("sent")
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -181,6 +182,7 @@ model MessageLog {
   @@index([workspaceId])
   @@index([campaignId])
   @@index([contactId]) // timeline queries per contact
+  @@index([wamid]) // delivery receipt lookups by provider message ID
   @@index([workspaceId, status]) // analytics breakdown by status
   @@index([workspaceId, createdAt]) // date-range trend queries
   @@map("message_logs")

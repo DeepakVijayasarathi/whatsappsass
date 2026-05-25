@@ -59,6 +59,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
 
       const config = await getProviderConfig(user.workspaceId);
       let status = "sent";
+      let wamid: string | null = null;
       let providerResponse: unknown = null;
 
       try {
@@ -71,6 +72,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
           },
           config
         );
+        wamid = result.wamid;
         providerResponse = result.raw;
       } catch (err: unknown) {
         status = "failed";
@@ -95,6 +97,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
             workspaceId: user.workspaceId,
             contactId,
             campaignId: parsed.data.campaignId ?? null,
+            wamid,
             status,
           },
         });
@@ -142,8 +145,9 @@ export async function whatsappRoutes(app: FastifyInstance) {
       const results = await Promise.allSettled(
         contacts.map(async (contact) => {
           let status = "sent";
+          let wamid: string | null = null;
           try {
-            await sendWhatsAppTemplate(
+            const result = await sendWhatsAppTemplate(
               {
                 to: contact.phone,
                 templateName: parsed.data.templateName,
@@ -152,6 +156,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
               },
               config
             );
+            wamid = result.wamid;
           } catch {
             status = "failed";
           }
@@ -161,6 +166,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
               workspaceId: user.workspaceId,
               contactId: contact.id,
               campaignId: parsed.data.campaignId,
+              wamid,
               status,
             },
           });
@@ -205,15 +211,42 @@ export async function whatsappRoutes(app: FastifyInstance) {
   });
 
   // ── Webhook inbound (POST) ────────────────────────────────────────────────
+  // Capture raw request bytes before JSON parsing so we can verify the
+  // HMAC-SHA256 signature that Meta computes over the *original* wire bytes.
+  // Using addContentTypeParser scoped to this plugin (whatsapp prefix) so it
+  // only affects the webhook route, not the rest of the application.
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "buffer" },
+    (_req, body: Buffer, done) => {
+      try {
+        const parsed = JSON.parse(body.toString("utf8"));
+        // Attach raw buffer under a non-enumerable property for signature check
+        Object.defineProperty(parsed, "__rawBody", { value: body, enumerable: false });
+        done(null, parsed);
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    }
+  );
+
   app.post("/webhook", async (request, reply) => {
-    // Verify Meta signature if APP_SECRET is configured
+    // Verify Meta HMAC-SHA256 signature over the original raw bytes
     if (META_APP_SECRET) {
       const signature = (request.headers["x-hub-signature-256"] as string | undefined) ?? "";
+      // Retrieve the raw buffer attached during content-type parsing
+      const rawBody: Buffer | undefined = (request.body as Record<string, unknown>)?.["__rawBody"] as Buffer | undefined;
+      if (!rawBody) {
+        return reply.status(400).send({ error: "Could not read raw webhook body" });
+      }
       const expected = "sha256=" + crypto
         .createHmac("sha256", META_APP_SECRET)
-        .update(JSON.stringify(request.body))
+        .update(rawBody)
         .digest("hex");
-      if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      // Use timingSafeEqual with equal-length buffers to prevent timing attacks
+      const sigBuf = Buffer.from(signature.padEnd(expected.length));
+      const expBuf = Buffer.from(expected);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
         return reply.status(403).send({ error: "Invalid webhook signature" });
       }
     }
@@ -267,29 +300,54 @@ export async function whatsappRoutes(app: FastifyInstance) {
                 })
               : null;
             if (ws) {
-              const normalized = normalisePhone(s.recipient_id);
-              const contact = await prisma.contact.findFirst({
-                where: { workspaceId: ws.id, OR: [{ phone: s.recipient_id }, { phone: normalized }] },
+              // Prefer precise wamid-based match — avoids updating unrelated logs for the same contact
+              const byWamid = await prisma.messageLog.findFirst({
+                where: { workspaceId: ws.id, wamid: s.id },
                 select: { id: true },
               });
-              if (contact) {
-                await prisma.messageLog.updateMany({
-                  where: { workspaceId: ws.id, contactId: contact.id, status: "sent" },
+
+              if (byWamid) {
+                // Exact match — only update this specific message
+                await prisma.messageLog.update({
+                  where: { id: byWamid.id },
                   data: { status: newStatus },
                 });
-                const EVENT_MAP: Record<string, string> = {
-                  delivered: "message.delivered",
-                  read: "message.read",
-                  failed: "message.failed",
-                };
-                const webhookEvent = EVENT_MAP[newStatus];
-                if (webhookEvent) {
-                  fireWebhooks(ws.id, webhookEvent as "message.delivered" | "message.read" | "message.failed", {
-                    messageId: s.id,
-                    recipientId: s.recipient_id,
-                    status: newStatus,
-                  }).catch(() => {});
+              } else {
+                // Fallback for logs sent before wamid was stored: match by recipient phone
+                const normalized = normalisePhone(s.recipient_id);
+                const contact = await prisma.contact.findFirst({
+                  where: { workspaceId: ws.id, OR: [{ phone: s.recipient_id }, { phone: normalized }] },
+                  select: { id: true },
+                });
+                if (contact) {
+                  // Scope to most recent "sent" log to minimize blast radius
+                  const recent = await prisma.messageLog.findFirst({
+                    where: { workspaceId: ws.id, contactId: contact.id, status: "sent" },
+                    orderBy: { createdAt: "desc" },
+                    select: { id: true },
+                  });
+                  if (recent) {
+                    await prisma.messageLog.update({
+                      where: { id: recent.id },
+                      data: { status: newStatus },
+                    });
+                  }
                 }
+              }
+
+              // Fire outbound webhook event for downstream integrations
+              const EVENT_MAP: Record<string, string> = {
+                delivered: "message.delivered",
+                read: "message.read",
+                failed: "message.failed",
+              };
+              const webhookEvent = EVENT_MAP[newStatus];
+              if (webhookEvent) {
+                fireWebhooks(ws.id, webhookEvent as "message.delivered" | "message.read" | "message.failed", {
+                  messageId: s.id,
+                  recipientId: s.recipient_id,
+                  status: newStatus,
+                }).catch(() => {});
               }
             }
           } catch (err) {

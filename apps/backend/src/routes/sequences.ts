@@ -105,6 +105,29 @@ export async function sequenceRoutes(app: FastifyInstance) {
     if (!seq) return reply.status(404).send({ error: "Sequence not found" });
     if (seq.status !== "active") return reply.status(409).send({ error: "Activate the sequence before enrolling contacts" });
 
+    // Verify all submitted contacts belong to this workspace and have opted in
+    const contacts = await prisma.contact.findMany({
+      where: { id: { in: parsed.data.contactIds }, workspaceId: user.workspaceId },
+      select: { id: true, optIn: true },
+    });
+
+    const contactMap = new Map<string, { id: string; optIn: boolean }>(contacts.map((c) => [c.id, c]));
+
+    // Reject if any ID doesn't belong to this workspace
+    const unknown = parsed.data.contactIds.filter((cid) => !contactMap.has(cid));
+    if (unknown.length > 0) {
+      return reply.status(400).send({ error: `Unknown contact IDs: ${unknown.join(", ")}` });
+    }
+
+    // Reject non-opted-in contacts — WhatsApp compliance requirement
+    const notOptedIn = parsed.data.contactIds.filter((cid) => !contactMap.get(cid)?.optIn);
+    if (notOptedIn.length > 0) {
+      return reply.status(400).send({
+        error: `${notOptedIn.length} contact(s) have not opted in to receive messages. Only opted-in contacts can be enrolled in sequences.`,
+        notOptedIn,
+      });
+    }
+
     // Skip already-enrolled contacts
     const existing = await prisma.sequenceEnrollment.findMany({
       where: { sequenceId: id, contactId: { in: parsed.data.contactIds } },

@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import axios from "axios";
 import { prisma } from "../lib/prisma";
+
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v19.0";
 import { authenticate } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
 
@@ -16,7 +18,7 @@ export interface NormalizedTemplate {
 
 async function fetchMetaTemplates(wabaId: string, accessToken: string): Promise<NormalizedTemplate[]> {
   const { data } = await axios.get(
-    `https://graph.facebook.com/v19.0/${wabaId}/message_templates`,
+    `https://graph.facebook.com/${META_GRAPH_VERSION}/${wabaId}/message_templates`,
     {
       params: { fields: "id,name,status,language,category,components", limit: 200 },
       headers: { Authorization: `Bearer ${accessToken}` },
