@@ -41,15 +41,38 @@ async function bootstrap() {
     credentials: true,
   });
   await app.register(jwt, { secret: JWT_SECRET! });
+
+  // ── Global rate limit: 100 req/min per IP ─────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await app.register(rateLimit as any, {
     max: 100,
     timeWindow: "1 minute",
     // Exclude Meta webhook endpoints from rate limiting — Meta can burst many events
     skip: (req: { url?: string }) => req.url?.startsWith("/whatsapp/webhook") ?? false,
+    // Expose standard headers so clients can self-throttle
+    addHeaders: {
+      "x-ratelimit-limit": true,
+      "x-ratelimit-remaining": true,
+      "x-ratelimit-reset": true,
+    },
   });
 
-  app.get("/health", async () => ({ status: "ok" }));
+  // ── Global error handler — never leak stack traces in production ──────────
+  app.setErrorHandler((error, _request, reply) => {
+    const status = error.statusCode ?? 500;
+    if (status >= 500) {
+      app.log.error({ err: error }, "Unhandled server error");
+      return reply.status(500).send({
+        error: process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
+      });
+    }
+    // 4xx errors pass through as-is (validation errors, rate-limit 429, etc.)
+    return reply.status(status).send({ error: error.message });
+  });
+
+  app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
 
   await app.register(authRoutes, { prefix: "/auth" });
   await app.register(workspaceRoutes, { prefix: "/workspace" });

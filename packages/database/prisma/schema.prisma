@@ -8,55 +8,55 @@ datasource db {
 }
 
 model Workspace {
-  id                   String        @id @default(uuid())
-  name                 String
-  plan                 String        @default("lite")
-  metaWhatsappEnabled    Boolean       @default(false) @map("meta_whatsapp_enabled")
-  whatsappProvider       String        @default("meta") @map("whatsapp_provider")
-  metaPhoneNumberId      String?       @map("meta_phone_number_id")
-  metaWabaId             String?       @map("meta_waba_id")
-  metaAccessToken        String?       @map("meta_access_token")
-  metaWebhookVerifyToken String?       @map("meta_webhook_verify_token")
-  msg91AuthKey           String?       @map("msg91_auth_key")
-  msg91IntegratedNumber  String?       @map("msg91_integrated_number")
+  id                     String   @id @default(uuid())
+  name                   String
+  plan                   String   @default("lite")
+  metaWhatsappEnabled    Boolean  @default(false) @map("meta_whatsapp_enabled")
+  whatsappProvider       String   @default("meta") @map("whatsapp_provider")
+  metaPhoneNumberId      String?  @map("meta_phone_number_id")
+  metaWabaId             String?  @map("meta_waba_id")
+  metaAccessToken        String?  @map("meta_access_token")
+  metaWebhookVerifyToken String?  @map("meta_webhook_verify_token")
+  msg91AuthKey           String?  @map("msg91_auth_key")
+  msg91IntegratedNumber  String?  @map("msg91_integrated_number")
   // Email / SMTP config
-  smtpHost               String?       @map("smtp_host")
-  smtpPort               Int?          @map("smtp_port")
-  smtpUser               String?       @map("smtp_user")
-  smtpPass               String?       @map("smtp_pass")
-  smtpFromEmail          String?       @map("smtp_from_email")
-  smtpFromName           String?       @map("smtp_from_name")
-  licenseKey             String?       @unique @map("license_key")
-  status               String        @default("active")
-  createdAt            DateTime      @default(now()) @map("created_at")
+  smtpHost               String?  @map("smtp_host")
+  smtpPort               Int?     @map("smtp_port")
+  smtpUser               String?  @map("smtp_user")
+  smtpPass               String?  @map("smtp_pass")
+  smtpFromEmail          String?  @map("smtp_from_email")
+  smtpFromName           String?  @map("smtp_from_name")
+  licenseKey             String?  @unique @map("license_key")
+  status                 String   @default("active")
+  createdAt              DateTime @default(now()) @map("created_at")
 
-  users              User[]
-  contacts           Contact[]
-  contactNotes       ContactNote[]
-  campaigns          Campaign[]
-  emailCampaigns     EmailCampaign[]
-  messageLogs        MessageLog[]
-  emailLogs          EmailLog[]
-  licenseKeys        LicenseKey[]
-  inboundMessages    InboundMessage[]
-  auditLogs          AuditLog[]
-  autoReplies        AutoReply[]
-  webhookEndpoints   WebhookEndpoint[]
-  campaignSequences  CampaignSequence[]
+  users             User[]
+  contacts          Contact[]
+  contactNotes      ContactNote[]
+  campaigns         Campaign[]
+  emailCampaigns    EmailCampaign[]
+  messageLogs       MessageLog[]
+  emailLogs         EmailLog[]
+  licenseKeys       LicenseKey[]
+  inboundMessages   InboundMessage[]
+  auditLogs         AuditLog[]
+  autoReplies       AutoReply[]
+  webhookEndpoints  WebhookEndpoint[]
+  campaignSequences CampaignSequence[]
 
   @@map("workspaces")
 }
 
 model User {
-  id           String    @id @default(uuid())
+  id           String   @id @default(uuid())
   name         String
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  role         String    @default("marketer")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   @default("marketer")
   permissions  Json?
-  superAdmin   Boolean   @default(false) @map("super_admin")
-  workspaceId  String    @map("workspace_id")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  superAdmin   Boolean  @default(false) @map("super_admin")
+  workspaceId  String   @map("workspace_id")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   auditLogs           AuditLog[]
@@ -180,6 +180,9 @@ model MessageLog {
 
   @@index([workspaceId])
   @@index([campaignId])
+  @@index([contactId]) // timeline queries per contact
+  @@index([workspaceId, status]) // analytics breakdown by status
+  @@index([workspaceId, createdAt]) // date-range trend queries
   @@map("message_logs")
 }
 
@@ -221,19 +224,19 @@ model AuditLog {
 }
 
 model InboundMessage {
-  id              String   @id @default(uuid())
-  workspaceId     String   @map("workspace_id")
-  contactId       String?  @map("contact_id")
-  fromPhone       String   @map("from_phone")
-  messageId       String   @unique @map("message_id")
-  type            String   @default("text")
-  body            String?
-  replyToMessageId String? @map("reply_to_message_id")
-  rawPayload      Json     @map("raw_payload")
-  read            Boolean  @default(false)
-  receivedAt      DateTime @default(now()) @map("received_at")
+  id               String   @id @default(uuid())
+  workspaceId      String   @map("workspace_id")
+  contactId        String?  @map("contact_id")
+  fromPhone        String   @map("from_phone")
+  messageId        String   @unique @map("message_id")
+  type             String   @default("text")
+  body             String?
+  replyToMessageId String?  @map("reply_to_message_id")
+  rawPayload       Json     @map("raw_payload")
+  read             Boolean  @default(false)
+  receivedAt       DateTime @default(now()) @map("received_at")
 
-  campaignId       String?  @map("campaign_id")
+  campaignId String? @map("campaign_id")
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contact   Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
@@ -241,6 +244,9 @@ model InboundMessage {
   @@index([workspaceId])
   @@index([fromPhone])
   @@index([campaignId])
+  @@index([contactId]) // timeline queries per contact
+  @@index([workspaceId, read]) // unread count queries
+  @@index([workspaceId, receivedAt]) // conversation list sorted by recency
   @@map("inbound_messages")
 }
 
@@ -323,5 +329,6 @@ model SequenceEnrollment {
   @@unique([sequenceId, contactId])
   @@index([sequenceId])
   @@index([contactId])
+  @@index([status]) // scheduler: findMany where status = "active"
   @@map("sequence_enrollments")
 }

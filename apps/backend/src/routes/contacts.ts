@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { authenticate, checkPermission } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
+import { parsePagination } from "../lib/queryParams";
 
 const contactSchema = z.object({
   name: z.string().min(1),
@@ -15,9 +16,8 @@ const contactSchema = z.object({
 export async function contactRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
-    const { page = "1", limit = "20", tag, search, sort } = request.query as Record<string, string>;
-
-    const skip = (Number(page) - 1) * Number(limit);
+    const { tag, search, sort, ...pageQuery } = request.query as Record<string, string>;
+    const { page, limit, skip } = parsePagination(pageQuery, { maxLimit: 200 });
 
     const where = {
       workspaceId: user.workspaceId,
@@ -38,13 +38,13 @@ export async function contactRoutes(app: FastifyInstance) {
       prisma.contact.findMany({
         where,
         skip,
-        take: Number(limit),
+        take: limit,
         orderBy,
       }),
       prisma.contact.count({ where }),
     ]);
 
-    return reply.send({ contacts, total, page: Number(page), limit: Number(limit) });
+    return reply.send({ contacts, total, page, limit });
   });
 
   app.post("/", { preHandler: [authenticate] }, async (request, reply) => {
@@ -128,12 +128,16 @@ export async function contactRoutes(app: FastifyInstance) {
     const user = request.user as JwtPayload;
     const { tag } = request.query as Record<string, string>;
 
+    // Hard cap at 50 000 rows — beyond that the user should use pagination or a data-warehouse export
+    const EXPORT_LIMIT = 50_000;
+
     const contacts = await prisma.contact.findMany({
       where: {
         workspaceId: user.workspaceId,
         ...(tag ? { tags: { has: tag } } : {}),
       },
       orderBy: { name: "asc" },
+      take: EXPORT_LIMIT,
       select: { id: true, name: true, phone: true, email: true, tags: true, optIn: true, leadStatus: true },
     });
 

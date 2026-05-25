@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { authenticate, requireOwnerOrAdmin, checkPermission } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
+import { parsePagination } from "../lib/queryParams";
 
 const campaignSchema = z.object({
   name: z.string().min(1),
@@ -13,25 +14,26 @@ const campaignSchema = z.object({
 export async function campaignRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
-    const { page = "1", limit = "20", status } = request.query as Record<string, string>;
+    const { status, search, ...pageQuery } = request.query as Record<string, string>;
+    const { page, limit, skip } = parsePagination(pageQuery);
 
-    const skip = (Number(page) - 1) * Number(limit);
     const where = {
       workspaceId: user.workspaceId,
       ...(status ? { status } : {}),
+      ...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
     };
 
     const [campaigns, total] = await Promise.all([
       prisma.campaign.findMany({
         where,
         skip,
-        take: Number(limit),
+        take: limit,
         orderBy: [{ scheduledAt: "desc" }],
       }),
       prisma.campaign.count({ where }),
     ]);
 
-    return reply.send({ campaigns, total, page: Number(page), limit: Number(limit) });
+    return reply.send({ campaigns, total, page, limit });
   });
 
   app.post(

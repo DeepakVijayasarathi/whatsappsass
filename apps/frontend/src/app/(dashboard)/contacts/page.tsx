@@ -34,16 +34,56 @@ type Tab = "list" | "add" | "import";
 
 const PAGE_SIZE = 20;
 
+/**
+ * RFC 4180-compliant CSV line parser.
+ * Handles:
+ *   - Quoted fields with embedded commas: `"a,b"` → `a,b`
+ *   - Doubled quotes inside quoted fields: `"say ""hi"""` → `say "hi"`
+ *   - Unquoted fields, trimmed of surrounding whitespace
+ */
 function parseCsvLine(line: string): string[] {
   const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (const ch of line) {
-    if (ch === '"') { inQuotes = !inQuotes; continue; }
-    if (ch === "," && !inQuotes) { result.push(current.trim()); current = ""; continue; }
-    current += ch;
+  let i = 0;
+  while (i <= line.length) {
+    // Skip optional leading whitespace before a quoted field
+    let start = i;
+    if (line[i] === '"') {
+      // Quoted field
+      i++; // skip opening quote
+      let field = "";
+      while (i < line.length) {
+        if (line[i] === '"') {
+          if (line[i + 1] === '"') {
+            // Escaped double-quote "" → single "
+            field += '"';
+            i += 2;
+          } else {
+            // Closing quote
+            i++;
+            break;
+          }
+        } else {
+          field += line[i];
+          i++;
+        }
+      }
+      result.push(field);
+      // Skip separator or end
+      if (line[i] === ",") i++;
+    } else {
+      // Unquoted field — read until comma or end
+      const end = line.indexOf(",", i);
+      if (end === -1) {
+        result.push(line.slice(i).trim());
+        break;
+      } else {
+        result.push(line.slice(i, end).trim());
+        i = end + 1;
+      }
+    }
+    // Prevent infinite loop at end of string
+    if (i === start && i >= line.length) break;
   }
-  result.push(current.trim());
   return result;
 }
 
@@ -172,6 +212,7 @@ export default function ContactsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string } | "bulk" | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   // CSV import state
   const [csvRows, setCsvRows] = useState<Omit<Contact, "id">[]>([]);
@@ -189,15 +230,19 @@ export default function ContactsPage() {
 
   const load = useCallback((p: number, q: string) => {
     setLoading(true);
+    setLoadError(false);
     const params = new URLSearchParams({
       page: String(p),
       limit: String(PAGE_SIZE),
       ...(q ? { search: q } : {}),
     });
-    api.get(`/contacts?${params}`).then((res) => {
-      setContacts(res.data.contacts);
-      setTotal(res.data.total);
-    }).finally(() => setLoading(false));
+    api.get(`/contacts?${params}`)
+      .then((res) => {
+        setContacts(res.data.contacts);
+        setTotal(res.data.total);
+      })
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
   }, []);
 
   // Load when page changes (search changes are handled by the debounce effect below)
@@ -566,7 +611,14 @@ export default function ContactsPage() {
             )}
           </div>
 
-          {loading ? (
+          {loadError ? (
+            <div className="text-center py-12">
+              <p className="text-sm text-red-500 mb-3">Failed to load contacts</p>
+              <button onClick={() => load(page, search)} className="btn-secondary text-sm">
+                Retry
+              </button>
+            </div>
+          ) : loading ? (
             <div className="overflow-x-auto -mx-4 sm:mx-0">
             <table className="w-full text-sm min-w-[480px]">
               <thead>

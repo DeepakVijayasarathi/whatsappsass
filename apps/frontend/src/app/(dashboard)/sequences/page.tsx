@@ -403,7 +403,7 @@ export default function SequencesPage() {
     setLoading(true);
     api.get("/sequences")
       .then((r) => setSequences(r.data.sequences))
-      .catch(() => {})
+      .catch(() => { /* toast shown by interceptor */ })
       .finally(() => setLoading(false));
   };
 

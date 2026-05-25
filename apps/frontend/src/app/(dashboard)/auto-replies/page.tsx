@@ -157,7 +157,7 @@ export default function AutoRepliesPage() {
     setLoading(true);
     api.get("/auto-replies")
       .then((r) => setRules(r.data.rules))
-      .catch(() => {})
+      .catch(() => { /* toast shown by interceptor */ })
       .finally(() => setLoading(false));
   };
 

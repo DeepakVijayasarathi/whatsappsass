@@ -322,11 +322,14 @@ export default function CampaignsPage() {
     Promise.all([
       api.get(`/campaigns?page=${p}&limit=${PAGE_SIZE}${statusParam}${searchParam}`),
       api.get("/whatsapp/campaign-replies").catch(() => ({ data: { replies: {} } })),
-    ]).then(([r, rr]) => {
-      setCampaigns(r.data.campaigns);
-      setTotal(r.data.total);
-      setReplyCounts(rr.data.replies ?? {});
-    }).finally(() => setLoading(false));
+    ])
+      .then(([r, rr]) => {
+        setCampaigns(r.data.campaigns);
+        setTotal(r.data.total);
+        setReplyCounts(rr.data.replies ?? {});
+      })
+      .catch(() => { /* toast shown by interceptor */ })
+      .finally(() => setLoading(false));
   }, [statusFilter, search]);
 
   // Reset to page 1 when filters change

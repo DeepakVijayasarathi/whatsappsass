@@ -1,9 +1,20 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { sendEmail } from "../lib/email";
+
+// Strict rate limit applied to login, register, forgot-password
+// 10 attempts per 15 minutes per IP — prevents brute-force
+const authRateLimit = {
+  config: {
+    rateLimit: {
+      max: 10,
+      timeWindow: "15 minutes",
+    },
+  },
+};
 
 const registerSchema = z.object({
   name: z.string().min(1),
@@ -18,7 +29,7 @@ const loginSchema = z.object({
 });
 
 export async function authRoutes(app: FastifyInstance) {
-  app.post("/register", async (request, reply) => {
+  app.post("/register", authRateLimit, async (request, reply) => {
     const parsed = registerSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
@@ -56,7 +67,7 @@ export async function authRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/login", async (request, reply) => {
+  app.post("/login", authRateLimit, async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
@@ -95,7 +106,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   // ── Forgot password ───────────────────────────────────────────────────────
-  app.post("/forgot-password", async (request, reply) => {
+  app.post("/forgot-password", authRateLimit, async (request, reply) => {
     const parsed = z.object({ email: z.string().email() }).safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
 

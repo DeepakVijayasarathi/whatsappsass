@@ -39,7 +39,13 @@ const AVATAR_COLORS = [
 ];
 
 function nameToColor(name: string) {
+  if (!name) return AVATAR_COLORS[0];
   return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+}
+
+/** Safe first character for avatar — falls back to "?" if name is empty */
+function avatarChar(name: string): string {
+  return name?.trim()?.[0]?.toUpperCase() ?? "?";
 }
 
 function formatRelativeTime(dateStr: string) {
@@ -72,7 +78,7 @@ export default function InboxPage() {
     setLoadingConvos(true);
     api.get("/whatsapp/conversations")
       .then((r) => setConversations(r.data.conversations))
-      .catch(() => {})
+      .catch(() => { /* toast shown by interceptor */ })
       .finally(() => setLoadingConvos(false));
   };
 
@@ -212,7 +218,7 @@ export default function InboxPage() {
                     )}
                   >
                     <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-sm font-bold", avatarCls)}>
-                      {name[0].toUpperCase()}
+                      {avatarChar(name)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
@@ -249,7 +255,7 @@ export default function InboxPage() {
                 <ChevronLeft className="w-5 h-5" />
               </button>
               <div className={clsx("w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold", nameToColor(selected.contact?.name ?? selected.fromPhone))}>
-                {(selected.contact?.name ?? selected.fromPhone)[0].toUpperCase()}
+                {avatarChar(selected.contact?.name ?? selected.fromPhone)}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm text-gray-900 truncate">

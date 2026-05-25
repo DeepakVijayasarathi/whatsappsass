@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(netstat -ano)",
+      "Bash(git commit -m 'fix: production-level hardening across frontend and backend *)"
+    ]
+  }
+}

@@ -108,6 +108,7 @@ export default function AnalyticsPage() {
           .map(([date, s]) => ({ date, sent: s.sent ?? 0, delivered: s.delivered ?? 0, read: s.read ?? 0, failed: s.failed ?? 0 }));
         setTrend(data);
       })
+      .catch(() => { /* toast already shown by interceptor */ })
       .finally(() => setTrendLoading(false));
   };
 
@@ -119,6 +120,7 @@ export default function AnalyticsPage() {
       api.get("/analytics/contacts"),
     ])
       .then(([o, c]) => { setOverview(o.data); setContacts(c.data); })
+      .catch(() => { /* toast already shown by interceptor */ })
       .finally(() => { setLoading(false); setRefreshing(false); });
   };
 
