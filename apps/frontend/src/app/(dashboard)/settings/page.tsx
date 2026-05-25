@@ -76,8 +76,7 @@ export default function SettingsPage() {
     register: regProvider,
     handleSubmit: handleProvider,
     watch,
-    setValue,
-    clearErrors,
+    reset: resetProvider,
     formState: { errors: providerErrors, isSubmitting: providerSubmitting },
   } = useForm<ProviderForm>({
     resolver: zodResolver(providerSchema),
@@ -115,15 +114,17 @@ export default function SettingsPage() {
       storedFlags.hasIntegratedNumber = !!(cfg.msg91IntegratedNumber);
       storedFlags.hasMsg91AuthKey     = !!(cfg.hasMsg91AuthKey);
 
-      setValue("whatsappProvider", cfg.whatsappProvider);
-      setValue("metaPhoneNumberId", cfg.metaPhoneNumberId ?? "");
-      setValue("metaWabaId", cfg.metaWabaId ?? "");
-      setValue("metaWebhookVerifyToken", cfg.metaWebhookVerifyToken ?? "");
-      setValue("metaAccessToken", "");
-      setValue("msg91IntegratedNumber", cfg.msg91IntegratedNumber ?? "");
-      setValue("msg91AuthKey", "");
-      // Clear any stale validation errors now that fields are populated
-      clearErrors();
+      // Use reset() instead of multiple setValue() calls — this atomically
+      // sets all field values AND clears any stale validation errors in one step.
+      resetProvider({
+        whatsappProvider: cfg.whatsappProvider,
+        metaPhoneNumberId: cfg.metaPhoneNumberId ?? "",
+        metaWabaId: cfg.metaWabaId ?? "",
+        metaWebhookVerifyToken: cfg.metaWebhookVerifyToken ?? "",
+        metaAccessToken: "",
+        msg91IntegratedNumber: cfg.msg91IntegratedNumber ?? "",
+        msg91AuthKey: "",
+      });
     }).catch(() => {
       toast.error("Failed to load settings — please refresh the page");
     });
@@ -281,7 +282,8 @@ export default function SettingsPage() {
                         className="accent-brand"
                         onChange={(e) => {
                           regProvider("whatsappProvider").onChange(e);
-                          clearErrors();
+                          // Switching provider clears stale validation errors
+                          resetProvider((prev) => ({ ...prev, whatsappProvider: e.target.value as "meta" | "msg91" }));
                         }}
                       />
                       <div>
