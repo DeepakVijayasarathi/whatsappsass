@@ -75,6 +75,9 @@ export default function SettingsPage() {
   const selectedProvider = watch("whatsappProvider");
 
   const loadStatus = () => {
+    // Clear any stale errors immediately (before API resolves) so they never
+    // show on page load or re-navigation within the dashboard layout.
+    setProviderErrors({});
     Promise.all([
       api.get("/license/status"),
       api.get("/meta/status"),
