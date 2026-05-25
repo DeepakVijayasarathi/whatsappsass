@@ -615,13 +615,15 @@ export async function whatsappRoutes(app: FastifyInstance) {
 
       type GroupByRow = { campaignId: string | null; _count: { id: number } };
 
-      const replies = (await prisma.inboundMessage.groupBy({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const replies = (await (prisma.inboundMessage.groupBy as any)({
         by: ["campaignId"],
         where: { workspaceId: user.workspaceId, campaignId: { not: null } },
         _count: { id: true },
       })) as GroupByRow[];
 
-      const unreadReplies = (await prisma.inboundMessage.groupBy({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const unreadReplies = (await (prisma.inboundMessage.groupBy as any)({
         by: ["campaignId"],
         where: { workspaceId: user.workspaceId, campaignId: { not: null }, read: false },
         _count: { id: true },
