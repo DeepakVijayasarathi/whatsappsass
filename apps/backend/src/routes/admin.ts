@@ -38,8 +38,12 @@ export async function adminRoutes(app: FastifyInstance) {
       prisma.user.count({ where: { workspaceId: user.workspaceId } }),
     ]);
 
-    const msgByStatus = messages.reduce<Record<string, number>>((acc, r) => { acc[r.status] = r._count.status; return acc; }, {});
-    const emailByStatus = emailLogs.reduce<Record<string, number>>((acc, r) => { acc[r.status] = r._count.status; return acc; }, {});
+    type StatusRow = { status: string; _count: { status: number } };
+    const msgByStatus = (messages as StatusRow[]).reduce<Record<string, number>>((acc, r) => { acc[r.status] = r._count.status; return acc; }, {});
+    const emailByStatus = (emailLogs as StatusRow[]).reduce<Record<string, number>>((acc, r) => { acc[r.status] = r._count.status; return acc; }, {});
+
+    const totalWhatsapp = Object.values(msgByStatus).reduce((a, b) => a + b, 0);
+    const totalEmail = Object.values(emailByStatus).reduce((a, b) => a + b, 0);
 
     return reply.send({
       contacts,
@@ -48,8 +52,8 @@ export async function adminRoutes(app: FastifyInstance) {
       members,
       whatsappMessages: msgByStatus,
       emailMessages: emailByStatus,
-      totalWhatsapp: Object.values(msgByStatus).reduce((a, b) => a + b, 0),
-      totalEmail: Object.values(emailByStatus).reduce((a, b) => a + b, 0),
+      totalWhatsapp,
+      totalEmail,
     });
   });
 

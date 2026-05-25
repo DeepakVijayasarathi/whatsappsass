@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
 interface AuditOptions {
@@ -21,7 +20,9 @@ export async function logAudit(opts: AuditOptions) {
         action: opts.action,
         entityType: opts.entityType ?? null,
         entityId: opts.entityId ?? null,
-        meta: opts.meta !== undefined ? (opts.meta as Prisma.InputJsonValue) : undefined,
+        // JSON field — cast to any to satisfy Prisma's Json type across versions
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        meta: opts.meta !== undefined ? (opts.meta as any) : undefined,
       },
     });
   } catch {

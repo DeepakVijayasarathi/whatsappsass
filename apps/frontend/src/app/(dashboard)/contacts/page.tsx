@@ -227,6 +227,8 @@ export default function ContactsPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   const mountedRef = useRef(false);
+  // Tracks when search debounce has already triggered a load so the page effect doesn't double-fire
+  const searchLoadedRef = useRef(false);
 
   const load = useCallback((p: number, q: string) => {
     setLoading(true);
@@ -246,12 +248,21 @@ export default function ContactsPage() {
   }, []);
 
   // Load when page changes (search changes are handled by the debounce effect below)
-  useEffect(() => { load(page, search); }, [page, load]);
+  useEffect(() => {
+    // Skip if the search debounce already triggered load(1, ...) for this render cycle
+    if (searchLoadedRef.current) { searchLoadedRef.current = false; return; }
+    load(page, search);
+  }, [page, load]); // intentionally exclude `search` — debounce handles search changes
 
   // Debounced search — skip initial mount to avoid double-fetch, reset to page 1
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return; }
-    const t = setTimeout(() => { setPage(1); load(1, search); }, 300);
+    const currentSearch = search; // capture value at effect registration — avoids stale closure
+    const t = setTimeout(() => {
+      searchLoadedRef.current = true; // signal page effect to skip its redundant load
+      setPage(1);
+      load(1, currentSearch);
+    }, 300);
     return () => clearTimeout(t);
   }, [search, load]);
 

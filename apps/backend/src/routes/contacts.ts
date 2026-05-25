@@ -141,9 +141,10 @@ export async function contactRoutes(app: FastifyInstance) {
       select: { id: true, name: true, phone: true, email: true, tags: true, optIn: true, leadStatus: true },
     });
 
+    type ContactRow = { id: string; name: string; phone: string; email: string | null; tags: string[]; optIn: boolean; leadStatus: string };
     const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const header = ["id", "name", "phone", "email", "tags", "opt_in", "lead_status"].join(",");
-    const rows = contacts.map((c) =>
+    const rows = (contacts as ContactRow[]).map((c) =>
       [
         escape(c.id),
         escape(c.name),
@@ -342,12 +343,13 @@ export async function contactRoutes(app: FastifyInstance) {
     const total = logs.length;
     if (total === 0) return reply.send({ score: 0, total: 0, breakdown: {} });
 
-    const breakdown = logs.reduce((acc: Record<string, number>, l) => {
+    type ScoreLog = { status: string };
+    const breakdown = (logs as ScoreLog[]).reduce<Record<string, number>>((acc, l) => {
       acc[l.status] = (acc[l.status] ?? 0) + 1;
       return acc;
-    }, {} as Record<string, number>);
+    }, {});
 
-    const raw = logs.reduce((sum: number, l) => sum + (SCORE_MAP[l.status] ?? 0), 0) / total;
+    const raw = (logs as ScoreLog[]).reduce<number>((sum, l) => sum + (SCORE_MAP[l.status] ?? 0), 0) / total;
     return reply.send({ score: Math.round(raw), total, breakdown });
   });
 }

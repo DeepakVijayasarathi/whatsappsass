@@ -143,7 +143,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
       const config = await getProviderConfig(user.workspaceId);
 
       const results = await Promise.allSettled(
-        contacts.map(async (contact) => {
+        contacts.map(async (contact: { id: string; phone: string; workspaceId: string }) => {
           let status = "sent";
           let wamid: string | null = null;
           try {
@@ -613,17 +613,19 @@ export async function whatsappRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const user = request.user as JwtPayload;
 
-      const replies = await prisma.inboundMessage.groupBy({
+      type GroupByRow = { campaignId: string | null; _count: { id: number } };
+
+      const replies = (await prisma.inboundMessage.groupBy({
         by: ["campaignId"],
         where: { workspaceId: user.workspaceId, campaignId: { not: null } },
         _count: { id: true },
-      });
+      })) as GroupByRow[];
 
-      const unreadReplies = await prisma.inboundMessage.groupBy({
+      const unreadReplies = (await prisma.inboundMessage.groupBy({
         by: ["campaignId"],
         where: { workspaceId: user.workspaceId, campaignId: { not: null }, read: false },
         _count: { id: true },
-      });
+      })) as GroupByRow[];
 
       const unreadMap = unreadReplies.reduce<Record<string, number>>((acc, r) => {
         if (r.campaignId) acc[r.campaignId] = r._count.id;

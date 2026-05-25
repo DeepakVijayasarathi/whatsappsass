@@ -119,7 +119,7 @@ export async function emailRoutes(app: FastifyInstance) {
       select: { status: true },
     });
 
-    const stats = logs.reduce<Record<string, number>>((acc, l) => {
+    const stats = (logs as Array<{ status: string }>).reduce<Record<string, number>>((acc, l) => {
       acc[l.status] = (acc[l.status] ?? 0) + 1;
       return acc;
     }, {});
@@ -210,22 +210,28 @@ export async function emailRoutes(app: FastifyInstance) {
     setImmediate(async () => {
       let sent = 0;
       let failed = 0;
-      for (const contact of contacts) {
-        try {
-          await sendEmail(smtpCfg, { to: contact.email!, subject: campaign.subject, html: campaign.body });
-          await prisma.emailLog.create({
-            data: { workspaceId, campaignId: id, contactId: contact.id, toEmail: contact.email!, status: "sent" },
-          });
-          sent++;
-        } catch {
-          await prisma.emailLog.create({
-            data: { workspaceId, campaignId: id, contactId: contact.id, toEmail: contact.email!, status: "failed" },
-          });
-          failed++;
+      try {
+        for (const contact of contacts) {
+          try {
+            await sendEmail(smtpCfg, { to: contact.email!, subject: campaign.subject, html: campaign.body });
+            await prisma.emailLog.create({
+              data: { workspaceId, campaignId: id, contactId: contact.id, toEmail: contact.email!, status: "sent" },
+            });
+            sent++;
+          } catch {
+            await prisma.emailLog.create({
+              data: { workspaceId, campaignId: id, contactId: contact.id, toEmail: contact.email!, status: "failed" },
+            });
+            failed++;
+          }
         }
+        await prisma.emailCampaign.update({ where: { id }, data: { status: "completed" } });
+        await logAudit({ workspaceId, userId, action: "email_campaign.sent", entityType: "email_campaign", entityId: id, meta: { sent, failed, total: contacts.length } });
+      } catch (err) {
+        // Unexpected crash (e.g. DB connection lost) — roll back status so operator can retry
+        console.error(`[email] Campaign ${id} background send crashed:`, err);
+        await prisma.emailCampaign.update({ where: { id }, data: { status: "paused" } }).catch(() => {});
       }
-      await prisma.emailCampaign.update({ where: { id }, data: { status: "completed" } });
-      await logAudit({ workspaceId, userId, action: "email_campaign.sent", entityType: "email_campaign", entityId: id, meta: { sent, failed, total: contacts.length } });
     });
   });
 }

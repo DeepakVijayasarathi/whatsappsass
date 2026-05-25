@@ -27,7 +27,11 @@ api.interceptors.response.use(
       // Clear ALL auth state before redirecting
       clearAuth();
       if (typeof window !== "undefined") {
-        window.location.href = "/login";
+        // Guard against redirect loop: don't redirect if already on an auth page
+        const path = window.location.pathname;
+        if (!path.startsWith("/login") && !path.startsWith("/register") && !path.startsWith("/forgot-password")) {
+          window.location.href = "/login";
+        }
       }
       return Promise.reject(err);
     }

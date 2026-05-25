@@ -49,7 +49,21 @@ export async function sequenceRoutes(app: FastifyInstance) {
         templateName: z.string().min(1),
         languageCode: z.string().default("en_US"),
         delayDays:    z.number().int().min(0).default(0),
-      })).min(1, "At least one step required"),
+      })).min(1, "At least one step required")
+        .superRefine((steps, ctx) => {
+          // Step numbers must be unique
+          const nums = steps.map((s) => s.stepNumber);
+          const dupes = nums.filter((n, i) => nums.indexOf(n) !== i);
+          if (dupes.length > 0) {
+            ctx.addIssue({ code: "custom", message: `Duplicate step numbers: ${[...new Set(dupes)].join(", ")}` });
+          }
+          // Step numbers must form a contiguous sequence starting at 1
+          const sorted = [...nums].sort((a, b) => a - b);
+          const expected = Array.from({ length: sorted.length }, (_, i) => i + 1);
+          if (JSON.stringify(sorted) !== JSON.stringify(expected)) {
+            ctx.addIssue({ code: "custom", message: `Step numbers must be sequential starting from 1 (got: ${sorted.join(", ")})` });
+          }
+        }),
     });
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
@@ -111,7 +125,7 @@ export async function sequenceRoutes(app: FastifyInstance) {
       select: { id: true, optIn: true },
     });
 
-    const contactMap = new Map<string, { id: string; optIn: boolean }>(contacts.map((c) => [c.id, c]));
+    const contactMap = new Map<string, { id: string; optIn: boolean }>((contacts as Array<{ id: string; optIn: boolean }>).map((c) => [c.id, c]));
 
     // Reject if any ID doesn't belong to this workspace
     const unknown = parsed.data.contactIds.filter((cid) => !contactMap.has(cid));
@@ -133,7 +147,7 @@ export async function sequenceRoutes(app: FastifyInstance) {
       where: { sequenceId: id, contactId: { in: parsed.data.contactIds } },
       select: { contactId: true },
     });
-    const alreadyEnrolled = new Set(existing.map((e) => e.contactId));
+    const alreadyEnrolled = new Set((existing as Array<{ contactId: string }>).map((e) => e.contactId));
     const toEnroll = parsed.data.contactIds.filter((cid) => !alreadyEnrolled.has(cid));
 
     if (toEnroll.length === 0) return reply.send({ enrolled: 0, skipped: alreadyEnrolled.size });
@@ -178,7 +192,7 @@ export async function sequenceRoutes(app: FastifyInstance) {
       select: { status: true, currentStep: true },
     });
 
-    const stats = enrollments.reduce<Record<string, number>>((acc, e) => {
+    const stats = (enrollments as Array<{ status: string; currentStep: number }>).reduce<Record<string, number>>((acc, e) => {
       acc[e.status] = (acc[e.status] ?? 0) + 1;
       return acc;
     }, {});

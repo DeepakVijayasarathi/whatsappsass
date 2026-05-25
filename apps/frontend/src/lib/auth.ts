@@ -59,14 +59,21 @@ export function isAuthenticated(): boolean {
   const token = getToken();
   if (!token) return false;
   try {
+    // A valid JWT must have exactly 3 dot-separated segments
+    const parts = token.split(".");
+    if (parts.length !== 3) {
+      clearAuth();
+      return false;
+    }
     // Decode JWT payload (no signature verification — just check expiry client-side)
-    const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number };
+    const payload = JSON.parse(atob(parts[1])) as { exp?: number };
     if (payload.exp && payload.exp * 1000 < Date.now()) {
       clearAuth(); // proactively clean up expired token
       return false;
     }
     return true;
   } catch {
+    clearAuth(); // malformed token — clear it
     return false;
   }
 }

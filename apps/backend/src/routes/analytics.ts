@@ -3,6 +3,10 @@ import { prisma } from "../lib/prisma";
 import { authenticate } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
 
+type LogRow = { status: string; createdAt: Date };
+type GroupByStatusRow = { status: string; _count: { status: number } };
+type TagRow = { tags: string[] };
+
 export async function analyticsRoutes(app: FastifyInstance) {
   app.get("/overview", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
@@ -19,9 +23,9 @@ export async function analyticsRoutes(app: FastifyInstance) {
         }),
       ]);
 
-    const statusBreakdown = messagesByStatus.reduce(
+    const statusBreakdown = (messagesByStatus as GroupByStatusRow[]).reduce<Record<string, number>>(
       (acc, s) => ({ ...acc, [s.status]: s._count.status }),
-      {} as Record<string, number>
+      {}
     );
 
     return reply.send({
@@ -57,7 +61,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     });
 
     const VALID_STATUSES = new Set(["sent", "delivered", "read", "failed"]);
-    const grouped = logs.reduce(
+    const grouped = (logs as LogRow[]).reduce<Record<string, Record<string, number>>>(
       (acc, log) => {
         const date = log.createdAt.toISOString().split("T")[0];
         if (!acc[date]) acc[date] = { sent: 0, delivered: 0, read: 0, failed: 0 };
@@ -65,7 +69,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
         acc[date][key] = (acc[date][key] || 0) + 1;
         return acc;
       },
-      {} as Record<string, Record<string, number>>
+      {}
     );
 
     return reply.send({ days: Number(days), from: since.toISOString(), to: until.toISOString(), data: grouped });
@@ -93,13 +97,13 @@ export async function analyticsRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "asc" },
     });
 
-    const grouped = logs.reduce((acc, log) => {
+    const grouped = (logs as LogRow[]).reduce<Record<string, Record<string, number>>>((acc, log) => {
       const date = log.createdAt.toISOString().split("T")[0];
       if (!acc[date]) acc[date] = { sent: 0, delivered: 0, read: 0, failed: 0 };
       const key = ["sent","delivered","read","failed"].includes(log.status) ? log.status : "sent";
       acc[date][key] = (acc[date][key] || 0) + 1;
       return acc;
-    }, {} as Record<string, Record<string, number>>);
+    }, {});
 
     const header = "date,sent,delivered,read,failed";
     const rows = Object.entries(grouped).map(([date, s]) =>
@@ -124,14 +128,14 @@ export async function analyticsRoutes(app: FastifyInstance) {
       }),
     ]);
 
-    const tagCounts = byTag.reduce(
+    const tagCounts = (byTag as TagRow[]).reduce<Record<string, number>>(
       (acc, c) => {
         for (const tag of c.tags) {
           acc[tag] = (acc[tag] || 0) + 1;
         }
         return acc;
       },
-      {} as Record<string, number>
+      {}
     );
 
     return reply.send({ total, optedIn, tagCounts });

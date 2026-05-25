@@ -35,7 +35,12 @@ async function runScheduledCampaigns() {
 
     try {
       const ws = await getWorkspaceConfig(campaign.workspaceId);
-      if (!ws?.metaWhatsappEnabled) {
+      if (!ws) {
+        // Workspace deleted between queueing and execution — skip silently
+        await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "paused" } });
+        continue;
+      }
+      if (!ws.metaWhatsappEnabled) {
         await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "paused" } });
         continue;
       }
@@ -130,7 +135,8 @@ async function runSequenceSteps() {
 
     try {
       const ws = await getWorkspaceConfig(contact.workspaceId);
-      if (!ws?.metaWhatsappEnabled) continue;
+      if (!ws) continue; // workspace deleted — skip
+      if (!ws.metaWhatsappEnabled) continue;
 
       const config: ProviderConfig = {
         provider: (ws.whatsappProvider as "meta" | "msg91") || "meta",

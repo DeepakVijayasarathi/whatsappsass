@@ -96,10 +96,12 @@ export default function InboxPage() {
       if (convo.contactId) {
         const r = await api.get(`/contacts/${convo.contactId}/timeline`);
         // API returns newest-first; reverse for chronological chat display
-        setTimeline([...(r.data.timeline as TimelineEntry[])].reverse());
+        // Guard: timeline may be null/undefined if contact has no messages yet
+        const raw = (r.data.timeline as TimelineEntry[] | null | undefined) ?? [];
+        setTimeline([...raw].reverse());
       } else {
         const r = await api.get(`/whatsapp/inbox?limit=100`);
-        const msgs = (r.data.messages as Array<{ fromPhone: string; id: string; body: string | null; type: string; receivedAt: string; replyToMessageId: string | null }>)
+        const msgs = ((r.data.messages as Array<{ fromPhone: string; id: string; body: string | null; type: string; receivedAt: string; replyToMessageId: string | null }>) ?? [])
           .filter((m) => m.fromPhone === convo.fromPhone)
           .reverse();
         setTimeline(msgs.map((m) => ({
@@ -111,7 +113,9 @@ export default function InboxPage() {
           createdAt: m.receivedAt,
         })));
       }
-    } catch { /* ignore */ }
+    } catch {
+      toast.error("Failed to load conversation thread");
+    }
     setLoadingThread(false);
 
     // Mark only this conversation's messages as read

@@ -87,20 +87,39 @@ export default function DashboardPage() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     setError(false);
-    Promise.all([
+    // Use allSettled so a single failing API (e.g. meta/status misconfigured) doesn't
+    // block the whole dashboard — we show whatever data we can.
+    Promise.allSettled([
       api.get("/analytics/overview"),
       api.get("/meta/status"),
       api.get("/campaigns?limit=5"),
       api.get("/contacts?limit=5&sort=recent"),
     ])
       .then(([overview, meta, campaigns, contacts]) => {
-        setData(overview.data);
-        setWhatsappEnabled(meta.data.metaWhatsappEnabled);
-        setRecentCampaigns(campaigns.data.campaigns ?? []);
-        setRecentContacts(contacts.data.contacts ?? []);
-        setLastUpdated(new Date());
+        let anyError = false;
+
+        if (overview.status === "fulfilled") {
+          setData(overview.value.data);
+        } else {
+          anyError = true;
+        }
+
+        if (meta.status === "fulfilled") {
+          setWhatsappEnabled(meta.value.data.metaWhatsappEnabled ?? false);
+        }
+        // meta/status failing (e.g. not yet configured) is non-critical — don't flag as error
+
+        if (campaigns.status === "fulfilled") {
+          setRecentCampaigns(campaigns.value.data.campaigns ?? []);
+        }
+
+        if (contacts.status === "fulfilled") {
+          setRecentContacts(contacts.value.data.contacts ?? []);
+        }
+
+        if (!anyError) setLastUpdated(new Date());
+        if (anyError) setError(true);
       })
-      .catch(() => setError(true))
       .finally(() => { setLoading(false); setRefreshing(false); });
   }, []);
 

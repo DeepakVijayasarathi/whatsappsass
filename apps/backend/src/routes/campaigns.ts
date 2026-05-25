@@ -28,7 +28,8 @@ export async function campaignRoutes(app: FastifyInstance) {
         where,
         skip,
         take: limit,
-        orderBy: [{ scheduledAt: "desc" }],
+        // scheduledAt is nullable; nulls sort last by adding secondary sort on createdAt
+        orderBy: [{ scheduledAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
       }),
       prisma.campaign.count({ where }),
     ]);
@@ -170,9 +171,10 @@ export async function campaignRoutes(app: FastifyInstance) {
         _count: { status: true },
       });
 
-      const result = stats.reduce(
+      type StatsRow = { status: string; _count: { status: number } };
+      const result = (stats as StatsRow[]).reduce<Record<string, number>>(
         (acc, s) => ({ ...acc, [s.status]: s._count.status }),
-        {} as Record<string, number>
+        {}
       );
 
       return reply.send({ campaignId: id, stats: result });

@@ -43,7 +43,9 @@ function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: 
   const [stats, setStats] = useState<{ stats: Record<string, number>; total: number } | null>(null);
 
   useEffect(() => {
-    api.get(`/email/campaigns/${id}/stats`).then((r) => setStats(r.data));
+    api.get(`/email/campaigns/${id}/stats`)
+      .then((r) => setStats(r.data))
+      .catch(() => setStats({ stats: {}, total: 0 }));
   }, [id]);
 
   return (
@@ -104,7 +106,9 @@ function SendModal({ campaign, onClose, onDone }: {
       const opted = r.data.contacts.filter((c: { optIn: boolean; email: string | null }) => c.optIn && c.email);
       setContacts(opted);
       setSelectedIds(new Set(opted.map((c: { id: string }) => c.id)));
-    }).finally(() => setLoading(false));
+    })
+    .catch(() => toast.error("Failed to load contacts"))
+    .finally(() => setLoading(false));
   }, []);
 
   const toggleAll = () => {
@@ -223,7 +227,9 @@ export default function EmailCampaignsPage() {
     api.get(`/email/campaigns?page=${p}`).then((r) => {
       setCampaigns(r.data.campaigns);
       setTotal(r.data.total);
-    }).finally(() => setLoading(false));
+    })
+    .catch(() => toast.error("Failed to load email campaigns"))
+    .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(page); }, [page, load]);

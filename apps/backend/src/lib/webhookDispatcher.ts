@@ -26,7 +26,7 @@ export async function fireWebhooks(
   const body = JSON.stringify({ event, timestamp: new Date().toISOString(), data: payload });
 
   await Promise.allSettled(
-    endpoints.map(async ({ url, secret }) => {
+    endpoints.map(async ({ url, secret }: { url: string; secret: string | null }) => {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "X-Webhook-Event": event,
