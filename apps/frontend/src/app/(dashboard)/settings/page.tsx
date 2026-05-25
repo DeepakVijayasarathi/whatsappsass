@@ -31,13 +31,13 @@ const providerSchema = z.object({
       ctx.addIssue({ path: ["metaPhoneNumberId"], code: "custom", message: "Phone Number ID required" });
     if (!data.metaWabaId?.trim())
       ctx.addIssue({ path: ["metaWabaId"], code: "custom", message: "WABA ID required" });
-    // Only require verify token if neither the field nor a stored value exists
+    // Only require verify token if there's no stored value AND nothing entered
     if (!data.metaWebhookVerifyToken?.trim() && !storedFlags.hasWebhookToken)
       ctx.addIssue({ path: ["metaWebhookVerifyToken"], code: "custom", message: "Webhook Verify Token required" });
   } else {
-    // Only require integrated number if neither the field nor a stored value exists
-    const numOk = data.msg91IntegratedNumber?.trim() && data.msg91IntegratedNumber.trim().length >= 7;
-    if (!numOk && !storedFlags.hasIntegratedNumber)
+    // Accept if field has a value OR if a value is already stored in DB
+    const fieldFilled = (data.msg91IntegratedNumber?.trim().length ?? 0) >= 7;
+    if (!fieldFilled && !storedFlags.hasIntegratedNumber)
       ctx.addIssue({ path: ["msg91IntegratedNumber"], code: "custom", message: "Integrated number required" });
   }
 });
@@ -75,6 +75,8 @@ export default function SettingsPage() {
     formState: { errors: providerErrors, isSubmitting: providerSubmitting },
   } = useForm<ProviderForm>({
     resolver: zodResolver(providerSchema),
+    mode: "onSubmit",
+    reValidateMode: "onSubmit",
     defaultValues: {
       whatsappProvider: "meta",
       metaPhoneNumberId: "",
@@ -113,6 +115,8 @@ export default function SettingsPage() {
       setValue("metaAccessToken", "");
       setValue("msg91IntegratedNumber", cfg.msg91IntegratedNumber ?? "");
       setValue("msg91AuthKey", "");
+      // Clear any stale validation errors now that fields are populated
+      clearErrors();
     });
   };
 
