@@ -14,38 +14,16 @@ const licenseSchema = z.object({
 });
 type LicenseForm = z.infer<typeof licenseSchema>;
 
-// storedFlags is set externally via a ref to avoid re-creating the schema on every render
-const storedFlags = { hasWebhookToken: false, hasIntegratedNumber: false, hasMsg91AuthKey: false };
-
-const providerSchema = z.object({
-  whatsappProvider: z.enum(["meta", "msg91"]),
-  metaPhoneNumberId: z.string().optional(),
-  metaWabaId: z.string().optional(),
-  metaAccessToken: z.string().optional(),
-  metaWebhookVerifyToken: z.string().optional(),
-  msg91AuthKey: z.string().optional(),
-  msg91IntegratedNumber: z.string().optional(),
-}).superRefine((data, ctx) => {
-  if (data.whatsappProvider === "meta") {
-    if (!data.metaPhoneNumberId?.trim())
-      ctx.addIssue({ path: ["metaPhoneNumberId"], code: "custom", message: "Phone Number ID required" });
-    if (!data.metaWabaId?.trim())
-      ctx.addIssue({ path: ["metaWabaId"], code: "custom", message: "WABA ID required" });
-    // Only require verify token if there's no stored value AND nothing entered
-    if (!data.metaWebhookVerifyToken?.trim() && !storedFlags.hasWebhookToken)
-      ctx.addIssue({ path: ["metaWebhookVerifyToken"], code: "custom", message: "Webhook Verify Token required" });
-  } else {
-    // Auth key: required on first save (when nothing stored yet)
-    const authKeyFilled = (data.msg91AuthKey?.trim().length ?? 0) > 0;
-    if (!authKeyFilled && !storedFlags.hasMsg91AuthKey)
-      ctx.addIssue({ path: ["msg91AuthKey"], code: "custom", message: "MSG91 Auth Key required" });
-    // Integrated number: accept if field has a value OR if a value is already stored in DB
-    const numFilled = (data.msg91IntegratedNumber?.trim().length ?? 0) >= 7;
-    if (!numFilled && !storedFlags.hasIntegratedNumber)
-      ctx.addIssue({ path: ["msg91IntegratedNumber"], code: "custom", message: "Integrated number required (min 7 digits)" });
-  }
-});
-type ProviderForm = z.infer<typeof providerSchema>;
+// Plain type — no Zod schema for the provider form (validation done manually in saveProvider)
+type ProviderForm = {
+  whatsappProvider: "meta" | "msg91";
+  metaPhoneNumberId: string;
+  metaWabaId: string;
+  metaAccessToken: string;
+  metaWebhookVerifyToken: string;
+  msg91AuthKey: string;
+  msg91IntegratedNumber: string;
+};
 
 interface ProviderConfig {
   whatsappProvider: "meta" | "msg91";
@@ -72,16 +50,17 @@ export default function SettingsPage() {
     formState: { errors: licenseErrors, isSubmitting: licenseSubmitting },
   } = useForm<LicenseForm>({ resolver: zodResolver(licenseSchema) });
 
+  // Manual field errors — avoids any Zod/RHF validation running at page load or on reset()
+  const [providerErrors, setProviderErrors] = useState<Partial<Record<keyof ProviderForm, string>>>({});
+
   const {
     register: regProvider,
     handleSubmit: handleProvider,
     watch,
     reset: resetProvider,
-    formState: { errors: providerErrors, isSubmitting: providerSubmitting },
+    formState: { isSubmitting: providerSubmitting },
   } = useForm<ProviderForm>({
-    resolver: zodResolver(providerSchema),
-    mode: "onSubmit",
-    reValidateMode: "onSubmit",
+    // No resolver — validation is done manually in saveProvider
     defaultValues: {
       whatsappProvider: "meta",
       metaPhoneNumberId: "",
@@ -108,14 +87,7 @@ export default function SettingsPage() {
       // Pre-fill non-secret fields
       const cfg: ProviderConfig = prov.data;
 
-      // Tell the schema which fields already have stored values so we don't
-      // force the user to re-enter them on every save.
-      storedFlags.hasWebhookToken     = !!(cfg.metaWebhookVerifyToken);
-      storedFlags.hasIntegratedNumber = !!(cfg.msg91IntegratedNumber);
-      storedFlags.hasMsg91AuthKey     = !!(cfg.hasMsg91AuthKey);
-
-      // Use reset() instead of multiple setValue() calls — this atomically
-      // sets all field values AND clears any stale validation errors in one step.
+      // Reset form with server values and clear any stale errors atomically
       resetProvider({
         whatsappProvider: cfg.whatsappProvider,
         metaPhoneNumberId: cfg.metaPhoneNumberId ?? "",
@@ -125,6 +97,7 @@ export default function SettingsPage() {
         msg91IntegratedNumber: cfg.msg91IntegratedNumber ?? "",
         msg91AuthKey: "",
       });
+      setProviderErrors({});
     }).catch(() => {
       toast.error("Failed to load settings — please refresh the page");
     });
@@ -146,6 +119,23 @@ export default function SettingsPage() {
   };
 
   const saveProvider = async (data: ProviderForm) => {
+    // Manual validation — runs only on submit, never on load or reset
+    const errs: Partial<Record<keyof ProviderForm, string>> = {};
+    if (data.whatsappProvider === "meta") {
+      if (!data.metaPhoneNumberId.trim()) errs.metaPhoneNumberId = "Phone Number ID required";
+      if (!data.metaWabaId.trim()) errs.metaWabaId = "WABA ID required";
+      const hasToken = (data.metaAccessToken.trim().length > 0) || !!(providerConfig?.hasMetaAccessToken);
+      if (!hasToken) errs.metaAccessToken = "Access Token required";
+      const hasVerifyToken = (data.metaWebhookVerifyToken.trim().length > 0) || !!(providerConfig?.metaWebhookVerifyToken);
+      if (!hasVerifyToken) errs.metaWebhookVerifyToken = "Webhook Verify Token required";
+    } else {
+      const hasAuthKey = (data.msg91AuthKey.trim().length > 0) || !!(providerConfig?.hasMsg91AuthKey);
+      if (!hasAuthKey) errs.msg91AuthKey = "MSG91 Auth Key required";
+      const hasNumber = (data.msg91IntegratedNumber.trim().length >= 7) || !!(providerConfig?.msg91IntegratedNumber);
+      if (!hasNumber) errs.msg91IntegratedNumber = "Integrated number required (min 7 digits)";
+    }
+    if (Object.keys(errs).length > 0) { setProviderErrors(errs); return; }
+    setProviderErrors({});
     try {
       await api.patch("/workspace/provider", data);
       toast.success("Provider saved");
@@ -282,8 +272,7 @@ export default function SettingsPage() {
                         className="accent-brand"
                         onChange={(e) => {
                           regProvider("whatsappProvider").onChange(e);
-                          // Switching provider clears stale validation errors
-                          resetProvider((prev) => ({ ...prev, whatsappProvider: e.target.value as "meta" | "msg91" }));
+                          setProviderErrors({});
                         }}
                       />
                       <div>
@@ -304,14 +293,14 @@ export default function SettingsPage() {
                       placeholder="1234567890"
                       mono
                       {...regProvider("metaPhoneNumberId")}
-                      error={providerErrors.metaPhoneNumberId?.message}
+                      error={providerErrors.metaPhoneNumberId}
                     />
                     <Field
                       label="WhatsApp Business Account (WABA) ID"
                       placeholder="102290129340823"
                       mono
                       {...regProvider("metaWabaId")}
-                      error={providerErrors.metaWabaId?.message}
+                      error={providerErrors.metaWabaId}
                     />
                     <Field
                       label={providerConfig?.hasMetaAccessToken
@@ -323,14 +312,14 @@ export default function SettingsPage() {
                       mono
                       type="password"
                       {...regProvider("metaAccessToken")}
-                      error={providerErrors.metaAccessToken?.message}
+                      error={providerErrors.metaAccessToken}
                     />
                     <Field
                       label="Webhook Verify Token (leave blank to keep existing)"
                       placeholder="my_random_verify_token  (only fill to change)"
                       mono
                       {...regProvider("metaWebhookVerifyToken")}
-                      error={providerErrors.metaWebhookVerifyToken?.message}
+                      error={providerErrors.metaWebhookVerifyToken}
                     />
                     <p className="text-xs text-gray-400">
                       Access Token is write-only. Leave blank to keep the stored token.
@@ -351,13 +340,13 @@ export default function SettingsPage() {
                       mono
                       type="password"
                       {...regProvider("msg91AuthKey")}
-                      error={providerErrors.msg91AuthKey?.message}
+                      error={providerErrors.msg91AuthKey}
                     />
                     <Field
                       label="Integrated Number"
                       placeholder="91XXXXXXXXXX"
                       {...regProvider("msg91IntegratedNumber")}
-                      error={providerErrors.msg91IntegratedNumber?.message}
+                      error={providerErrors.msg91IntegratedNumber}
                     />
                     <p className="text-xs text-gray-400">
                       Auth key is write-only — never returned by the server. Leave blank to keep the stored key.
