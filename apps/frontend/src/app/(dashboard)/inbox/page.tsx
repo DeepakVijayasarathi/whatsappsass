@@ -104,9 +104,9 @@ export default function InboxPage() {
     } catch { /* ignore */ }
     setLoadingThread(false);
 
-    // Mark unread as read
+    // Mark only this conversation's messages as read
     if (convo.unreadCount > 0) {
-      api.patch("/whatsapp/inbox/read", {}).then(loadConversations).catch(() => {});
+      api.patch("/whatsapp/inbox/read", { fromPhone: convo.fromPhone }).then(loadConversations).catch(() => {});
     }
     setTimeout(() => {
       threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
@@ -120,6 +120,7 @@ export default function InboxPage() {
       await api.post("/whatsapp/send", { to: selected.fromPhone, templateName: replyTemplate.trim(), languageCode: replyLang });
       toast.success("Reply sent!");
       setReplyTemplate("");
+      setReplyLang("en_US");
       if (selected) openConversation(selected);
     } catch (err: unknown) {
       toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? "Failed to send");

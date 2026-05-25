@@ -481,10 +481,13 @@ export async function whatsappRoutes(app: FastifyInstance) {
     { preHandler: [authenticate] },
     async (request, reply) => {
       const user = request.user as JwtPayload;
-      const { ids } = request.body as { ids?: string[] };
+      const { ids, fromPhone } = request.body as { ids?: string[]; fromPhone?: string };
 
+      // Priority: explicit ids > fromPhone (conversation) > all workspace messages
       const where = ids?.length
         ? { workspaceId: user.workspaceId, id: { in: ids } }
+        : fromPhone
+        ? { workspaceId: user.workspaceId, fromPhone, read: false }
         : { workspaceId: user.workspaceId };
 
       const { count } = await prisma.inboundMessage.updateMany({

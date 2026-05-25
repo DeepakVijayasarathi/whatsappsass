@@ -72,15 +72,17 @@ function RunModal({ campaign, onClose, onDone }: {
   const [varValues, setVarValues] = useState<Record<number, string>>({});
   const [templateBody, setTemplateBody] = useState<string | null>(campaign.templateBody ?? null);
 
+  // Reset and re-fetch whenever the campaign template changes
   useEffect(() => {
-    if (templateBody) return;
+    setTemplateBody(campaign.templateBody ?? null);
+    setVarValues({});
+    if (campaign.templateBody) return;
     api.get("/templates").then((r) => {
       const t = (r.data.templates as Array<{ name: string; body: string | null }>)
         .find((tmpl) => tmpl.name === campaign.template);
       if (t?.body) setTemplateBody(t.body);
     }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [campaign.template, campaign.templateBody]);
 
   const variables = extractVariables(templateBody);
 
