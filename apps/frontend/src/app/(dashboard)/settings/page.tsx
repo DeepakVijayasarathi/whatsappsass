@@ -15,7 +15,7 @@ const licenseSchema = z.object({
 type LicenseForm = z.infer<typeof licenseSchema>;
 
 // storedFlags is set externally via a ref to avoid re-creating the schema on every render
-const storedFlags = { hasWebhookToken: false, hasIntegratedNumber: false };
+const storedFlags = { hasWebhookToken: false, hasIntegratedNumber: false, hasMsg91AuthKey: false };
 
 const providerSchema = z.object({
   whatsappProvider: z.enum(["meta", "msg91"]),
@@ -35,10 +35,14 @@ const providerSchema = z.object({
     if (!data.metaWebhookVerifyToken?.trim() && !storedFlags.hasWebhookToken)
       ctx.addIssue({ path: ["metaWebhookVerifyToken"], code: "custom", message: "Webhook Verify Token required" });
   } else {
-    // Accept if field has a value OR if a value is already stored in DB
-    const fieldFilled = (data.msg91IntegratedNumber?.trim().length ?? 0) >= 7;
-    if (!fieldFilled && !storedFlags.hasIntegratedNumber)
-      ctx.addIssue({ path: ["msg91IntegratedNumber"], code: "custom", message: "Integrated number required" });
+    // Auth key: required on first save (when nothing stored yet)
+    const authKeyFilled = (data.msg91AuthKey?.trim().length ?? 0) > 0;
+    if (!authKeyFilled && !storedFlags.hasMsg91AuthKey)
+      ctx.addIssue({ path: ["msg91AuthKey"], code: "custom", message: "MSG91 Auth Key required" });
+    // Integrated number: accept if field has a value OR if a value is already stored in DB
+    const numFilled = (data.msg91IntegratedNumber?.trim().length ?? 0) >= 7;
+    if (!numFilled && !storedFlags.hasIntegratedNumber)
+      ctx.addIssue({ path: ["msg91IntegratedNumber"], code: "custom", message: "Integrated number required (min 7 digits)" });
   }
 });
 type ProviderForm = z.infer<typeof providerSchema>;
@@ -49,6 +53,8 @@ interface ProviderConfig {
   metaWabaId?: string | null;
   metaWebhookVerifyToken?: string | null;
   msg91IntegratedNumber?: string | null;
+  hasMetaAccessToken?: boolean;
+  hasMsg91AuthKey?: boolean;
 }
 
 export default function SettingsPage() {
@@ -105,8 +111,9 @@ export default function SettingsPage() {
 
       // Tell the schema which fields already have stored values so we don't
       // force the user to re-enter them on every save.
-      storedFlags.hasWebhookToken = !!(cfg.metaWebhookVerifyToken);
+      storedFlags.hasWebhookToken    = !!(cfg.metaWebhookVerifyToken);
       storedFlags.hasIntegratedNumber = !!(cfg.msg91IntegratedNumber);
+      storedFlags.hasMsg91AuthKey    = !!(cfg.hasMsg91AuthKey);
 
       setValue("whatsappProvider", cfg.whatsappProvider);
       setValue("metaPhoneNumberId", cfg.metaPhoneNumberId ?? "");
@@ -303,8 +310,12 @@ export default function SettingsPage() {
                       error={providerErrors.metaWabaId?.message}
                     />
                     <Field
-                      label="Access Token (leave blank to keep existing)"
-                      placeholder="EAAxxxxxxxx…  (only fill to change)"
+                      label={providerConfig?.hasMetaAccessToken
+                        ? "Access Token (stored ✓ — leave blank to keep)"
+                        : "Access Token"}
+                      placeholder={providerConfig?.hasMetaAccessToken
+                        ? "••••••••  (only fill to change)"
+                        : "EAAxxxxxxxx…"}
                       mono
                       type="password"
                       {...regProvider("metaAccessToken")}
@@ -327,8 +338,12 @@ export default function SettingsPage() {
                 {selectedProvider === "msg91" && (
                   <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
                     <Field
-                      label="MSG91 Auth Key (leave blank to keep existing)"
-                      placeholder="your_msg91_auth_key  (only fill to change)"
+                      label={providerConfig?.hasMsg91AuthKey
+                        ? "MSG91 Auth Key (stored ✓ — leave blank to keep)"
+                        : "MSG91 Auth Key"}
+                      placeholder={providerConfig?.hasMsg91AuthKey
+                        ? "••••••••  (only fill to change)"
+                        : "Enter your MSG91 auth key"}
                       mono
                       type="password"
                       {...regProvider("msg91AuthKey")}
@@ -341,7 +356,7 @@ export default function SettingsPage() {
                       error={providerErrors.msg91IntegratedNumber?.message}
                     />
                     <p className="text-xs text-gray-400">
-                      Auth key is write-only. Leave blank to keep the stored key.
+                      Auth key is write-only — never returned by the server. Leave blank to keep the stored key.
                     </p>
                   </div>
                 )}

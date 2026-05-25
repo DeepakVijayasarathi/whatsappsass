@@ -369,16 +369,25 @@ export async function workspaceRoutes(app: FastifyInstance) {
       const user = request.user as JwtPayload;
       const workspace = await prisma.workspace.findUnique({
         where: { id: user.workspaceId },
-        // Omit secret fields (metaAccessToken, msg91AuthKey) from response
         select: {
           whatsappProvider: true,
           metaPhoneNumberId: true,
           metaWabaId: true,
           metaWebhookVerifyToken: true,
           msg91IntegratedNumber: true,
+          // Secrets — only return boolean flags, never the actual values
+          metaAccessToken: true,
+          msg91AuthKey: true,
         },
       });
-      return reply.send(workspace);
+      if (!workspace) return reply.status(404).send({ error: "Not found" });
+      // Never expose secret values — convert to boolean presence flags
+      const { metaAccessToken, msg91AuthKey, ...safe } = workspace;
+      return reply.send({
+        ...safe,
+        hasMetaAccessToken: !!(metaAccessToken && metaAccessToken.trim()),
+        hasMsg91AuthKey: !!(msg91AuthKey && msg91AuthKey.trim()),
+      });
     }
   );
 
