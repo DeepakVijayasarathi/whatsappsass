@@ -243,12 +243,14 @@ export async function workspaceRoutes(app: FastifyInstance) {
           metaPhoneNumberId: z.string().min(1, "Phone Number ID required"),
           metaWabaId: z.string().min(1, "WABA ID required"),
           metaAccessToken: z.string().optional(),
-          metaWebhookVerifyToken: z.string().min(1, "Webhook Verify Token required"),
+          // Allow empty string — we preserve existing stored value when blank
+          metaWebhookVerifyToken: z.string().optional(),
         }),
         z.object({
           whatsappProvider: z.literal("msg91"),
           msg91AuthKey: z.string().optional(),
-          msg91IntegratedNumber: z.string().min(7, "Integrated number required"),
+          // Allow empty string — frontend sends "" when integrated number is set but not changed
+          msg91IntegratedNumber: z.string().optional(),
         }),
       ]);
 
@@ -257,33 +259,36 @@ export async function workspaceRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      // Fetch existing workspace so we can keep the stored secret if none provided
+      // Fetch existing workspace so we can preserve stored secrets / optional fields when blank is submitted
       const existing = await prisma.workspace.findUnique({
         where: { id: user.workspaceId },
-        select: { metaAccessToken: true, msg91AuthKey: true },
+        select: {
+          metaAccessToken: true,
+          metaWebhookVerifyToken: true,
+          msg91AuthKey: true,
+          msg91IntegratedNumber: true,
+        },
       });
+
+      const keepIfBlank = (submitted: string | undefined, stored: string | null | undefined): string =>
+        submitted && submitted.trim().length > 0 ? submitted.trim() : (stored ?? "");
 
       const updateData =
         parsed.data.whatsappProvider === "meta"
           ? {
               whatsappProvider: "meta" as const,
-              metaPhoneNumberId: parsed.data.metaPhoneNumberId,
-              metaWabaId: parsed.data.metaWabaId,
-              metaAccessToken:
-                parsed.data.metaAccessToken && parsed.data.metaAccessToken.length > 0
-                  ? parsed.data.metaAccessToken
-                  : (existing?.metaAccessToken ?? ""),
-              metaWebhookVerifyToken: parsed.data.metaWebhookVerifyToken,
+              metaPhoneNumberId: parsed.data.metaPhoneNumberId?.trim() ?? "",
+              metaWabaId: parsed.data.metaWabaId?.trim() ?? "",
+              // Secrets / optional: preserve existing when blank
+              metaAccessToken: keepIfBlank(parsed.data.metaAccessToken, existing?.metaAccessToken),
+              metaWebhookVerifyToken: keepIfBlank(parsed.data.metaWebhookVerifyToken, existing?.metaWebhookVerifyToken),
               msg91AuthKey: null,
               msg91IntegratedNumber: null,
             }
           : {
               whatsappProvider: "msg91" as const,
-              msg91AuthKey:
-                parsed.data.msg91AuthKey && parsed.data.msg91AuthKey.length > 0
-                  ? parsed.data.msg91AuthKey
-                  : (existing?.msg91AuthKey ?? ""),
-              msg91IntegratedNumber: parsed.data.msg91IntegratedNumber,
+              msg91AuthKey: keepIfBlank(parsed.data.msg91AuthKey, existing?.msg91AuthKey),
+              msg91IntegratedNumber: keepIfBlank(parsed.data.msg91IntegratedNumber, existing?.msg91IntegratedNumber),
               metaPhoneNumberId: null,
               metaWabaId: null,
               metaAccessToken: null,

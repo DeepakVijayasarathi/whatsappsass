@@ -14,6 +14,9 @@ const licenseSchema = z.object({
 });
 type LicenseForm = z.infer<typeof licenseSchema>;
 
+// storedFlags is set externally via a ref to avoid re-creating the schema on every render
+const storedFlags = { hasWebhookToken: false, hasIntegratedNumber: false };
+
 const providerSchema = z.object({
   whatsappProvider: z.enum(["meta", "msg91"]),
   metaPhoneNumberId: z.string().optional(),
@@ -28,10 +31,13 @@ const providerSchema = z.object({
       ctx.addIssue({ path: ["metaPhoneNumberId"], code: "custom", message: "Phone Number ID required" });
     if (!data.metaWabaId?.trim())
       ctx.addIssue({ path: ["metaWabaId"], code: "custom", message: "WABA ID required" });
-    if (!data.metaWebhookVerifyToken?.trim())
+    // Only require verify token if neither the field nor a stored value exists
+    if (!data.metaWebhookVerifyToken?.trim() && !storedFlags.hasWebhookToken)
       ctx.addIssue({ path: ["metaWebhookVerifyToken"], code: "custom", message: "Webhook Verify Token required" });
   } else {
-    if (!data.msg91IntegratedNumber?.trim() || data.msg91IntegratedNumber.trim().length < 7)
+    // Only require integrated number if neither the field nor a stored value exists
+    const numOk = data.msg91IntegratedNumber?.trim() && data.msg91IntegratedNumber.trim().length >= 7;
+    if (!numOk && !storedFlags.hasIntegratedNumber)
       ctx.addIssue({ path: ["msg91IntegratedNumber"], code: "custom", message: "Integrated number required" });
   }
 });
@@ -94,6 +100,12 @@ export default function SettingsPage() {
 
       // Pre-fill non-secret fields
       const cfg: ProviderConfig = prov.data;
+
+      // Tell the schema which fields already have stored values so we don't
+      // force the user to re-enter them on every save.
+      storedFlags.hasWebhookToken = !!(cfg.metaWebhookVerifyToken);
+      storedFlags.hasIntegratedNumber = !!(cfg.msg91IntegratedNumber);
+
       setValue("whatsappProvider", cfg.whatsappProvider);
       setValue("metaPhoneNumberId", cfg.metaPhoneNumberId ?? "");
       setValue("metaWabaId", cfg.metaWabaId ?? "");
@@ -294,8 +306,8 @@ export default function SettingsPage() {
                       error={providerErrors.metaAccessToken?.message}
                     />
                     <Field
-                      label="Webhook Verify Token"
-                      placeholder="my_random_verify_token"
+                      label="Webhook Verify Token (leave blank to keep existing)"
+                      placeholder="my_random_verify_token  (only fill to change)"
                       mono
                       {...regProvider("metaWebhookVerifyToken")}
                       error={providerErrors.metaWebhookVerifyToken?.message}
