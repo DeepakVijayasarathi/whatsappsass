@@ -109,6 +109,13 @@ export async function templateRoutes(app: FastifyInstance) {
 
     if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
 
+    // No provider selected yet
+    if (!workspace.whatsappProvider) {
+      return reply.status(422).send({
+        error: "No WhatsApp provider configured. Go to Settings → WhatsApp Provider and select Meta Cloud API or MSG91.",
+      });
+    }
+
     if (workspace.whatsappProvider === "meta") {
       if (!workspace.metaWabaId || !workspace.metaAccessToken) {
         return reply.status(422).send({
@@ -119,8 +126,12 @@ export async function templateRoutes(app: FastifyInstance) {
         const templates = await fetchMetaTemplates(workspace.metaWabaId, workspace.metaAccessToken);
         return reply.send({ templates, provider: "meta", total: templates.length });
       } catch (err: unknown) {
-        const msg = (err as { response?: { data?: { error?: { message?: string } } } })
+        const rawMsg = (err as { response?: { data?: { error?: { message?: string } } } })
           .response?.data?.error?.message ?? "Failed to fetch templates from Meta";
+        // Provide a more actionable message for common Meta API errors
+        const msg = rawMsg.includes("not found on the server") || rawMsg.includes("GraphInvalidID")
+          ? "Invalid WABA ID — please verify your Meta WABA ID in Settings → WhatsApp Provider."
+          : rawMsg;
         return reply.status(502).send({ error: msg });
       }
     }

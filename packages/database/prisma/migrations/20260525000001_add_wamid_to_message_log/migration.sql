@@ -4,7 +4,7 @@
 -- which could incorrectly update all pending logs for a contact.
 -- Now we match by wamid first, falling back to most-recent log for legacy rows.
 
-ALTER TABLE "message_logs" ADD COLUMN "wamid" TEXT;
+ALTER TABLE "message_logs" ADD COLUMN IF NOT EXISTS "wamid" TEXT;
 
 -- Index for fast delivery receipt lookups by provider message ID
-CREATE INDEX "message_logs_wamid_idx" ON "message_logs"("wamid");
+CREATE INDEX IF NOT EXISTS "message_logs_wamid_idx" ON "message_logs"("wamid");

@@ -1,20 +1,20 @@
 -- AlterTable: Contact add email
-ALTER TABLE "contacts" ADD COLUMN "email" TEXT;
+ALTER TABLE "contacts" ADD COLUMN IF NOT EXISTS "email" TEXT;
 
 -- AlterTable: User add permissions + superAdmin
-ALTER TABLE "users" ADD COLUMN "permissions" JSONB;
-ALTER TABLE "users" ADD COLUMN "super_admin" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "permissions" JSONB;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "super_admin" BOOLEAN NOT NULL DEFAULT false;
 
 -- AlterTable: Workspace add SMTP fields
-ALTER TABLE "workspaces" ADD COLUMN "smtp_host" TEXT;
-ALTER TABLE "workspaces" ADD COLUMN "smtp_port" INTEGER;
-ALTER TABLE "workspaces" ADD COLUMN "smtp_user" TEXT;
-ALTER TABLE "workspaces" ADD COLUMN "smtp_pass" TEXT;
-ALTER TABLE "workspaces" ADD COLUMN "smtp_from_email" TEXT;
-ALTER TABLE "workspaces" ADD COLUMN "smtp_from_name" TEXT;
+ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "smtp_host" TEXT;
+ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "smtp_port" INTEGER;
+ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "smtp_user" TEXT;
+ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "smtp_pass" TEXT;
+ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "smtp_from_email" TEXT;
+ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "smtp_from_name" TEXT;
 
 -- CreateTable: email_campaigns
-CREATE TABLE "email_campaigns" (
+CREATE TABLE IF NOT EXISTS "email_campaigns" (
     "id"           TEXT NOT NULL,
     "workspace_id" TEXT NOT NULL,
     "name"         TEXT NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE "email_campaigns" (
 );
 
 -- CreateTable: email_logs
-CREATE TABLE "email_logs" (
+CREATE TABLE IF NOT EXISTS "email_logs" (
     "id"           TEXT NOT NULL,
     "workspace_id" TEXT NOT NULL,
     "campaign_id"  TEXT,
@@ -41,7 +41,7 @@ CREATE TABLE "email_logs" (
 );
 
 -- CreateTable: audit_logs
-CREATE TABLE "audit_logs" (
+CREATE TABLE IF NOT EXISTS "audit_logs" (
     "id"           TEXT NOT NULL,
     "workspace_id" TEXT NOT NULL,
     "user_id"      TEXT,
@@ -55,28 +55,52 @@ CREATE TABLE "audit_logs" (
     CONSTRAINT "audit_logs_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE INDEX "email_campaigns_workspace_id_idx" ON "email_campaigns"("workspace_id");
-CREATE INDEX "email_logs_workspace_id_idx" ON "email_logs"("workspace_id");
-CREATE INDEX "email_logs_campaign_id_idx" ON "email_logs"("campaign_id");
-CREATE INDEX "audit_logs_workspace_id_idx" ON "audit_logs"("workspace_id");
-CREATE INDEX "audit_logs_created_at_idx" ON "audit_logs"("created_at");
+-- CreateIndex (IF NOT EXISTS to guard against re-runs)
+CREATE INDEX IF NOT EXISTS "email_campaigns_workspace_id_idx" ON "email_campaigns"("workspace_id");
+CREATE INDEX IF NOT EXISTS "email_logs_workspace_id_idx" ON "email_logs"("workspace_id");
+CREATE INDEX IF NOT EXISTS "email_logs_campaign_id_idx" ON "email_logs"("campaign_id");
+CREATE INDEX IF NOT EXISTS "audit_logs_workspace_id_idx" ON "audit_logs"("workspace_id");
+CREATE INDEX IF NOT EXISTS "audit_logs_created_at_idx" ON "audit_logs"("created_at");
 
--- AddForeignKey
-ALTER TABLE "email_campaigns" ADD CONSTRAINT "email_campaigns_workspace_id_fkey"
-    FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (skip if already exists)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'email_campaigns_workspace_id_fkey') THEN
+    ALTER TABLE "email_campaigns" ADD CONSTRAINT "email_campaigns_workspace_id_fkey"
+      FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "email_logs" ADD CONSTRAINT "email_logs_workspace_id_fkey"
-    FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'email_logs_workspace_id_fkey') THEN
+    ALTER TABLE "email_logs" ADD CONSTRAINT "email_logs_workspace_id_fkey"
+      FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "email_logs" ADD CONSTRAINT "email_logs_campaign_id_fkey"
-    FOREIGN KEY ("campaign_id") REFERENCES "email_campaigns"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'email_logs_campaign_id_fkey') THEN
+    ALTER TABLE "email_logs" ADD CONSTRAINT "email_logs_campaign_id_fkey"
+      FOREIGN KEY ("campaign_id") REFERENCES "email_campaigns"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "email_logs" ADD CONSTRAINT "email_logs_contact_id_fkey"
-    FOREIGN KEY ("contact_id") REFERENCES "contacts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'email_logs_contact_id_fkey') THEN
+    ALTER TABLE "email_logs" ADD CONSTRAINT "email_logs_contact_id_fkey"
+      FOREIGN KEY ("contact_id") REFERENCES "contacts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_workspace_id_fkey"
-    FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'audit_logs_workspace_id_fkey') THEN
+    ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_workspace_id_fkey"
+      FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_user_id_fkey"
-    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'audit_logs_user_id_fkey') THEN
+    ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_user_id_fkey"
+      FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;

@@ -3,7 +3,17 @@
     "allow": [
       "Bash(git commit -m ' *)",
       "Bash(npx next *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(curl -s -X PATCH http://103.118.158.189:4000/auto-replies/14dd0b1c-e734-4451-b5e4-29fdc34f3f9d -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0ODFlY2IzNC01MjgzLTQxYmYtOGQ3Yy1iZWFiYTQxOGJiNDMiLCJ3b3Jrc3BhY2VJZCI6ImNhZTZiOGRmLWJkYjktNDc1OS1iMGM1LWZmNGY1Y2IyM2IzYiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc3OTg0NDA4MCwiZXhwIjoxNzgwNDQ4ODgwfQ.FCbuNqSriXrmRdag2hIr4ZlHKmI6d0-0jNS1nq5SotU' -H 'Content-Type: application/json' -d '{\"isActive\":false}')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'count={len\\(d[\\\\\"endpoints\\\\\"]\\)}'\\)\")",
+      "Bash(curl -s http://103.118.158.189:4000/analytics/summary -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0ODFlY2IzNC01MjgzLTQxYmYtOGQ3Yy1iZWFiYTQxOGJiNDMiLCJ3b3Jrc3BhY2VJZCI6ImNhZTZiOGRmLWJkYjktNDc1OS1iMGM1LWZmNGY1Y2IyM2IzYiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc3OTg0NDA4MCwiZXhwIjoxNzgwNDQ4ODgwfQ.FCbuNqSriXrmRdag2hIr4ZlHKmI6d0-0jNS1nq5SotU')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'messages={len\\(d.get\\(\\\\\"messages\\\\\",[]\\)\\)}'\\)\")",
+      "Bash(curl -s http://103.118.158.189:4000/analytics -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0ODFlY2IzNC01MjgzLTQxYmYtOGQ3Yy1iZWFiYTQxOGJiNDMiLCJ3b3Jrc3BhY2VJZCI6ImNhZTZiOGRmLWJkYjktNDc1OS1iMGM1LWZmNGY1Y2IyM2IzYiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc3OTg0NDA4MCwiZXhwIjoxNzgwNDQ4ODgwfQ.FCbuNqSriXrmRdag2hIr4ZlHKmI6d0-0jNS1nq5SotU')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('name:', d.get\\('name'\\), 'email:', d.get\\('email'\\)\\)\")",
+      "Bash(curl -s http://103.118.158.189:4000/analytics/overview -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0ODFlY2IzNC01MjgzLTQxYmYtOGQ3Yy1iZWFiYTQxOGJiNDMiLCJ3b3Jrc3BhY2VJZCI6ImNhZTZiOGRmLWJkYjktNDc1OS1iMGM1LWZmNGY1Y2IyM2IzYiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc3OTg0NDA4MCwiZXhwIjoxNzgwNDQ4ODgwfQ.FCbuNqSriXrmRdag2hIr4ZlHKmI6d0-0jNS1nq5SotU')",
+      "Bash(curl -s -X PATCH http://103.118.158.189:4000/auth/profile -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0ODFlY2IzNC01MjgzLTQxYmYtOGQ3Yy1iZWFiYTQxOGJiNDMiLCJ3b3Jrc3BhY2VJZCI6ImNhZTZiOGRmLWJkYjktNDc1OS1iMGM1LWZmNGY1Y2IyM2IzYiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc3OTg0NDA4MCwiZXhwIjoxNzgwNDQ4ODgwfQ.FCbuNqSriXrmRdag2hIr4ZlHKmI6d0-0jNS1nq5SotU' -H 'Content-Type: application/json' -d '{\"name\":\"Test User Updated\"}')",
+      "Bash(Get-ChildItem -Path \"e:\\\\whatsapptoolauto\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import Link from "next/link";
 import { X, Search, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 import clsx from "clsx";
 
@@ -104,6 +105,13 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
                 <div>
                   <p className="font-medium">Could not load templates</p>
                   <p className="mt-0.5 text-red-600">{error}</p>
+                  <Link
+                    href="/settings"
+                    onClick={onClose}
+                    className="inline-block mt-2 text-xs font-semibold text-red-700 underline hover:text-red-900"
+                  >
+                    → Open Settings to fix provider credentials
+                  </Link>
                 </div>
               </div>
             </div>
