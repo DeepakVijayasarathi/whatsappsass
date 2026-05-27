@@ -143,8 +143,9 @@ model Campaign {
   scheduledAt DateTime? @map("scheduled_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  messageLogs MessageLog[]
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messageLogs     MessageLog[]
+  inboundMessages InboundMessage[]
 
   @@index([workspaceId])
   @@index([workspaceId, createdAt])
@@ -173,16 +174,19 @@ model MessageLog {
   workspaceId String   @map("workspace_id")
   contactId   String   @map("contact_id")
   campaignId  String?  @map("campaign_id")
+  sequenceId  String?  @map("sequence_id")
   wamid       String?  @map("wamid") // Provider message ID (Meta wamid / MSG91 msgid) for delivery receipt matching
   status      String   @default("sent")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  campaign  Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  campaign  Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  sequence  CampaignSequence? @relation(fields: [sequenceId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([campaignId])
+  @@index([sequenceId])
   @@index([contactId]) // timeline queries per contact
   @@index([wamid]) // delivery receipt lookups by provider message ID
   @@index([workspaceId, status]) // analytics breakdown by status
@@ -244,6 +248,7 @@ model InboundMessage {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contact   Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  campaign  Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([fromPhone])
@@ -315,6 +320,7 @@ model CampaignSequence {
   workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   steps       SequenceStep[]
   enrollments SequenceEnrollment[]
+  messageLogs MessageLog[]
 
   @@index([workspaceId])
   @@map("campaign_sequences")

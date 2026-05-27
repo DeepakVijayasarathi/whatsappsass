@@ -9,7 +9,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 interface WebhookEndpoint {
   id: string;
   url: string;
-  secret: string | null;
+  hasSecret: boolean;
   events: string[];
   isActive: boolean;
   createdAt: string;
@@ -328,7 +328,7 @@ export default function WebhooksPage() {
                   ))}
                 </div>
 
-                {ep.secret && (
+                {ep.hasSecret && (
                   <p className="text-xs text-gray-400 mt-2">Signed with HMAC-SHA256</p>
                 )}
                 {expandedLogs.has(ep.id) && <DeliveryLogsPanel endpointId={ep.id} />}

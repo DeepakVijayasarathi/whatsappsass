@@ -32,6 +32,11 @@ export async function webhookRoutes(app: FastifyInstance) {
     return reply.send({ events: VALID_EVENTS });
   });
 
+  const sanitize = (ep: { secret?: string | null; [key: string]: unknown }) => {
+    const { secret, ...rest } = ep;
+    return { ...rest, hasSecret: !!(secret && secret.trim()) };
+  };
+
   // List endpoints
   app.get("/", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
     const user = request.user as JwtPayload;
@@ -39,7 +44,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       where: { workspaceId: user.workspaceId },
       orderBy: { createdAt: "asc" },
     });
-    return reply.send({ endpoints });
+    return reply.send({ endpoints: endpoints.map(sanitize) });
   });
 
   // Create endpoint
@@ -51,7 +56,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     const endpoint = await prisma.webhookEndpoint.create({
       data: { workspaceId: user.workspaceId, ...parsed.data },
     });
-    return reply.status(201).send(endpoint);
+    return reply.status(201).send(sanitize(endpoint));
   });
 
   // Update endpoint

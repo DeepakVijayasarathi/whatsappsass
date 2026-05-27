@@ -118,6 +118,9 @@ export async function campaignRoutes(app: FastifyInstance) {
         where: { id, workspaceId: user.workspaceId },
       });
       if (!existing) return reply.status(404).send({ error: "Campaign not found" });
+      if (existing.status === "running") {
+        return reply.status(409).send({ error: "Cannot delete a running campaign. Pause it first." });
+      }
 
       await prisma.campaign.delete({ where: { id } });
 

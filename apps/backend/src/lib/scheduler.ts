@@ -7,6 +7,7 @@ async function getWorkspaceConfig(workspaceId: string) {
   return prisma.workspace.findUnique({
     where: { id: workspaceId },
     select: {
+      status: true,
       metaWhatsappEnabled: true,
       whatsappProvider: true,
       metaPhoneNumberId: true,
@@ -35,8 +36,8 @@ async function runScheduledCampaigns() {
 
     try {
       const ws = await getWorkspaceConfig(campaign.workspaceId);
-      if (!ws) {
-        // Workspace deleted between queueing and execution — skip silently
+      if (!ws || ws.status !== "active") {
+        // Workspace deleted or suspended — skip
         await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "paused" } });
         continue;
       }
@@ -135,7 +136,7 @@ async function runSequenceSteps() {
 
     try {
       const ws = await getWorkspaceConfig(contact.workspaceId);
-      if (!ws) continue; // workspace deleted — skip
+      if (!ws || ws.status !== "active") continue; // workspace deleted or suspended — skip
       if (!ws.metaWhatsappEnabled) continue;
 
       const config: ProviderConfig = {
@@ -152,7 +153,7 @@ async function runSequenceSteps() {
       );
 
       await prisma.messageLog.create({
-        data: { workspaceId: contact.workspaceId, contactId: contact.id, wamid: result.wamid, status: "sent" },
+        data: { workspaceId: contact.workspaceId, contactId: contact.id, sequenceId: sequence.id, wamid: result.wamid, status: "sent" },
       });
 
       await fireWebhooks(contact.workspaceId, "sequence.step_sent", {
