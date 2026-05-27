@@ -4,7 +4,8 @@
       "PowerShell(netstat -ano)",
       "Bash(git commit -m 'fix: production-level hardening across frontend and backend *)",
       "Bash(npx tsc *)",
-      "Bash(git commit -m 'fix: WhatsApp provider form shows Required errors despite filled inputs *)"
+      "Bash(git commit -m 'fix: WhatsApp provider form shows Required errors despite filled inputs *)",
+      "Bash(git commit -m 'fix: full application audit — 9 runtime bugs + all TypeScript errors resolved *)"
     ]
   }
 }

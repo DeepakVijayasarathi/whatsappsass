@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
@@ -74,6 +74,11 @@ export default function SettingsPage() {
 
   const selectedProvider = watch("whatsappProvider");
 
+  // DOM refs for secret fields — browser autofill sets DOM value without firing React onChange,
+  // so we read the actual input value from the DOM at submit time.
+  const metaAccessTokenRef = useRef<HTMLInputElement | null>(null);
+  const msg91AuthKeyRef = useRef<HTMLInputElement | null>(null);
+
   const loadStatus = () => {
     // Clear any stale errors immediately (before API resolves) so they never
     // show on page load or re-navigation within the dashboard layout.
@@ -122,32 +127,44 @@ export default function SettingsPage() {
   };
 
   const saveProvider = async (data: ProviderForm) => {
+    // Browser autofill sets DOM value without firing React onChange, so RHF may have stale
+    // empty strings for secret fields. Read directly from DOM to get the real value.
+    const domAccessToken = metaAccessTokenRef.current?.value ?? "";
+    const domMsg91AuthKey = msg91AuthKeyRef.current?.value ?? "";
+    const resolvedAccessToken = domAccessToken.trim() || data.metaAccessToken.trim();
+    const resolvedMsg91AuthKey = domMsg91AuthKey.trim() || data.msg91AuthKey.trim();
+
+    const payload: ProviderForm = {
+      ...data,
+      metaAccessToken: resolvedAccessToken,
+      msg91AuthKey: resolvedMsg91AuthKey,
+    };
+
     // Manual validation — runs only on submit, never on load or reset
     const errs: Partial<Record<keyof ProviderForm, string>> = {};
-    if (data.whatsappProvider === "meta") {
-      if (!data.metaPhoneNumberId.trim()) errs.metaPhoneNumberId = "Phone Number ID required";
-      if (!data.metaWabaId.trim()) errs.metaWabaId = "WABA ID required";
-      const hasToken = (data.metaAccessToken.trim().length > 0) || !!(providerConfig?.hasMetaAccessToken);
+    if (payload.whatsappProvider === "meta") {
+      if (!payload.metaPhoneNumberId.trim()) errs.metaPhoneNumberId = "Phone Number ID required";
+      if (!payload.metaWabaId.trim()) errs.metaWabaId = "WABA ID required";
+      const hasToken = (payload.metaAccessToken.trim().length > 0) || !!(providerConfig?.hasMetaAccessToken);
       if (!hasToken) errs.metaAccessToken = "Access Token required";
-      const hasVerifyToken = (data.metaWebhookVerifyToken.trim().length > 0) || !!(providerConfig?.metaWebhookVerifyToken);
+      const hasVerifyToken = (payload.metaWebhookVerifyToken.trim().length > 0) || !!(providerConfig?.metaWebhookVerifyToken);
       if (!hasVerifyToken) errs.metaWebhookVerifyToken = "Webhook Verify Token required";
     } else {
-      const hasAuthKey = (data.msg91AuthKey.trim().length > 0) || !!(providerConfig?.hasMsg91AuthKey);
+      const hasAuthKey = (payload.msg91AuthKey.trim().length > 0) || !!(providerConfig?.hasMsg91AuthKey);
       if (!hasAuthKey) errs.msg91AuthKey = "MSG91 Auth Key required";
-      const hasNumber = (data.msg91IntegratedNumber.trim().length >= 7) || !!(providerConfig?.msg91IntegratedNumber);
+      const hasNumber = (payload.msg91IntegratedNumber.trim().length >= 7) || !!(providerConfig?.msg91IntegratedNumber);
       if (!hasNumber) errs.msg91IntegratedNumber = "Integrated number required (min 7 digits)";
     }
     if (Object.keys(errs).length > 0) { setProviderErrors(errs); return; }
     setProviderErrors({});
     try {
-      await api.patch("/workspace/provider", data);
+      await api.patch("/workspace/provider", payload);
       toast.success("Provider saved");
       loadStatus();
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
-          "Failed to save provider"
-      );
+      const errData = (err as { response?: { data?: { error?: unknown } } }).response?.data?.error;
+      const msg = typeof errData === "string" ? errData : "Failed to save provider";
+      toast.error(msg);
     }
   };
 
@@ -316,11 +333,16 @@ export default function SettingsPage() {
                       type="password"
                       autoComplete="new-password"
                       {...regProvider("metaAccessToken")}
+                      domRef={metaAccessTokenRef}
                       error={providerErrors.metaAccessToken}
                     />
                     <Field
-                      label="Webhook Verify Token (leave blank to keep existing)"
-                      placeholder="my_random_verify_token  (only fill to change)"
+                      label={providerConfig?.metaWebhookVerifyToken
+                        ? "Webhook Verify Token (stored ✓ — leave blank to keep)"
+                        : "Webhook Verify Token"}
+                      placeholder={providerConfig?.metaWebhookVerifyToken
+                        ? "••••••••  (only fill to change)"
+                        : "my_random_verify_token"}
                       mono
                       {...regProvider("metaWebhookVerifyToken")}
                       error={providerErrors.metaWebhookVerifyToken}
@@ -345,6 +367,7 @@ export default function SettingsPage() {
                       type="password"
                       autoComplete="new-password"
                       {...regProvider("msg91AuthKey")}
+                      domRef={msg91AuthKeyRef}
                       error={providerErrors.msg91AuthKey}
                     />
                     <Field
@@ -438,12 +461,28 @@ function Field({
   label,
   error,
   mono,
+  domRef,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; mono?: boolean }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  error?: string;
+  mono?: boolean;
+  // Extra DOM ref for reading autofilled values that bypass React onChange
+  domRef?: React.MutableRefObject<HTMLInputElement | null>;
+}) {
+  const { ref: rhfRef, ...restProps } = props as typeof props & { ref?: React.Ref<HTMLInputElement> };
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <input className={clsx("input", mono && "font-mono text-xs")} {...props} />
+      <input
+        className={clsx("input", mono && "font-mono text-xs")}
+        {...restProps}
+        ref={(el: HTMLInputElement | null) => {
+          if (typeof rhfRef === "function") rhfRef(el);
+          else if (rhfRef && "current" in rhfRef) (rhfRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+          if (domRef) domRef.current = el;
+        }}
+      />
       {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>
   );
