@@ -6,7 +6,7 @@ import {
   BookOpen, Settings, Users, Megaphone, Send, Inbox,
   BarChart2, GitBranch, Bot, Webhook, Kanban, FileText,
   ChevronRight, CheckCircle2, AlertCircle, Mail, Key,
-  ExternalLink, Play,
+  ExternalLink, Play, Tag, GitMerge, History,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -79,6 +79,14 @@ function NavLink({ href, label }: { href: string; label: string }) {
     >
       {label} <ExternalLink className="w-3 h-3" />
     </Link>
+  );
+}
+
+function FeatureBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 bg-brand/10 text-brand text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide">
+      {label}
+    </span>
   );
 }
 
@@ -176,7 +184,10 @@ export default function GuidePage() {
             </Step>
           </div>
 
-          <Good>Default login after first deploy: <Code>admin@demo.com</Code> / <Code>admin123</Code>. Change this immediately in <NavLink href="/profile" label="Profile" />.</Good>
+          <Good>
+            Default login after first deploy: <Code>admin@demo.com</Code> / <Code>admin123</Code>.
+            Change this immediately in <NavLink href="/profile" label="Profile" />.
+          </Good>
         </section>
 
         {/* ── Settings ── */}
@@ -205,12 +216,12 @@ export default function GuidePage() {
                 <p className="mt-2"><strong>MSG91</strong></p>
                 <ul className="list-disc list-inside space-y-0.5 text-gray-500 ml-1">
                   <li>Auth Key — from MSG91 dashboard</li>
-                  <li>Integrated Number — your registered WhatsApp number</li>
+                  <li>Integrated Number — your registered WhatsApp number (with country code, e.g. <Code>919876543210</Code>)</li>
                 </ul>
               </div>
             </div>
 
-            {/* Email */}
+            {/* Email / SMTP */}
             <div className="rounded-xl border border-gray-100 p-4 space-y-2">
               <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
                 <Mail className="w-3.5 h-3.5 text-pink-500" /> Email / SMTP
@@ -225,6 +236,16 @@ export default function GuidePage() {
                 <p className="text-gray-400 mt-1">Works with Gmail, SendGrid, Mailgun, Postmark, etc.</p>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-100 p-4 space-y-2">
+            <p className="text-sm font-semibold text-gray-800">Password Reset without SMTP</p>
+            <p className="text-xs text-gray-600">
+              If SMTP is not configured, clicking <strong>Forgot Password</strong> on the login page
+              will still generate a one-time reset link — but instead of emailing it, the link is
+              displayed on screen for an admin to copy and share with the user manually. The link
+              expires in 1 hour.
+            </p>
           </div>
 
           <Tip>Settings are per-workspace. Each workspace has its own provider credentials — different teams can use different WhatsApp numbers.</Tip>
@@ -242,9 +263,9 @@ export default function GuidePage() {
           <div className="space-y-3">
             <Step n={1}><strong>Add manually</strong> — click Add Contact, fill name + phone (with country code, e.g. <Code>+919876543210</Code>) + optional email and tags.</Step>
             <Step n={2}><strong>Import CSV</strong> — download the template, fill it in, upload. Max 500 contacts per import. Required columns: <Code>name</Code>, <Code>phone</Code>. Optional: <Code>tags</Code> (pipe-separated), <Code>optIn</Code>.</Step>
-            <Step n={3}><strong>Export CSV</strong> — downloads all contacts in your workspace including tags and opt-in status.</Step>
+            <Step n={3}><strong>Export CSV</strong> — downloads all contacts in your workspace including tags, lead status, and opt-in status.</Step>
             <Step n={4}><strong>Bulk delete</strong> — check multiple contacts then click Delete selected.</Step>
-            <Step n={5}><strong>Contact detail</strong> — click a name to open the full profile with message timeline.</Step>
+            <Step n={5}><strong>Contact detail</strong> — click a name to open the full profile with message timeline, CRM notes, and engagement score.</Step>
           </div>
 
           <div className="bg-gray-50 rounded-xl p-3 text-xs font-mono text-gray-600 space-y-0.5">
@@ -252,6 +273,34 @@ export default function GuidePage() {
             <p>name,phone,tags,optIn</p>
             <p>Alice,+441234567890,vip|customer,true</p>
             <p>Bob,+14155550100,,false</p>
+          </div>
+
+          {/* Bulk tag */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-2">
+            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+              <Tag className="w-3.5 h-3.5 text-blue-500" />
+              Bulk Tag Assignment <FeatureBadge label="New" />
+            </p>
+            <div className="space-y-1.5">
+              <Step n={1}>Select one or more contacts using the checkboxes.</Step>
+              <Step n={2}>Click the <strong>Tag</strong> button that appears in the bulk action bar.</Step>
+              <Step n={3}>Enter comma-separated tags (e.g. <Code>vip, summer-sale</Code>).</Step>
+              <Step n={4}><strong>Add tags</strong> merges with existing tags. <strong>Replace tags</strong> overwrites all existing tags on the selected contacts.</Step>
+            </div>
+          </div>
+
+          {/* Deduplication */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-2">
+            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+              <GitMerge className="w-3.5 h-3.5 text-blue-500" />
+              Contact Deduplication <FeatureBadge label="New" />
+            </p>
+            <p className="text-xs text-gray-600">
+              Click the <strong>Deduplicate</strong> button at the top of the Contacts page to
+              automatically find and merge contacts with the same phone number. The oldest record is
+              kept, tags are merged, opt-in is set to <Code>true</Code> if any duplicate had it, and
+              all message history and notes are re-parented to the surviving contact.
+            </p>
           </div>
 
           <Tip>Contacts without <Code>optIn=true</Code> will not receive bulk campaign messages. Always get explicit opt-in consent.</Tip>
@@ -296,7 +345,7 @@ export default function GuidePage() {
           </p>
 
           <div className="space-y-3">
-            <Step n={1}>Enter the recipient's phone number with full country code: <Code>+1 for USA</Code>, <Code>+91 for India</Code>, <Code>+44 for UK</Code>, etc.</Step>
+            <Step n={1}>Enter the recipient's phone number with full country code: <Code>+1</Code> for USA, <Code>+91</Code> for India, <Code>+44</Code> for UK, etc.</Step>
             <Step n={2}>Click <strong>Browse templates</strong> to pick from your approved templates, or type the template name directly.</Step>
             <Step n={3}>If the template has variables (<Code>{"{{1}}"}</Code>), input fields appear — fill them all before sending.</Step>
             <Step n={4}>The live preview on the right shows the final message text with your variable values substituted.</Step>
@@ -322,10 +371,18 @@ export default function GuidePage() {
           <div className="space-y-3">
             <Step n={1}><strong>Create</strong> — click New Campaign, give it a name and select a template. Optionally set a scheduled date for reference.</Step>
             <Step n={2}><strong>Run</strong> — click the <Play className="w-3 h-3 inline" /> play button. A modal opens showing all opted-in contacts.</Step>
-            <Step n={3}><strong>Filter by tag</strong> — type a tag in the filter box to narrow the recipient list (e.g. only send to <Code>vip</Code> contacts).</Step>
+            <Step n={3}>
+              <strong>Filter recipients</strong> — use the two dropdowns at the top of the contact
+              list to narrow the audience: <FeatureBadge label="Updated" />
+              <ul className="list-disc list-inside mt-1 ml-2 space-y-0.5 text-gray-500">
+                <li><strong>Tag filter</strong> — show only contacts that have a specific tag (e.g. <Code>vip</Code>)</li>
+                <li><strong>Lead status filter</strong> — show only contacts in a specific CRM stage (e.g. <Code>qualified</Code>)</li>
+              </ul>
+            </Step>
             <Step n={4}><strong>Fill variables</strong> — if the template has <Code>{"{{1}}"}</Code> etc., fill them in the yellow section. The same value is sent to all recipients.</Step>
             <Step n={5}><strong>Send Now</strong> — messages are sent in parallel. A results card shows delivered / failed counts when done.</Step>
             <Step n={6}><strong>View stats</strong> — click the <BarChart2 className="w-3 h-3 inline" /> chart icon on any campaign to see delivery, read, and failure breakdown.</Step>
+            <Step n={7}><strong>Duplicate</strong> — clone an existing campaign to reuse the same template with a different name or schedule.</Step>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -410,6 +467,23 @@ export default function GuidePage() {
             <Step n={5}><strong>Pause</strong> — pausing a sequence stops new sends but does not cancel enrollments. Re-activate to resume.</Step>
           </div>
 
+          {/* Enrollment progress */}
+          <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-4 space-y-2">
+            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+              Enrollment Progress <FeatureBadge label="New" />
+            </p>
+            <p className="text-xs text-gray-600">
+              Click the <ChevronRight className="w-3 h-3 inline" /> expand arrow on a sequence card
+              to reveal the step list and — if contacts are enrolled — an enrollment progress panel.
+              Each contact shows a row of coloured dots representing sequence steps:
+            </p>
+            <div className="flex flex-wrap gap-4 text-xs text-gray-600 pl-1">
+              <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-brand inline-block" /> Completed step</div>
+              <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-brand/40 ring-2 ring-brand/30 inline-block" /> Current step (in progress)</div>
+              <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-gray-200 inline-block" /> Upcoming step</div>
+            </div>
+          </div>
+
           <div className="bg-gray-50 rounded-xl p-4 space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Example: 3-step onboarding</p>
             <div className="space-y-2">
@@ -458,7 +532,7 @@ export default function GuidePage() {
             <Step n={4}>Click a contact's name or the arrow icon to open their full profile and message history.</Step>
           </div>
 
-          <Good>The stage totals bar at the top shows a count for each stage at a glance without scrolling the board.</Good>
+          <Good>The lead status is also used as a filter in Campaign run modals — so you can send a campaign only to <Code>qualified</Code> leads, for example.</Good>
         </section>
 
         {/* ── Auto-Replies ── */}
@@ -516,7 +590,7 @@ export default function GuidePage() {
             <div className="w-9 h-9 bg-rose-50 rounded-xl flex items-center justify-center shrink-0">
               <Webhook className="w-4.5 h-4.5 text-rose-500" style={{ width: 18, height: 18 }} />
             </div>
-            <h2 className="text-lg font-bold text-gray-900">Webhooks</h2>
+            <h2 className="text-lg font-bold text-gray-900">Outbound Webhooks</h2>
           </div>
 
           <p className="text-sm text-gray-600">
@@ -524,23 +598,49 @@ export default function GuidePage() {
           </p>
 
           <div className="space-y-3">
-            <Step n={1}>Go to <NavLink href="/webhooks" label="Webhooks" /> and click <strong>Add Webhook</strong>.</Step>
-            <Step n={2}>Enter your endpoint URL (must be publicly accessible, e.g. <Code>https://yourapp.com/hooks/whatsapp</Code>).</Step>
-            <Step n={3}>Select which events to subscribe to: <Code>message.received</Code>, <Code>message.sent</Code>, <Code>message.delivered</Code>, <Code>message.read</Code>, <Code>message.failed</Code>.</Step>
-            <Step n={4}>Your server will receive a JSON POST with event type, contact info, and message data whenever the event fires.</Step>
+            <Step n={1}>Go to <NavLink href="/webhooks" label="Webhooks" /> and click <strong>Add endpoint</strong>.</Step>
+            <Step n={2}>Enter your endpoint URL — must use HTTPS and be publicly accessible (e.g. <Code>https://yourapp.com/hooks/whatsapp</Code>).</Step>
+            <Step n={3}>
+              Select which events to subscribe to:
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {["message.inbound","message.delivered","message.read","message.failed","contact.opted_out","contact.opted_in","campaign.completed","sequence.step_sent"].map((ev) => (
+                  <Code key={ev}>{ev}</Code>
+                ))}
+              </div>
+            </Step>
+            <Step n={4}>Optionally add a <strong>signing secret</strong>. Every request will include an <Code>X-Webhook-Signature: sha256=…</Code> header so you can verify the payload is genuine.</Step>
+            <Step n={5}>Use the <Send className="w-3 h-3 inline" /> send icon on an endpoint card to fire a test payload and confirm your server is receiving correctly.</Step>
+          </div>
+
+          {/* Delivery logs */}
+          <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-4 space-y-2">
+            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+              <History className="w-3.5 h-3.5 text-rose-500" />
+              Delivery Logs <FeatureBadge label="New" />
+            </p>
+            <p className="text-xs text-gray-600">
+              Click the <History className="w-3 h-3 inline" /> history icon on any endpoint card to
+              expand its last 20 delivery attempts. Each row shows the event name, HTTP status code,
+              duration in milliseconds, and any error message. Green = success, red = failure.
+            </p>
           </div>
 
           <div className="bg-gray-50 rounded-xl p-3 text-xs font-mono text-gray-600 space-y-0.5">
             <p className="text-gray-400 font-sans font-semibold text-[10px] uppercase tracking-widest mb-1">Example payload</p>
             <p>{"{"}</p>
-            <p>&nbsp;&nbsp;"event": "message.received",</p>
-            <p>&nbsp;&nbsp;"fromPhone": "+919876543210",</p>
-            <p>&nbsp;&nbsp;"body": "Hello, I need help",</p>
-            <p>&nbsp;&nbsp;"workspaceId": "..."</p>
+            <p>&nbsp;&nbsp;"event": "message.inbound",</p>
+            <p>&nbsp;&nbsp;"timestamp": "2025-06-01T10:30:00.000Z",</p>
+            <p>&nbsp;&nbsp;"data": {"{"}</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;"messageId": "wamid.xxx",</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;"fromPhone": "+919876543210",</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;"fromName": "Alice",</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;"type": "text",</p>
+            <p>&nbsp;&nbsp;&nbsp;&nbsp;"body": "Hello, I need help"</p>
+            <p>&nbsp;&nbsp;{"}"}</p>
             <p>{"}"}</p>
           </div>
 
-          <Tip>Webhook delivery is fire-and-forget — if your endpoint returns a non-2xx status the event is not retried automatically.</Tip>
+          <Tip>Webhook delivery is fire-and-forget — if your endpoint returns a non-2xx status the event is not automatically retried. Check the delivery logs to diagnose failures.</Tip>
         </section>
 
         {/* Footer */}
