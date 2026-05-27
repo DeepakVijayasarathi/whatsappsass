@@ -447,9 +447,11 @@ function EnrollmentProgressPanel({ sequence }: { sequence: Sequence }) {
                     title={`Step ${step.stepNumber}: ${step.templateName}`}
                     className={clsx(
                       "w-2.5 h-2.5 rounded-full",
-                      e.status === "completed" || e.currentStep > step.stepNumber
+                      // currentStep is 0-indexed (incremented after each step is sent);
+                      // stepNumber is 1-indexed. A step is "done" when currentStep >= stepNumber.
+                      e.status === "completed" || e.currentStep >= step.stepNumber
                         ? "bg-brand"
-                        : e.currentStep === step.stepNumber && e.status === "active"
+                        : e.currentStep === step.stepNumber - 1 && e.status === "active"
                         ? "bg-brand/40 ring-2 ring-brand/30"
                         : "bg-gray-200"
                     )}

@@ -50,7 +50,7 @@ export async function contactRoutes(app: FastifyInstance) {
     return reply.send({ contacts, total, page, limit });
   });
 
-  app.post("/", { preHandler: [authenticate] }, async (request, reply) => {
+  app.post("/", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const parsed = contactSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -77,7 +77,7 @@ export async function contactRoutes(app: FastifyInstance) {
     return reply.send(contact);
   });
 
-  app.patch("/:id", { preHandler: [authenticate] }, async (request, reply) => {
+  app.patch("/:id", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const { id } = request.params as { id: string };
 
@@ -100,7 +100,7 @@ export async function contactRoutes(app: FastifyInstance) {
   });
 
   // ── Bulk delete ───────────────────────────────────────────────────────────
-  app.delete("/bulk", { preHandler: [authenticate] }, async (request, reply) => {
+  app.delete("/bulk", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const parsed = z.object({ ids: z.array(z.string().uuid()).min(1).max(500) }).safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
@@ -113,7 +113,7 @@ export async function contactRoutes(app: FastifyInstance) {
   });
 
   // ── Bulk tag assignment ───────────────────────────────────────────────────
-  app.patch("/bulk-tag", { preHandler: [authenticate] }, async (request, reply) => {
+  app.patch("/bulk-tag", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const parsed = z.object({
       ids: z.array(z.string().uuid()).min(1).max(500),
@@ -146,7 +146,7 @@ export async function contactRoutes(app: FastifyInstance) {
     return reply.send({ updated: contacts.length });
   });
 
-  app.delete("/:id", { preHandler: [authenticate] }, async (request, reply) => {
+  app.delete("/:id", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const { id } = request.params as { id: string };
 
@@ -201,7 +201,7 @@ export async function contactRoutes(app: FastifyInstance) {
       .send(csv);
   });
 
-  app.post("/bulk", { preHandler: [authenticate] }, async (request, reply) => {
+  app.post("/bulk", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const schema = z.object({ contacts: z.array(contactSchema).min(1).max(500) });
 

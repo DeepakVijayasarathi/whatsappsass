@@ -146,6 +146,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         data: {
           name: `${existing.name} (copy)`,
           template: existing.template,
+          languageCode: existing.languageCode,
           workspaceId: user.workspaceId,
           status: "draft",
           scheduledAt: null,
