@@ -223,7 +223,7 @@ function RunModal({ campaign, onClose, onDone }: {
               </p>
               <div className="flex gap-2">
                 <button onClick={onClose} className="btn-secondary text-sm">Cancel</button>
-                <button onClick={run} disabled={running || selectedIds.size === 0} className="btn-primary text-sm flex items-center gap-2">
+                <button onClick={run} disabled={loading || running || selectedIds.size === 0} className="btn-primary text-sm flex items-center gap-2">
                   <Play className="w-4 h-4" />
                   {running ? "Sending..." : "Send Now"}
                 </button>

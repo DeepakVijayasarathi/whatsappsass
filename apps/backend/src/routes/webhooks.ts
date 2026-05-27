@@ -87,7 +87,12 @@ export async function webhookRoutes(app: FastifyInstance) {
 
     await fireWebhooks(user.workspaceId, "message.inbound", {
       test: true,
-      message: "This is a test webhook delivery from WhatsApp SaaS",
+      messageId: "test-msg-id-000",
+      fromPhone: "919999999999",
+      fromName: "Test Contact",
+      type: "text",
+      body: "This is a test webhook delivery from WhatsApp SaaS",
+      timestamp: new Date().toISOString(),
     });
     return reply.send({ ok: true });
   });

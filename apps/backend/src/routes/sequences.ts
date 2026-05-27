@@ -101,8 +101,19 @@ export async function sequenceRoutes(app: FastifyInstance) {
   app.delete("/:id", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const { id } = request.params as { id: string };
-    const existing = await prisma.campaignSequence.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    const existing = await prisma.campaignSequence.findFirst({
+      where: { id, workspaceId: user.workspaceId },
+      include: { _count: { select: { enrollments: true } } },
+    });
     if (!existing) return reply.status(404).send({ error: "Not found" });
+    if (existing.status === "active" && existing._count.enrollments > 0) {
+      return reply.status(409).send({ error: "Pause the sequence and stop all enrollments before deleting" });
+    }
+    // Stop any remaining enrollments before cascade delete
+    await prisma.sequenceEnrollment.updateMany({
+      where: { sequenceId: id, status: "active" },
+      data: { status: "stopped", completedAt: new Date() },
+    });
     await prisma.campaignSequence.delete({ where: { id } });
     return reply.send({ message: "Deleted" });
   });

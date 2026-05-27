@@ -352,10 +352,13 @@ export default function ContactsPage() {
 
   const importCsv = async () => {
     if (csvRows.length === 0) return;
+    if (csvRows.length > 500) {
+      toast.error(`CSV has ${csvRows.length} rows — only the first 500 will be imported`);
+    }
     setCsvImporting(true);
     try {
       const res = await api.post("/contacts/bulk", { contacts: csvRows.slice(0, 500) });
-      toast.success(`Imported ${res.data.created} contacts`);
+      toast.success(`Imported ${res.data.created} contacts${csvRows.length > 500 ? ` (${csvRows.length - 500} rows skipped — limit is 500)` : ""}`);
       setCsvRows([]);
       setTab("list");
       load(1, search);
@@ -390,9 +393,10 @@ export default function ContactsPage() {
       if (pg > MAX_PAGES) {
         toast.error("Export exceeded maximum page limit — only partial data exported");
       }
+      const esc = (v: string) => `"${v.replace(/"/g, '""').replace(/\r/g, " ").replace(/\n/g, " ")}"`;
       const header = "name,phone,tags,optIn";
       const rows = all.map((c) =>
-        `"${c.name}","${c.phone}","${c.tags.join("|")}",${c.optIn}`
+        `${esc(c.name)},${esc(c.phone)},${esc(c.tags.join("|"))},${c.optIn}`
       );
       const csv = [header, ...rows].join("\n");
       const blob = new Blob([csv], { type: "text/csv" });

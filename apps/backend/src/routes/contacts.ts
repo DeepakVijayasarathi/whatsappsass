@@ -142,7 +142,7 @@ export async function contactRoutes(app: FastifyInstance) {
     });
 
     type ContactRow = { id: string; name: string; phone: string; email: string | null; tags: string[]; optIn: boolean; leadStatus: string };
-    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const escape = (v: string) => `"${v.replace(/"/g, '""').replace(/\r/g, " ").replace(/\n/g, " ")}"`;
     const header = ["id", "name", "phone", "email", "tags", "opt_in", "lead_status"].join(",");
     const rows = (contacts as ContactRow[]).map((c) =>
       [

@@ -43,7 +43,11 @@ async function getProviderConfig(workspaceId: string): Promise<ProviderConfig> {
 
 // Normalise phone numbers: strip all non-digits except leading +
 function normalisePhone(phone: string): string {
-  return phone.replace(/[^\d+]/g, "");
+  const normalized = phone.replace(/[^\d+]/g, "");
+  if ((normalized.match(/\d/g) ?? []).length < 7) {
+    throw new Error(`Invalid phone number: "${phone}"`);
+  }
+  return normalized;
 }
 
 export async function whatsappRoutes(app: FastifyInstance) {
@@ -321,7 +325,8 @@ export async function whatsappRoutes(app: FastifyInstance) {
                 });
               } else {
                 // Fallback for logs sent before wamid was stored: match by recipient phone
-                const normalized = normalisePhone(s.recipient_id);
+                let normalized: string;
+                try { normalized = normalisePhone(s.recipient_id); } catch { normalized = s.recipient_id; }
                 const contact = await prisma.contact.findFirst({
                   where: { workspaceId: ws.id, OR: [{ phone: s.recipient_id }, { phone: normalized }] },
                   select: { id: true },
@@ -392,7 +397,8 @@ export async function whatsappRoutes(app: FastifyInstance) {
             if (existing) continue;
 
             // Contact lookup with phone normalisation fallback
-            const normalized = normalisePhone(fromPhone);
+            let normalized: string;
+            try { normalized = normalisePhone(fromPhone); } catch { normalized = fromPhone; }
             const contact = await prisma.contact.findFirst({
               where: {
                 workspaceId: ws.id,
