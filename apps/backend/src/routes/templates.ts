@@ -43,32 +43,58 @@ async function fetchMetaTemplates(wabaId: string, accessToken: string): Promise<
   }));
 }
 
+// MSG91 template endpoint — configurable via env var.
+// MSG91 uses two alternate domains: control.msg91.com and control.msg01.com
+// (msg01.com is an alias; some containers can only resolve msg91.com).
+// We try MSG91_TEMPLATE_HOST first, then fall back to the other domain.
+const MSG91_TEMPLATE_HOSTS = (() => {
+  const envHost = process.env.MSG91_TEMPLATE_HOST;
+  if (envHost) return [envHost];
+  // Try msg91.com first (more widely resolvable), then msg01.com alias
+  return ["control.msg91.com", "control.msg01.com"];
+})();
+
 async function fetchMsg91Templates(authKey: string, integratedNumber: string): Promise<NormalizedTemplate[]> {
   let data: unknown;
-  try {
-    // Correct endpoint: control.msg01.com (not api.msg91.com)
-    // Requires ?number=<integrated_number> and auth_key header
-    const res = await axios.get(
-      "https://control.msg01.com/api/v5/whatsapp/get-template-plugins/",
-      {
-        params: { number: integratedNumber },
-        headers: { auth_key: authKey },
+  let lastErr: unknown;
+
+  for (const host of MSG91_TEMPLATE_HOSTS) {
+    try {
+      // Requires ?number=<integrated_number> and auth_key header
+      const res = await axios.get(
+        `https://${host}/api/v5/whatsapp/get-template-plugins/`,
+        {
+          params: { number: integratedNumber },
+          headers: { auth_key: authKey },
+          timeout: 15_000,
+        }
+      );
+      data = res.data;
+      lastErr = null;
+      break; // success — stop trying
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number; data?: unknown }; code?: string };
+      if (axiosErr.response) {
+        // Got an HTTP response — this host works, report the actual API error
+        const d = axiosErr.response.data as Record<string, unknown> | undefined;
+        const msg =
+          (typeof d?.message === "string" && d.message) ||
+          (typeof d?.error === "string" && d.error) ||
+          `MSG91 API error (HTTP ${axiosErr.response.status})`;
+        console.error(`[templates] MSG91 HTTP error (${host}):`, axiosErr.response.status, JSON.stringify(d));
+        throw new Error(msg);
       }
-    );
-    data = res.data;
-  } catch (err: unknown) {
-    const axiosErr = err as { response?: { status?: number; data?: unknown } };
-    if (axiosErr.response) {
-      const d = axiosErr.response.data as Record<string, unknown> | undefined;
-      // MSG91 often returns HTTP 401/403 with { type: "error", message: "..." }
-      const msg =
-        (typeof d?.message === "string" && d.message) ||
-        (typeof d?.error === "string" && d.error) ||
-        `MSG91 API error (HTTP ${axiosErr.response.status})`;
-      console.error("[templates] MSG91 HTTP error (control.msg01.com):", axiosErr.response.status, JSON.stringify(d));
-      throw new Error(msg);
+      // DNS / connection error — try next host
+      console.warn(`[templates] MSG91 host unreachable (${host}): ${(err as Error).message} — trying next`);
+      lastErr = err;
     }
-    throw err;
+  }
+
+  if (lastErr !== null && data === undefined) {
+    // All hosts failed with network errors
+    const errMsg = (lastErr as Error).message ?? "Network error";
+    console.error("[templates] All MSG91 hosts unreachable:", errMsg);
+    throw new Error(`Cannot reach MSG91 API (tried: ${MSG91_TEMPLATE_HOSTS.join(", ")}). Check network/DNS in your container. Original error: ${errMsg}`);
   }
 
   const d = data as Record<string, unknown>;
