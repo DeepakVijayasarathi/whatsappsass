@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-whatsappsaas}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: whatsapp-saas:latest
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      # ── Database ──────────────────────────────────────────────────────────
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-whatsappsaas}
+
+      # ── App ───────────────────────────────────────────────────────────────
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET}
+
+      # ── URLs ─────────────────────────────────────────────────────────────
+      # Public-facing URL of this server (used in password reset links, guide webhook URL)
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      FRONTEND_URL: ${APP_URL:-http://localhost:3000}
+      BACKEND_URL: http://127.0.0.1:4000
+
+      # ── Ports ─────────────────────────────────────────────────────────────
+      BACKEND_PORT: "4000"
+      FRONTEND_PORT: "3000"
+
+      # ── Optional Meta config ───────────────────────────────────────────────
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_GRAPH_VERSION: ${META_GRAPH_VERSION:-v19.0}
+
+      # ── Seed defaults (first-run admin account) ───────────────────────────
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@demo.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin123}
+      SEED_WORKSPACE_NAME: ${SEED_WORKSPACE_NAME:-Demo Workspace}
+
+      # ── Branding (optional — overrides brand.ts defaults at runtime) ───────
+      NEXT_PUBLIC_APP_NAME: ${APP_NAME:-WA SaaS Lite}
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_CONTACT_EMAIL: ${CONTACT_EMAIL:-hello@example.com}
+
+volumes:
+  pgdata:

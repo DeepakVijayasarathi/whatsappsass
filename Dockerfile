@@ -25,11 +25,15 @@ RUN cd apps/backend && npm run build
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 
+# APP_URL is optional at build time — the app reads it at runtime via /api/config
+# Pass it here only if you want it baked into the static build (e.g. for meta tags)
+ARG NEXT_PUBLIC_APP_URL=""
+
 COPY apps/frontend/package.json ./
 RUN npm install
 
 COPY apps/frontend ./
-RUN npm run build
+RUN NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL npm run build
 
 
 # ─── Stage 3: Runner ──────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getAppConfig } from "@/lib/config";
 import Link from "next/link";
 import {
   BookOpen, Settings, Users, Megaphone, Send, Inbox,
@@ -92,6 +93,11 @@ function FeatureBadge({ label }: { label: string }) {
 
 export default function GuidePage() {
   const [active, setActive] = useState("getting-started");
+  const [appUrl, setAppUrl] = useState("");
+
+  useEffect(() => {
+    getAppConfig().then((cfg) => setAppUrl(cfg.appUrl || window.location.origin));
+  }, []);
 
   const scrollTo = (id: string) => {
     setActive(id);
@@ -217,7 +223,7 @@ export default function GuidePage() {
                 <ul className="list-disc list-inside space-y-0.5 text-gray-500 ml-1">
                   <li>Auth Key — from MSG91 dashboard → Settings → Auth Key</li>
                   <li>Integrated Number — your registered WhatsApp number (with country code, e.g. <Code>919876543210</Code>)</li>
-                  <li className="text-amber-600 font-medium">Set your MSG91 webhook callback URL to: <Code>https://your-domain/api/whatsapp/msg91-webhook</Code> to receive delivery receipts and inbound messages</li>
+                  <li className="text-amber-600 font-medium">Set your MSG91 webhook callback URL to: <Code>{appUrl}/api/whatsapp/msg91-webhook</Code> to receive delivery receipts and inbound messages</li>
                 </ul>
               </div>
             </div>
