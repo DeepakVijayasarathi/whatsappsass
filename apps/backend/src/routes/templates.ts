@@ -53,54 +53,116 @@ const MSG91_TEMPLATE_HOSTS = (() => {
   return ["control.msg91.com"];
 })();
 
+/**
+ * Derive candidate number formats to try with MSG91.
+ * MSG91 dashboard stores numbers in varied formats — we probe all common ones
+ * so the user doesn't need to know which exact format MSG91 expects.
+ * Priority order: stored value first, then derived variants.
+ */
+function numberCandidates(stored: string): string[] {
+  const digits = stored.replace(/\D/g, "");
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  const add = (v: string) => { if (v && !seen.has(v)) { seen.add(v); candidates.push(v); } };
+
+  // Always try the stored value first
+  add(stored.trim());
+
+  // If it already starts with 91 (India), also try without country code and with leading 0
+  if (digits.startsWith("91") && digits.length >= 12) {
+    add(digits);             // 919942921478
+    add(digits.slice(2));    // 9942921478
+    add("0" + digits.slice(2)); // 09942921478
+  } else if (digits.length === 10) {
+    // Likely local number — add country code variants
+    add(digits);             // 9942921478
+    add("91" + digits);      // 919942921478
+    add("+91" + digits);     // +919942921478
+    add("091" + digits);     // 0919942921478
+  } else {
+    // Unknown format — try as-is digits and with leading 91
+    add(digits);
+    if (!digits.startsWith("91")) add("91" + digits);
+  }
+
+  return candidates;
+}
+
 async function fetchMsg91Templates(authKey: string, integratedNumber: string): Promise<NormalizedTemplate[]> {
   let data: unknown;
   let lastErr: unknown;
+  // "No integration found" means the number format doesn't match MSG91's stored format.
+  // Try all common format variants automatically.
+  const numberFormats = numberCandidates(integratedNumber);
 
   for (const host of MSG91_TEMPLATE_HOSTS) {
-    try {
-      // MSG91 uses "authkey" (no underscore) as the header name — same as the send API.
-      // "auth_key" (with underscore) returns HTTP 401 even with a valid key.
-      const res = await axios.get(
-        `https://${host}/api/v5/whatsapp/get-template-plugins/`,
-        {
-          params: { number: integratedNumber },
-          headers: { authkey: authKey },
-          timeout: 15_000,
-        }
-      );
-      data = res.data;
-      lastErr = null;
-      break; // success — stop trying
-    } catch (err: unknown) {
-      const axiosErr = err as { response?: { status?: number; data?: unknown }; code?: string };
-      if (axiosErr.response) {
-        // Got an HTTP response — this host works, report the actual API error
-        const status = axiosErr.response.status;
-        const d = axiosErr.response.data as Record<string, unknown> | undefined;
-        console.error(`[templates] MSG91 HTTP error (${host}):`, status, JSON.stringify(d));
+    for (const numFormat of numberFormats) {
+      try {
+        // MSG91 uses "authkey" (no underscore) as the header name — same as the send API.
+        // "auth_key" (with underscore) returns HTTP 401 even with a valid key.
+        const res = await axios.get(
+          `https://${host}/api/v5/whatsapp/get-template-plugins/`,
+          {
+            params: { number: numFormat },
+            headers: { authkey: authKey },
+            timeout: 15_000,
+          }
+        );
+        console.log(`[templates] MSG91 success with number format: ${numFormat}`);
+        data = res.data;
+        lastErr = null;
+        break; // success — stop trying formats
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { status?: number; data?: unknown }; code?: string };
+        if (axiosErr.response) {
+          // Got an HTTP response — this host works, analyse the error
+          const status = axiosErr.response.status;
+          const d = axiosErr.response.data as Record<string, unknown> | undefined;
 
-        // MSG91 response shape: { status:"fail", errors:"Unauthorized", apiError:"201" }
-        // 401 always means the auth key is wrong or expired
-        if (status === 401) {
-          throw new Error("MSG91 Auth Key is invalid or expired. Go to Settings → WhatsApp Provider and re-enter your Auth Key.");
+          // 400 + "No integration found" → wrong number format, try next variant
+          const errText = JSON.stringify(d);
+          if (status === 400 && errText.includes("No integration found")) {
+            console.warn(`[templates] MSG91 number format rejected (${numFormat}): ${errText} — trying next format`);
+            lastErr = new Error(`No integration found for any number format tried. Last: ${numFormat}`);
+            continue; // try next format
+          }
+
+          console.error(`[templates] MSG91 HTTP error (${host}):`, status, errText);
+
+          // MSG91 response shape: { status:"fail", errors:"Unauthorized", apiError:"201" }
+          // 401 always means the auth key is wrong or expired
+          if (status === 401) {
+            throw new Error("MSG91 Auth Key is invalid or expired. Go to Settings → WhatsApp Provider and re-enter your Auth Key.");
+          }
+          const msg =
+            (typeof d?.message === "string" && d.message) ||
+            (typeof d?.errors === "string" && d.errors) ||
+            (typeof d?.error === "string" && d.error) ||
+            `MSG91 API error (HTTP ${status})`;
+          throw new Error(msg);
         }
-        const msg =
-          (typeof d?.message === "string" && d.message) ||
-          (typeof d?.errors === "string" && d.errors) ||
-          (typeof d?.error === "string" && d.error) ||
-          `MSG91 API error (HTTP ${status})`;
-        throw new Error(msg);
+        // DNS / connection error — try next host
+        console.warn(`[templates] MSG91 host unreachable (${host}): ${(err as Error).message} — trying next`);
+        lastErr = err;
+        break; // no point trying more number formats if host is down
       }
-      // DNS / connection error — try next host
-      console.warn(`[templates] MSG91 host unreachable (${host}): ${(err as Error).message} — trying next`);
-      lastErr = err;
     }
+    if (data !== undefined) break; // found data, stop host loop
   }
 
   if (lastErr !== null && data === undefined) {
-    // All hosts failed with network errors
     const errMsg = (lastErr as Error).message ?? "Network error";
+    // Check if all failures were "no integration found" — give a targeted message
+    if (errMsg.includes("No integration found")) {
+      const tried = numberCandidates(integratedNumber).join(", ");
+      console.error(`[templates] MSG91 number not found after trying: ${tried}`);
+      throw new Error(
+        `MSG91: "No integration found" for any number format tried (${tried}). ` +
+        `Please verify the Integrated Number in your MSG91 dashboard ` +
+        `(control.msg91.com → WhatsApp → Integrations) and update it in Settings → WhatsApp Provider.`
+      );
+    }
+    // Network error
     console.error("[templates] MSG91 host unreachable:", errMsg);
     throw new Error(`Cannot reach MSG91 API (${MSG91_TEMPLATE_HOSTS[0]}). Ensure your container has outbound internet access (DNS + HTTPS on port 443). Error: ${errMsg}`);
   }
