@@ -65,6 +65,13 @@ async function sendViaMeta(
   return { provider: "meta", wamid, raw: data };
 }
 
+// ── MSG91 phone helper ────────────────────────────────────────────────────────
+// MSG91's API requires phone numbers WITHOUT the leading '+'.
+// E.g. "+919876543210" → "919876543210"
+function stripPlusForMsg91(phone: string): string {
+  return phone.startsWith("+") ? phone.slice(1) : phone;
+}
+
 // ── MSG91 WhatsApp API ───────────────────────────────────────────────────────
 async function sendViaMsg91(
   opts: SendTemplateOptions,
@@ -76,12 +83,15 @@ async function sendViaMsg91(
     throw new Error("MSG91 credentials not configured for this workspace");
   }
 
+  // MSG91 requires phone numbers WITHOUT a leading '+'.
+  const toPhone = stripPlusForMsg91(opts.to);
+
   // MSG91 bulk template API:
   // https://docs.msg91.com/whatsapp/template-bulk
   // The recipient phone and per-recipient components go inside
   // payload.template.to_and_components[], NOT at the top level of payload.
   const toAndComponents: { to: string[]; components: Record<string, unknown> } = {
-    to: [opts.to],
+    to: [toPhone],
     components: {},
   };
 
@@ -115,33 +125,71 @@ async function sendViaMsg91(
     }
   }
 
-  const { data } = await axios.post(
-    "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
-    {
-      integrated_number: msg91IntegratedNumber,
-      content_type: "template",
-      payload: {
-        messaging_product: "whatsapp",
-        type: "template",
-        template: {
-          name: opts.templateName,
-          language: { code: opts.languageCode, policy: "deterministic" },
-          to_and_components: [toAndComponents],
+  let data: unknown;
+  try {
+    const res = await axios.post(
+      "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
+      {
+        // MSG91 integrated_number must also have no '+' prefix
+        integrated_number: stripPlusForMsg91(msg91IntegratedNumber),
+        content_type: "template",
+        payload: {
+          messaging_product: "whatsapp",
+          type: "template",
+          template: {
+            name: opts.templateName,
+            language: { code: opts.languageCode, policy: "deterministic" },
+            to_and_components: [toAndComponents],
+          },
         },
       },
-    },
-    {
-      headers: {
-        authkey: msg91AuthKey,
-        "Content-Type": "application/json",
-      },
+      {
+        headers: {
+          authkey: msg91AuthKey,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    data = res.data;
+  } catch (err: unknown) {
+    const axiosErr = err as { response?: { status?: number; data?: unknown } };
+    if (axiosErr.response) {
+      const d = axiosErr.response.data as Record<string, unknown> | undefined;
+      const msg =
+        (typeof d?.message === "string" && d.message) ||
+        (typeof d?.error === "string" && d.error) ||
+        `MSG91 send error (HTTP ${axiosErr.response.status})`;
+      console.error("[whatsapp] MSG91 send HTTP error:", axiosErr.response.status, JSON.stringify(d));
+      throw new Error(msg);
     }
-  );
+    throw err;
+  }
+
+  // MSG91 sometimes returns HTTP 200 with an error body:
+  //   { type: "error", message: "..." }
+  //   { status: "error", message: "..." }
+  //   { success: false, message: "..." }
+  //   { code: 0, message: "..." }  (code 0 = failure)
+  type Msg91Response = { type?: string; status?: string; success?: boolean; code?: number; request_id?: string; msgid?: string; message?: string; error?: string; data?: { request_id?: string } };
+  const d = data as Msg91Response;
+
+  const isErrorBody =
+    d?.type === "error" ||
+    d?.status === "error" ||
+    d?.success === false ||
+    (typeof d?.code === "number" && d.code === 0);
+
+  if (isErrorBody) {
+    const msg =
+      (typeof d.message === "string" && d.message) ||
+      (typeof d.error === "string" && d.error) ||
+      "MSG91 rejected the send request";
+    console.error("[whatsapp] MSG91 send error body:", JSON.stringify(d));
+    throw new Error(msg);
+  }
 
   // MSG91 response: { type: "success", request_id: "...", message: "..." }
   // or nested: { data: { request_id: "..." } }
-  type Msg91Response = { type?: string; request_id?: string; msgid?: string; message?: string; data?: { request_id?: string } };
-  const d = data as Msg91Response;
   const wamid = d?.request_id ?? d?.data?.request_id ?? d?.msgid ?? null;
   return { provider: "msg91", wamid, raw: data };
 }

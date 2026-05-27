@@ -46,8 +46,14 @@ async function runScheduledCampaigns() {
         continue;
       }
 
+      if (!ws.whatsappProvider) {
+        console.warn(`[scheduler] Campaign ${campaign.id} skipped — no WhatsApp provider configured`);
+        await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "paused" } });
+        continue;
+      }
+
       const config: ProviderConfig = {
-        provider: (ws.whatsappProvider as "meta" | "msg91") || "meta",
+        provider: ws.whatsappProvider as "meta" | "msg91",
         metaPhoneNumberId: ws.metaPhoneNumberId ?? undefined,
         metaAccessToken: ws.metaAccessToken ?? undefined,
         msg91AuthKey: ws.msg91AuthKey ?? undefined,
@@ -139,8 +145,13 @@ async function runSequenceSteps() {
       if (!ws || ws.status !== "active") continue; // workspace deleted or suspended — skip
       if (!ws.metaWhatsappEnabled) continue;
 
+      if (!ws.whatsappProvider) {
+        console.warn(`[scheduler] Sequence enrollment ${enrollment.id} skipped — no WhatsApp provider configured`);
+        continue;
+      }
+
       const config: ProviderConfig = {
-        provider: (ws.whatsappProvider as "meta" | "msg91") || "meta",
+        provider: ws.whatsappProvider as "meta" | "msg91",
         metaPhoneNumberId: ws.metaPhoneNumberId ?? undefined,
         metaAccessToken: ws.metaAccessToken ?? undefined,
         msg91AuthKey: ws.msg91AuthKey ?? undefined,

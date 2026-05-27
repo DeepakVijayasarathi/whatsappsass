@@ -32,8 +32,14 @@ async function getProviderConfig(workspaceId: string): Promise<ProviderConfig> {
     },
   });
 
+  // Use whatsappProvider as-is; the send functions guard against missing credentials.
+  // Do NOT default to "meta" — a workspace with no provider set should fail explicitly.
+  const provider = (ws?.whatsappProvider as "meta" | "msg91" | null | undefined);
+  if (!provider) {
+    throw new Error("No WhatsApp provider configured. Go to Settings → WhatsApp Provider and select Meta Cloud API or MSG91.");
+  }
   return {
-    provider: (ws?.whatsappProvider as "meta" | "msg91") || "meta",
+    provider,
     metaPhoneNumberId: ws?.metaPhoneNumberId ?? undefined,
     metaAccessToken: ws?.metaAccessToken ?? undefined,
     msg91AuthKey: ws?.msg91AuthKey ?? undefined,
@@ -61,10 +67,18 @@ export async function whatsappRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      const config = await getProviderConfig(user.workspaceId);
+      let config;
+      try {
+        config = await getProviderConfig(user.workspaceId);
+      } catch (err: unknown) {
+        const msg = (err instanceof Error && err.message) || "WhatsApp provider not configured";
+        return reply.status(422).send({ error: msg });
+      }
+
       let status = "sent";
       let wamid: string | null = null;
       let providerResponse: unknown = null;
+      let sendError: string | null = null;
 
       try {
         const result = await sendWhatsAppTemplate(
@@ -80,6 +94,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
         providerResponse = result.raw;
       } catch (err: unknown) {
         status = "failed";
+        sendError = (err instanceof Error && err.message) || `${config.provider} send failed`;
         app.log.error({ err }, `${config.provider} send failed`);
       }
 
@@ -109,7 +124,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
 
       if (status === "failed") {
         return reply.status(502).send({
-          error: `Failed to send via ${config.provider}`,
+          error: sendError ?? `Failed to send via ${config.provider}`,
           providerResponse,
         });
       }
@@ -151,7 +166,13 @@ export async function whatsappRoutes(app: FastifyInstance) {
         },
       });
 
-      const config = await getProviderConfig(user.workspaceId);
+      let config;
+      try {
+        config = await getProviderConfig(user.workspaceId);
+      } catch (err: unknown) {
+        const msg = (err instanceof Error && err.message) || "WhatsApp provider not configured";
+        return reply.status(422).send({ error: msg });
+      }
 
       const results = await Promise.allSettled(
         contacts.map(async (contact: { id: string; phone: string; workspaceId: string }) => {
