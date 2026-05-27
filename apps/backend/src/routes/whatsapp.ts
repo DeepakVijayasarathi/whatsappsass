@@ -512,6 +512,201 @@ export async function whatsappRoutes(app: FastifyInstance) {
     return reply.send({ received: true });
   });
 
+  // ── MSG91 webhook (delivery receipts + inbound messages) ─────────────────
+  // MSG91 sends events to /whatsapp/msg91-webhook
+  // Delivery update: { requestId, status, number }
+  // Inbound message: { type, from, body, messageId, ... }
+  app.post("/msg91-webhook", async (request, reply) => {
+    const body = request.body as Record<string, unknown>;
+
+    // ── Delivery receipt ────────────────────────────────────────────────────
+    const requestId = body.requestId as string | undefined;
+    const deliveryStatus = body.status as string | undefined;
+    const recipientNumber = (body.number ?? body.from) as string | undefined;
+
+    if (requestId && deliveryStatus) {
+      const VALID_STATUSES: Record<string, string> = {
+        delivered: "delivered",
+        read: "read",
+        failed: "failed",
+        sent: "sent",
+        DELIVERED: "delivered",
+        READ: "read",
+        FAILED: "failed",
+        SENT: "sent",
+      };
+      const newStatus = VALID_STATUSES[deliveryStatus];
+      if (newStatus) {
+        try {
+          // Find workspace by msg91 integrated number or by wamid match
+          const byWamid = await prisma.messageLog.findFirst({
+            where: { wamid: requestId },
+            select: { id: true, workspaceId: true },
+          });
+
+          if (byWamid) {
+            await prisma.messageLog.update({
+              where: { id: byWamid.id },
+              data: { status: newStatus },
+            });
+
+            const EVENT_MAP: Record<string, string> = {
+              delivered: "message.delivered",
+              read: "message.read",
+              failed: "message.failed",
+            };
+            const webhookEvent = EVENT_MAP[newStatus];
+            if (webhookEvent) {
+              fireWebhooks(byWamid.workspaceId, webhookEvent as "message.delivered" | "message.read" | "message.failed", {
+                messageId: requestId,
+                recipientId: recipientNumber ?? "",
+                status: newStatus,
+              }).catch(() => {});
+            }
+          } else if (recipientNumber) {
+            // Fallback: match by recipient phone across msg91 workspaces
+            let normalized: string;
+            try { normalized = normalisePhone(recipientNumber); } catch { normalized = recipientNumber; }
+            const contact = await prisma.contact.findFirst({
+              where: { OR: [{ phone: recipientNumber }, { phone: normalized }] },
+              select: { id: true, workspaceId: true },
+            });
+            if (contact) {
+              const ws = await prisma.workspace.findFirst({
+                where: { id: contact.workspaceId, whatsappProvider: "msg91", status: "active" },
+                select: { id: true },
+              });
+              if (ws) {
+                const recent = await prisma.messageLog.findFirst({
+                  where: { workspaceId: ws.id, contactId: contact.id, status: "sent" },
+                  orderBy: { createdAt: "desc" },
+                  select: { id: true },
+                });
+                if (recent) {
+                  await prisma.messageLog.update({ where: { id: recent.id }, data: { status: newStatus } });
+                }
+              }
+            }
+          }
+        } catch (err) {
+          app.log.error({ err, requestId, deliveryStatus }, "MSG91 delivery update failed");
+        }
+      }
+      return reply.send({ received: true });
+    }
+
+    // ── Inbound message ──────────────────────────────────────────────────────
+    const fromPhone = (body.from ?? body.sender) as string | undefined;
+    const msgId = (body.messageId ?? body.id) as string | undefined;
+    const msgType = (body.type as string | undefined) ?? "text";
+    const msgBody = (body.body ?? body.text) as string | undefined | null;
+
+    if (fromPhone && msgId) {
+      try {
+        let normalized: string;
+        try { normalized = normalisePhone(fromPhone); } catch { normalized = fromPhone; }
+
+        // Find contact and workspace (msg91 provider)
+        const contact = await prisma.contact.findFirst({
+          where: { OR: [{ phone: fromPhone }, { phone: normalized }] },
+          select: { id: true, workspaceId: true },
+        });
+
+        const ws = contact
+          ? await prisma.workspace.findFirst({
+              where: { id: contact.workspaceId, whatsappProvider: "msg91", status: "active" },
+              select: { id: true },
+            })
+          : null;
+
+        if (ws) {
+          const existing = await prisma.inboundMessage.findUnique({ where: { messageId: msgId } });
+          if (!existing) {
+            // Link to most recent campaign that messaged this contact
+            let campaignId: string | null = null;
+            if (contact) {
+              const lastLog = await prisma.messageLog.findFirst({
+                where: { workspaceId: ws.id, contactId: contact.id, campaignId: { not: null } },
+                orderBy: { createdAt: "desc" },
+                select: { campaignId: true },
+              });
+              campaignId = lastLog?.campaignId ?? null;
+            }
+
+            await prisma.inboundMessage.create({
+              data: {
+                workspaceId: ws.id,
+                contactId: contact?.id ?? null,
+                campaignId,
+                fromPhone,
+                messageId: msgId,
+                type: msgType,
+                body: msgBody ?? null,
+                rawPayload: body as object,
+              },
+            });
+
+            fireWebhooks(ws.id, "message.inbound", {
+              messageId: msgId,
+              fromPhone,
+              type: msgType,
+              body: msgBody ?? null,
+              contactId: contact?.id ?? null,
+              campaignId,
+            }).catch(() => {});
+
+            // Opt-out automation
+            const OPT_OUT_KEYWORDS = new Set(["stop", "unsubscribe", "optout", "opt-out", "cancel", "quit", "end"]);
+            if (contact && msgType === "text" && msgBody) {
+              const word = msgBody.trim().toLowerCase().replace(/[^a-z-]/g, "");
+              if (OPT_OUT_KEYWORDS.has(word)) {
+                await prisma.contact.update({ where: { id: contact.id }, data: { optIn: false } });
+                fireWebhooks(ws.id, "contact.opted_out", { contactId: contact.id, phone: fromPhone }).catch(() => {});
+              }
+            }
+
+            // Auto-reply
+            if (contact && msgType === "text" && msgBody) {
+              const rules = await prisma.autoReply.findMany({ where: { workspaceId: ws.id, isActive: true } });
+              for (const rule of rules) {
+                const msgLower = msgBody.trim().toLowerCase();
+                const keyLower = rule.keyword.toLowerCase();
+                let matches = false;
+                if (rule.matchType === "exact") matches = msgLower === keyLower;
+                else if (rule.matchType === "contains") matches = msgLower.includes(keyLower);
+                else if (rule.matchType === "starts_with") matches = msgLower.startsWith(keyLower);
+                if (matches) {
+                  try {
+                    const wsConfig = await getProviderConfig(ws.id);
+                    let autoWamid: string | null = null;
+                    let autoStatus = "sent";
+                    try {
+                      const autoResult = await sendWhatsAppTemplate(
+                        { to: fromPhone, templateName: rule.templateName, languageCode: rule.languageCode, components: [] },
+                        wsConfig
+                      );
+                      autoWamid = autoResult.wamid;
+                    } catch { autoStatus = "failed"; }
+                    await prisma.messageLog.create({
+                      data: { workspaceId: ws.id, contactId: contact.id, wamid: autoWamid, status: autoStatus },
+                    });
+                  } catch (autoErr) {
+                    app.log.error({ autoErr, ruleId: rule.id }, "MSG91 auto-reply failed");
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        app.log.error({ err, msgId, fromPhone }, "MSG91 inbound message failed");
+      }
+    }
+
+    return reply.send({ received: true });
+  });
+
   // ── Inbox: list inbound messages ──────────────────────────────────────────
   app.get(
     "/inbox",
