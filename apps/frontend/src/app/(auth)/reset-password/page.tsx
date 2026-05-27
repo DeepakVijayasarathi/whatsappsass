@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 
 const schema = z.object({
@@ -38,10 +38,7 @@ function ResetPasswordForm() {
       setDone(true);
       setTimeout(() => router.push("/login"), 3000);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
-        "Reset failed. The link may have expired.";
-      setServerError(msg);
+      setServerError(getErrMsg(err, "Reset failed. The link may have expired."));
     }
   };
 

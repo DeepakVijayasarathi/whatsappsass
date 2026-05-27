@@ -44,8 +44,8 @@ export async function analyticsRoutes(app: FastifyInstance) {
     let until: Date = new Date();
     if (from && to) {
       since = new Date(from);
-      until = new Date(to);
-      until.setHours(23, 59, 59, 999);
+      // End-of-day in UTC: set to 23:59:59.999 UTC to include the full `to` date
+      until = new Date(to.split("T")[0] + "T23:59:59.999Z");
     } else {
       since = new Date();
       since.setDate(since.getDate() - Number(days));
@@ -84,8 +84,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     let until: Date = new Date();
     if (from && to) {
       since = new Date(from);
-      until = new Date(to);
-      until.setHours(23, 59, 59, 999);
+      until = new Date(to.split("T")[0] + "T23:59:59.999Z");
     } else {
       since = new Date();
       since.setDate(since.getDate() - Number(days));

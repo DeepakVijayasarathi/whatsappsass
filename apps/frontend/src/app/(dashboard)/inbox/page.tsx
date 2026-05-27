@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import {
   Bot,
   CheckCheck,
@@ -138,7 +138,7 @@ export default function InboxPage() {
       setReplyLang("en_US");
       if (selected) openConversation(selected);
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? "Failed to send");
+      toast.error(getErrMsg(err, "Failed to send"));
     } finally {
       setReplying(false);
     }

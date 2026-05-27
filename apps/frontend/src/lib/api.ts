@@ -3,6 +3,13 @@ import Cookies from "js-cookie";
 import toast from "react-hot-toast";
 import { clearAuth } from "./auth";
 
+/** Safely extract a human-readable string from an API error response.
+ *  Handles both plain-string errors and Zod flatten() objects. */
+export function getErrMsg(err: unknown, fallback: string): string {
+  const data = (err as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
+  return typeof data === "string" && data.length > 0 ? data : fallback;
+}
+
 // All requests go to /api/* on the same origin.
 // Next.js rewrites /api/:path* → BACKEND_URL/:path* (server-side only — IP:port never reaches the browser).
 export const api = axios.create({

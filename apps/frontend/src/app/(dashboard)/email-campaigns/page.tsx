@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import toast from "react-hot-toast";
 import {
   Plus, Mail, Play, Pause, CheckCircle2, Trash2, BarChart2, X, Send,
@@ -124,7 +124,7 @@ function SendModal({ campaign, onClose, onDone }: {
       setResult(res.data);
       onDone();
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || "Failed to send");
+      toast.error(getErrMsg(err, "Failed to send"));
     } finally {
       setSending(false);
     }

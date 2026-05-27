@@ -7,7 +7,7 @@ import { z } from "zod";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
 import { brand } from "@/lib/brand";
 import { MessageSquare, ArrowRight, ArrowLeft, Eye, EyeOff, Megaphone, Inbox, BarChart2, Shield } from "lucide-react";
@@ -44,9 +44,7 @@ function LoginForm() {
       const safePath = from && /^\/[^/]/.test(from) ? from : "/dashboard";
       router.push(safePath);
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error || "Login failed"
-      );
+      toast.error(getErrMsg(err, "Login failed"));
     } finally {
       setLoading(false);
     }

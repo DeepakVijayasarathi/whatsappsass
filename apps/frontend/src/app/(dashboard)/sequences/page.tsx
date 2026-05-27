@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import toast from "react-hot-toast";
 import {
   GitBranch,
@@ -188,9 +188,7 @@ function BuilderModal({ onSave, onClose }: { onSave: () => void; onClose: () => 
       toast.success("Sequence created");
       onSave();
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ?? "Failed"
-      );
+      toast.error(getErrMsg(err, "Failed"));
     } finally {
       setSaving(false);
     }
@@ -313,9 +311,7 @@ function EnrollModal({
       if (res.data.skipped > 0) toast(`${res.data.skipped} already enrolled`, { icon: "ℹ️" });
       onDone();
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ?? "Failed"
-      );
+      toast.error(getErrMsg(err, "Failed"));
     } finally {
       setEnrolling(false);
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import { getUser } from "@/lib/auth";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
@@ -208,7 +208,7 @@ export default function TeamPage() {
       setShowInvite(false);
       load();
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || "Invite failed");
+      toast.error(getErrMsg(err, "Invite failed"));
     }
   };
 
@@ -218,7 +218,7 @@ export default function TeamPage() {
       toast.success("Role updated");
       load();
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || "Failed to update role");
+      toast.error(getErrMsg(err, "Failed to update role"));
     }
   };
 
@@ -229,7 +229,7 @@ export default function TeamPage() {
       setConfirmRemove(null);
       load();
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || "Failed to remove member");
+      toast.error(getErrMsg(err, "Failed to remove member"));
     }
   };
 

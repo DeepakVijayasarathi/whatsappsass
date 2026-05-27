@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import { Bot, Plus, Pencil, Trash2, X, ToggleLeft, ToggleRight, Search } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -175,7 +175,7 @@ export default function AutoRepliesPage() {
       setModal(null);
       load();
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? "Failed");
+      toast.error(getErrMsg(err, "Failed"));
     }
   };
 

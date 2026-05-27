@@ -9,7 +9,7 @@ import { z } from "zod";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import { setAuth } from "@/lib/auth";
 import { brand } from "@/lib/brand";
 import {
@@ -48,9 +48,7 @@ export default function RegisterPage() {
       toast.success("Account created! Welcome aboard.");
       router.push("/dashboard");
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error || "Registration failed"
-      );
+      toast.error(getErrMsg(err, "Registration failed"));
     }
   };
 

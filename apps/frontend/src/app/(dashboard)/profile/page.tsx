@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import { getUser, getToken, setAuth, getWorkspace } from "@/lib/auth";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
@@ -61,10 +61,7 @@ export default function ProfilePage() {
       setAuth(getToken() ?? "", { ...res.data, id: me!.id }, workspace!);
       toast.success("Profile updated");
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
-          "Update failed"
-      );
+      toast.error(getErrMsg(err, "Update failed"));
     }
   };
 
@@ -77,10 +74,7 @@ export default function ProfilePage() {
       toast.success("Password changed successfully");
       resetPwd();
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
-          "Password change failed"
-      );
+      toast.error(getErrMsg(err, "Password change failed"));
     }
   };
 

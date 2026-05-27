@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import { Send, BookOpen } from "lucide-react";
 import TemplatePicker, { type Template } from "@/components/TemplatePicker";
 
@@ -76,10 +76,7 @@ export default function SendPage() {
       setSelectedTemplate(null);
       setVarValues({});
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
-        "Failed to send message";
-      toast.error(msg);
+      toast.error(getErrMsg(err, "Failed to send message"));
     }
   };
 

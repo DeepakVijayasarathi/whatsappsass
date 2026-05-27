@@ -18,14 +18,10 @@ interface Campaign {
   template: string;
   status: "draft" | "running" | "paused" | "completed";
   scheduledAt: string | null;
+  createdAt: string;
 }
 
-interface CampaignStats {
-  sent: number;
-  delivered: number;
-  read: number;
-  failed: number;
-}
+type CampaignStats = Record<string, number>;
 
 interface RunOptions {
   campaignId: string;
@@ -131,10 +127,8 @@ function RunModal({ campaign, onClose, onDone }: {
       setResult(res.data);
       onDone();
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
-          "Failed to run campaign"
-      );
+      const errData = (err as { response?: { data?: { error?: unknown } } }).response?.data?.error;
+      toast.error(typeof errData === "string" ? errData : "Failed to run campaign");
       // Revert campaign status so the user can retry
       await api.patch(`/campaigns/${campaign.campaignId}`, { status: "paused" }).catch(() => {});
     } finally {
@@ -251,7 +245,7 @@ function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: 
     setStatsLoading(true);
     setStatsError(false);
     api.get(`/campaigns/${id}/stats`)
-      .then((r) => setStats(r.data.stats))
+      .then((r) => setStats(r.data.stats ?? {}))
       .catch(() => setStatsError(true))
       .finally(() => setStatsLoading(false));
   }, [id]);

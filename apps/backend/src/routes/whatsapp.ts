@@ -132,6 +132,13 @@ export async function whatsappRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
+      // Verify campaign belongs to this workspace before proceeding
+      const campaign = await prisma.campaign.findFirst({
+        where: { id: parsed.data.campaignId, workspaceId: user.workspaceId },
+        select: { id: true },
+      });
+      if (!campaign) return reply.status(404).send({ error: "Campaign not found" });
+
       const contacts = await prisma.contact.findMany({
         where: {
           id: { in: parsed.data.contactIds },
@@ -468,12 +475,19 @@ export async function whatsappRoutes(app: FastifyInstance) {
                 if (matches) {
                   try {
                     const wsConfig = await getProviderConfig(ws.id);
-                    await sendWhatsAppTemplate(
-                      { to: fromPhone, templateName: rule.templateName, languageCode: rule.languageCode, components: [] },
-                      wsConfig
-                    );
+                    let autoWamid: string | null = null;
+                    let autoStatus = "sent";
+                    try {
+                      const autoResult = await sendWhatsAppTemplate(
+                        { to: fromPhone, templateName: rule.templateName, languageCode: rule.languageCode, components: [] },
+                        wsConfig
+                      );
+                      autoWamid = autoResult.wamid;
+                    } catch {
+                      autoStatus = "failed";
+                    }
                     await prisma.messageLog.create({
-                      data: { workspaceId: ws.id, contactId: contact.id, status: "sent" },
+                      data: { workspaceId: ws.id, contactId: contact.id, wamid: autoWamid, status: autoStatus },
                     });
                   } catch (autoErr) {
                     app.log.error({ autoErr, ruleId: rule.id }, "Auto-reply send failed");

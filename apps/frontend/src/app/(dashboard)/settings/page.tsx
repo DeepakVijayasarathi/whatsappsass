@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -119,23 +119,27 @@ export default function SettingsPage() {
       toast.success(`License activated! Plan: ${res.data.plan}`);
       loadStatus();
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
-          "Activation failed"
-      );
+      toast.error(getErrMsg(err, "Activation failed"));
     }
   };
 
   const saveProvider = async (data: ProviderForm) => {
     // Browser autofill sets DOM value without firing React onChange, so RHF may have stale
     // empty strings for secret fields. Read directly from DOM to get the real value.
+    // Fields from unmounted conditional sections return undefined from RHF — normalise to ""
+    const str = (v: string | undefined) => (v ?? "").trim();
+
     const domAccessToken = metaAccessTokenRef.current?.value ?? "";
     const domMsg91AuthKey = msg91AuthKeyRef.current?.value ?? "";
-    const resolvedAccessToken = domAccessToken.trim() || data.metaAccessToken.trim();
-    const resolvedMsg91AuthKey = domMsg91AuthKey.trim() || data.msg91AuthKey.trim();
+    const resolvedAccessToken = domAccessToken.trim() || str(data.metaAccessToken);
+    const resolvedMsg91AuthKey = domMsg91AuthKey.trim() || str(data.msg91AuthKey);
 
     const payload: ProviderForm = {
       ...data,
+      metaPhoneNumberId: data.metaPhoneNumberId ?? "",
+      metaWabaId: data.metaWabaId ?? "",
+      metaWebhookVerifyToken: data.metaWebhookVerifyToken ?? "",
+      msg91IntegratedNumber: data.msg91IntegratedNumber ?? "",
       metaAccessToken: resolvedAccessToken,
       msg91AuthKey: resolvedMsg91AuthKey,
     };
@@ -143,16 +147,16 @@ export default function SettingsPage() {
     // Manual validation — runs only on submit, never on load or reset
     const errs: Partial<Record<keyof ProviderForm, string>> = {};
     if (payload.whatsappProvider === "meta") {
-      if (!payload.metaPhoneNumberId.trim()) errs.metaPhoneNumberId = "Phone Number ID required";
-      if (!payload.metaWabaId.trim()) errs.metaWabaId = "WABA ID required";
-      const hasToken = (payload.metaAccessToken.trim().length > 0) || !!(providerConfig?.hasMetaAccessToken);
+      if (!str(payload.metaPhoneNumberId)) errs.metaPhoneNumberId = "Phone Number ID required";
+      if (!str(payload.metaWabaId)) errs.metaWabaId = "WABA ID required";
+      const hasToken = (str(payload.metaAccessToken).length > 0) || !!(providerConfig?.hasMetaAccessToken);
       if (!hasToken) errs.metaAccessToken = "Access Token required";
-      const hasVerifyToken = (payload.metaWebhookVerifyToken.trim().length > 0) || !!(providerConfig?.metaWebhookVerifyToken);
+      const hasVerifyToken = (str(payload.metaWebhookVerifyToken).length > 0) || !!(providerConfig?.metaWebhookVerifyToken);
       if (!hasVerifyToken) errs.metaWebhookVerifyToken = "Webhook Verify Token required";
     } else {
-      const hasAuthKey = (payload.msg91AuthKey.trim().length > 0) || !!(providerConfig?.hasMsg91AuthKey);
+      const hasAuthKey = (str(payload.msg91AuthKey).length > 0) || !!(providerConfig?.hasMsg91AuthKey);
       if (!hasAuthKey) errs.msg91AuthKey = "MSG91 Auth Key required";
-      const hasNumber = (payload.msg91IntegratedNumber.trim().length >= 7) || !!(providerConfig?.msg91IntegratedNumber);
+      const hasNumber = (str(payload.msg91IntegratedNumber).length >= 7) || !!(providerConfig?.msg91IntegratedNumber);
       if (!hasNumber) errs.msg91IntegratedNumber = "Integrated number required (min 7 digits)";
     }
     if (Object.keys(errs).length > 0) { setProviderErrors(errs); return; }
@@ -162,9 +166,7 @@ export default function SettingsPage() {
       toast.success("Provider saved");
       loadStatus();
     } catch (err: unknown) {
-      const errData = (err as { response?: { data?: { error?: unknown } } }).response?.data?.error;
-      const msg = typeof errData === "string" ? errData : "Failed to save provider";
-      toast.error(msg);
+      toast.error(getErrMsg(err, "Failed to save provider"));
     }
   };
 
@@ -175,10 +177,7 @@ export default function SettingsPage() {
       setMetaEnabled(res.data.metaWhatsappEnabled);
       toast.success(res.data.message);
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ||
-          "Toggle failed"
-      );
+      toast.error(getErrMsg(err, "Toggle failed"));
     } finally {
       setToggling(false);
     }
@@ -609,10 +608,7 @@ function AccountSettings() {
       toast.success("Password changed successfully");
       reset({ name: data.name.trim(), currentPassword: "", newPassword: "", confirmPassword: "" });
     } catch (err: unknown) {
-      toast.error(
-        (err as { response?: { data?: { error?: string } } }).response?.data?.error ??
-          "Failed to update account"
-      );
+      toast.error(getErrMsg(err, "Failed to update account"));
     }
   };
 
@@ -775,7 +771,7 @@ function EmailSettings() {
       toast.success("SMTP connection verified");
     } catch (err: unknown) {
       setTestOk(false);
-      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error || "SMTP test failed");
+      toast.error(getErrMsg(err, "SMTP test failed"));
     } finally {
       setTesting(false);
     }

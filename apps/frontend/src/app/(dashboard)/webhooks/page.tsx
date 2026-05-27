@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getErrMsg } from "@/lib/api";
 import { Webhook, Plus, Trash2, X, CheckCircle, XCircle, Send, ToggleLeft, ToggleRight, Copy } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -140,7 +140,7 @@ export default function WebhooksPage() {
       setShowModal(false);
       load();
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? "Failed");
+      toast.error(getErrMsg(err, "Failed"));
     }
   };
 
