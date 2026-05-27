@@ -43,15 +43,14 @@ async function fetchMetaTemplates(wabaId: string, accessToken: string): Promise<
   }));
 }
 
-// MSG91 template endpoint — configurable via env var.
-// MSG91 uses two alternate domains: control.msg91.com and control.msg01.com
-// (msg01.com is an alias; some containers can only resolve msg91.com).
-// We try MSG91_TEMPLATE_HOST first, then fall back to the other domain.
+// MSG91 template endpoint.
+// The canonical host is control.msg91.com (confirmed via live probe — returns 401 with auth).
+// control.msg01.com is a non-existent domain (ECONNREFUSED); it has been removed.
+// Override with MSG91_TEMPLATE_HOST env var if needed.
 const MSG91_TEMPLATE_HOSTS = (() => {
   const envHost = process.env.MSG91_TEMPLATE_HOST;
   if (envHost) return [envHost];
-  // Try msg91.com first (more widely resolvable), then msg01.com alias
-  return ["control.msg91.com", "control.msg01.com"];
+  return ["control.msg91.com"];
 })();
 
 async function fetchMsg91Templates(authKey: string, integratedNumber: string): Promise<NormalizedTemplate[]> {
@@ -93,8 +92,8 @@ async function fetchMsg91Templates(authKey: string, integratedNumber: string): P
   if (lastErr !== null && data === undefined) {
     // All hosts failed with network errors
     const errMsg = (lastErr as Error).message ?? "Network error";
-    console.error("[templates] All MSG91 hosts unreachable:", errMsg);
-    throw new Error(`Cannot reach MSG91 API (tried: ${MSG91_TEMPLATE_HOSTS.join(", ")}). Check network/DNS in your container. Original error: ${errMsg}`);
+    console.error("[templates] MSG91 host unreachable:", errMsg);
+    throw new Error(`Cannot reach MSG91 API (${MSG91_TEMPLATE_HOSTS[0]}). Ensure your container has outbound internet access (DNS + HTTPS on port 443). Error: ${errMsg}`);
   }
 
   const d = data as Record<string, unknown>;
