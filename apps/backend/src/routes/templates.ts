@@ -59,12 +59,13 @@ async function fetchMsg91Templates(authKey: string, integratedNumber: string): P
 
   for (const host of MSG91_TEMPLATE_HOSTS) {
     try {
-      // Requires ?number=<integrated_number> and auth_key header
+      // MSG91 uses "authkey" (no underscore) as the header name — same as the send API.
+      // "auth_key" (with underscore) returns HTTP 401 even with a valid key.
       const res = await axios.get(
         `https://${host}/api/v5/whatsapp/get-template-plugins/`,
         {
           params: { number: integratedNumber },
-          headers: { auth_key: authKey },
+          headers: { authkey: authKey },
           timeout: 15_000,
         }
       );
