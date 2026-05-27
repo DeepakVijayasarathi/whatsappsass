@@ -401,6 +401,72 @@ function EnrollModal({
   );
 }
 
+// ── Enrollment progress panel ─────────────────────────────────────────────────
+function EnrollmentProgressPanel({ sequence }: { sequence: Sequence }) {
+  const [enrollments, setEnrollments] = useState<Array<{
+    id: string;
+    currentStep: number;
+    status: string;
+    contact: { id: string; name: string; phone: string };
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/sequences/${sequence.id}`)
+      .then((r) => setEnrollments(r.data.enrollments ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [sequence.id]);
+
+  if (loading) return <p className="text-xs text-gray-400 py-2">Loading enrollments…</p>;
+  if (enrollments.length === 0) return <p className="text-xs text-gray-400 py-2">No enrolled contacts yet</p>;
+
+  const STATUS_COLORS: Record<string, string> = {
+    active: "bg-green-100 text-green-700",
+    completed: "bg-blue-100 text-blue-700",
+    stopped: "bg-red-50 text-red-500",
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-100">
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        Enrolled contacts ({enrollments.length})
+      </p>
+      <div className="space-y-2">
+        {enrollments.map((e) => (
+          <div key={e.id} className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">{e.contact.name}</p>
+              <p className="text-xs text-gray-400 font-mono">{e.contact.phone}</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex gap-1">
+                {sequence.steps.map((step) => (
+                  <div
+                    key={step.id}
+                    title={`Step ${step.stepNumber}: ${step.templateName}`}
+                    className={clsx(
+                      "w-2.5 h-2.5 rounded-full",
+                      e.status === "completed" || e.currentStep > step.stepNumber
+                        ? "bg-brand"
+                        : e.currentStep === step.stepNumber && e.status === "active"
+                        ? "bg-brand/40 ring-2 ring-brand/30"
+                        : "bg-gray-200"
+                    )}
+                  />
+                ))}
+              </div>
+              <span className={clsx("text-[10px] px-1.5 py-0.5 rounded font-medium", STATUS_COLORS[e.status] ?? "bg-gray-100 text-gray-500")}>
+                {e.status}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function SequencesPage() {
   const [sequences, setSequences] = useState<Sequence[]>([]);
@@ -597,31 +663,34 @@ export default function SequencesPage() {
                 </div>
 
                 {isExpanded && seq.steps.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Steps</p>
-                    <div className="space-y-2">
-                      {seq.steps.map((step, i) => (
-                        <div key={step.id} className="flex items-start gap-3">
-                          <div className="flex flex-col items-center shrink-0">
-                            <div className="w-6 h-6 rounded-full bg-brand/10 text-brand text-xs font-bold flex items-center justify-center">
-                              {step.stepNumber}
+                  <>
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Steps</p>
+                      <div className="space-y-2">
+                        {seq.steps.map((step, i) => (
+                          <div key={step.id} className="flex items-start gap-3">
+                            <div className="flex flex-col items-center shrink-0">
+                              <div className="w-6 h-6 rounded-full bg-brand/10 text-brand text-xs font-bold flex items-center justify-center">
+                                {step.stepNumber}
+                              </div>
+                              {i < seq.steps.length - 1 && (
+                                <div className="w-px h-6 bg-gray-200 mt-1" />
+                              )}
                             </div>
-                            {i < seq.steps.length - 1 && (
-                              <div className="w-px h-6 bg-gray-200 mt-1" />
-                            )}
+                            <div className="flex-1 pb-1">
+                              <p className="text-sm font-medium text-gray-900 font-mono">{step.templateName}</p>
+                              <p className="text-xs text-gray-400">
+                                {step.languageCode}
+                                {step.delayDays > 0 && ` · +${step.delayDays} day${step.delayDays !== 1 ? "s" : ""}`}
+                                {step.delayDays === 0 && i > 0 && " · immediate"}
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex-1 pb-1">
-                            <p className="text-sm font-medium text-gray-900 font-mono">{step.templateName}</p>
-                            <p className="text-xs text-gray-400">
-                              {step.languageCode}
-                              {step.delayDays > 0 && ` · +${step.delayDays} day${step.delayDays !== 1 ? "s" : ""}`}
-                              {step.delayDays === 0 && i > 0 && " · immediate"}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                    {seq._count.enrollments > 0 && <EnrollmentProgressPanel sequence={seq} />}
+                  </>
                 )}
               </div>
             );

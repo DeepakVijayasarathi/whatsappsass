@@ -118,11 +118,6 @@ export async function authRoutes(app: FastifyInstance) {
       where: { id: user.workspaceId },
       select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPass: true, smtpFromEmail: true, smtpFromName: true },
     });
-    if (!ws?.smtpHost || !ws.smtpUser || !ws.smtpPass || !ws.smtpFromEmail) {
-      // SMTP not configured — still 200 to avoid enumeration, but log the problem
-      app.log.warn({ userId: user.id }, "Password reset requested but SMTP not configured");
-      return reply.send({ message: "If that email exists, a reset link has been sent." });
-    }
 
     const rawToken = crypto.randomBytes(32).toString("hex");
     const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -141,8 +136,19 @@ export async function authRoutes(app: FastifyInstance) {
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
+    const smtpConfigured = !!(ws?.smtpHost && ws.smtpUser && ws.smtpPass && ws.smtpFromEmail);
+
+    if (!smtpConfigured) {
+      // SMTP not configured — return the reset URL directly so an admin can share it manually
+      app.log.warn({ userId: user.id, resetUrl }, "Password reset: SMTP not configured, returning reset URL in response");
+      return reply.send({
+        message: "SMTP is not configured. Share the reset URL below with the user directly.",
+        resetUrl,
+      });
+    }
+
     await sendEmail(
-      { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: ws.smtpPass, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName },
+      { host: ws!.smtpHost!, port: ws!.smtpPort ?? 587, user: ws!.smtpUser!, pass: ws!.smtpPass!, fromEmail: ws!.smtpFromEmail!, fromName: ws!.smtpFromName },
       {
         to: user.email,
         subject: "Reset your password",

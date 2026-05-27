@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
 import Link from "next/link";
-import { Plus, Trash2, Phone, Upload, Download, X, Pencil, CheckSquare, Search } from "lucide-react";
+import { Plus, Trash2, Phone, Upload, Download, X, Pencil, CheckSquare, Search, Tag, GitMerge } from "lucide-react";
 import { SkeletonTableRow } from "@/components/Skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -213,6 +213,10 @@ export default function ContactsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string } | "bulk" | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [showBulkTag, setShowBulkTag] = useState(false);
+  const [bulkTagInput, setBulkTagInput] = useState("");
+  const [bulkTagging, setBulkTagging] = useState(false);
+  const [deduplicating, setDeduplicating] = useState(false);
 
   // CSV import state
   const [csvRows, setCsvRows] = useState<Omit<Contact, "id">[]>([]);
@@ -313,6 +317,40 @@ export default function ContactsPage() {
       load(page, search);
     } finally {
       setBulkDeleting(false);
+    }
+  };
+
+  const handleBulkTag = async (mode: "add" | "replace") => {
+    const tags = bulkTagInput.split(",").map((t) => t.trim()).filter(Boolean);
+    if (tags.length === 0) { toast.error("Enter at least one tag"); return; }
+    setBulkTagging(true);
+    try {
+      const res = await api.patch("/contacts/bulk-tag", { ids: Array.from(selectedIds), tags, mode });
+      toast.success(`Tags updated for ${res.data.updated} contacts`);
+      setShowBulkTag(false);
+      setBulkTagInput("");
+      load(page, search);
+    } catch {
+      toast.error("Bulk tag failed");
+    } finally {
+      setBulkTagging(false);
+    }
+  };
+
+  const deduplicateContacts = async () => {
+    setDeduplicating(true);
+    try {
+      const res = await api.post("/contacts/deduplicate", {});
+      if (res.data.removed === 0) {
+        toast.success("No duplicates found");
+      } else {
+        toast.success(`Merged ${res.data.merged} duplicate groups, removed ${res.data.removed} contacts`);
+        load(1, search);
+      }
+    } catch {
+      toast.error("Deduplication failed");
+    } finally {
+      setDeduplicating(false);
     }
   };
 
@@ -425,6 +463,32 @@ export default function ContactsPage() {
           onSaved={() => load(page, search)}
         />
       )}
+      {showBulkTag && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-gray-900">Tag {selectedIds.size} contacts</h2>
+              <button onClick={() => setShowBulkTag(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tags (comma separated)</label>
+            <input
+              value={bulkTagInput}
+              onChange={(e) => setBulkTagInput(e.target.value)}
+              className="input mb-4"
+              placeholder="vip, customer, lead"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button onClick={() => handleBulkTag("add")} disabled={bulkTagging} className="btn-primary text-sm flex-1">
+                {bulkTagging ? "Saving..." : "Add tags"}
+              </button>
+              <button onClick={() => handleBulkTag("replace")} disabled={bulkTagging} className="btn-secondary text-sm flex-1">
+                Replace tags
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmDelete === "bulk" && (
         <ConfirmModal
           title={`Delete ${selectedIds.size} contact${selectedIds.size > 1 ? "s" : ""}?`}
@@ -450,6 +514,9 @@ export default function ContactsPage() {
           <p className="page-subtitle">{total.toLocaleString()} total contacts</p>
         </div>
         <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+          <button onClick={deduplicateContacts} disabled={deduplicating} className="btn-secondary flex items-center gap-2 text-sm">
+            <GitMerge className="w-4 h-4" /> <span className="hidden sm:inline">{deduplicating ? "Deduplicating..." : "Deduplicate"}</span>
+          </button>
           <button onClick={exportContacts} className="btn-secondary flex items-center gap-2 text-sm">
             <Download className="w-4 h-4" /> <span className="hidden sm:inline">Export CSV</span>
           </button>
@@ -612,6 +679,13 @@ export default function ContactsPage() {
                   <CheckSquare className="w-4 h-4 text-brand" />
                   {selectedIds.size} selected
                 </span>
+                <button
+                  onClick={() => setShowBulkTag(true)}
+                  className="btn-secondary flex items-center gap-2 text-sm"
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  Tag
+                </button>
                 <button
                   onClick={() => setConfirmDelete("bulk")}
                   disabled={bulkDeleting}

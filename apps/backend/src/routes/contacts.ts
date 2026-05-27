@@ -109,6 +109,38 @@ export async function contactRoutes(app: FastifyInstance) {
     return reply.send({ deleted: result.count });
   });
 
+  // ── Bulk tag assignment ───────────────────────────────────────────────────
+  app.patch("/bulk-tag", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const parsed = z.object({
+      ids: z.array(z.string().uuid()).min(1).max(500),
+      tags: z.array(z.string().min(1)).min(1).max(20),
+      mode: z.enum(["add", "replace"]).default("add"),
+    }).safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const { ids, tags, mode } = parsed.data;
+
+    if (mode === "replace") {
+      await prisma.contact.updateMany({
+        where: { id: { in: ids }, workspaceId: user.workspaceId },
+        data: { tags },
+      });
+    } else {
+      // Add mode — merge without duplicates via raw update for each contact
+      const contacts = await prisma.contact.findMany({
+        where: { id: { in: ids }, workspaceId: user.workspaceId },
+        select: { id: true, tags: true },
+      });
+      await Promise.all(contacts.map((c: { id: string; tags: string[] }) => {
+        const merged = Array.from(new Set([...c.tags, ...tags]));
+        return prisma.contact.update({ where: { id: c.id }, data: { tags: merged } });
+      }));
+    }
+
+    return reply.send({ updated: ids.length });
+  });
+
   app.delete("/:id", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const { id } = request.params as { id: string };
@@ -182,6 +214,54 @@ export async function contactRoutes(app: FastifyInstance) {
     });
 
     return reply.status(201).send({ created: result.count });
+  });
+
+  // ── Contact deduplication ─────────────────────────────────────────────────
+  app.post("/deduplicate", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+
+    // Find all duplicate phone groups
+    const contacts = await prisma.contact.findMany({
+      where: { workspaceId: user.workspaceId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, phone: true, tags: true, optIn: true },
+    });
+
+    // Normalise phone for comparison (digits only)
+    const normalise = (p: string) => p.replace(/\D/g, "");
+    const groups = new Map<string, typeof contacts>();
+    for (const c of contacts) {
+      const key = normalise(c.phone);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(c);
+    }
+
+    let merged = 0;
+    let removed = 0;
+
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const [keep, ...dupes] = group; // oldest is first (ordered by createdAt asc)
+      const mergedTags = Array.from(new Set([...keep.tags, ...dupes.flatMap((d: { tags: string[] }) => d.tags)]));
+      const mergedOptIn = group.some((c: { optIn: boolean }) => c.optIn);
+      const dupeIds = dupes.map((d: { id: string }) => d.id);
+
+      // Re-parent related records to the kept contact
+      await Promise.all([
+        prisma.messageLog.updateMany({ where: { contactId: { in: dupeIds } }, data: { contactId: keep.id } }),
+        prisma.inboundMessage.updateMany({ where: { contactId: { in: dupeIds } }, data: { contactId: keep.id } }),
+        prisma.contactNote.updateMany({ where: { contactId: { in: dupeIds } }, data: { contactId: keep.id } }),
+        prisma.sequenceEnrollment.deleteMany({ where: { contactId: { in: dupeIds } } }),
+      ]);
+
+      await prisma.contact.update({ where: { id: keep.id }, data: { tags: mergedTags, optIn: mergedOptIn } });
+      await prisma.contact.deleteMany({ where: { id: { in: dupeIds } } });
+
+      merged++;
+      removed += dupeIds.length;
+    }
+
+    return reply.send({ merged, removed });
   });
 
   // ── CRM: update lead status ───────────────────────────────────────────────

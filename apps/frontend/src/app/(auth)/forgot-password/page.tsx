@@ -8,7 +8,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Copy } from "lucide-react";
+import toast from "react-hot-toast";
 
 const schema = z.object({
   email: z.string().email("Invalid email"),
@@ -17,6 +18,7 @@ type FormData = z.infer<typeof schema>;
 
 export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
+  const [resetUrl, setResetUrl] = useState<string | null>(null);
 
   const {
     register,
@@ -25,7 +27,12 @@ export default function ForgotPasswordPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (data: FormData) => {
-    await api.post("/auth/forgot-password", data).catch(() => {});
+    try {
+      const res = await api.post("/auth/forgot-password", data);
+      if (res.data.resetUrl) setResetUrl(res.data.resetUrl);
+    } catch {
+      // still show success to prevent enumeration
+    }
     setSent(true);
   };
 
@@ -43,13 +50,37 @@ export default function ForgotPasswordPage() {
         </div>
 
         {sent ? (
-          <div className="text-center py-4">
-            <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
-            <p className="font-semibold text-gray-900">Check your inbox</p>
-            <p className="text-sm text-gray-500 mt-1">
-              If that email is registered, a reset link has been sent. It expires in 1 hour.
-            </p>
-            <Link href="/login" className="btn-primary inline-block mt-6">
+          <div className="py-4">
+            {resetUrl ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-6 h-6 text-amber-500 shrink-0" />
+                  <p className="font-semibold text-gray-900">SMTP not configured</p>
+                </div>
+                <p className="text-sm text-gray-600 mb-3">
+                  Email delivery is not set up. Share the reset link below directly with the user:
+                </p>
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  <code className="text-xs text-gray-700 break-all flex-1">{resetUrl}</code>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(resetUrl); toast.success("Copied"); }}
+                    className="shrink-0 p-1.5 text-gray-400 hover:text-gray-700"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-xs text-amber-600 mb-4">This link expires in 1 hour. Configure SMTP in Settings to enable email delivery.</p>
+              </>
+            ) : (
+              <div className="text-center">
+                <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                <p className="font-semibold text-gray-900">Check your inbox</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  If that email is registered, a reset link has been sent. It expires in 1 hour.
+                </p>
+              </div>
+            )}
+            <Link href="/login" className="btn-primary inline-block mt-4 w-full text-center">
               Back to sign in
             </Link>
           </div>

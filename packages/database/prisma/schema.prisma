@@ -281,10 +281,27 @@ model WebhookEndpoint {
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  logs      WebhookDeliveryLog[]
 
   @@index([workspaceId])
   @@map("webhook_endpoints")
+}
+
+model WebhookDeliveryLog {
+  id         String   @id @default(uuid())
+  endpointId String   @map("endpoint_id")
+  event      String
+  statusCode Int?     @map("status_code")
+  success    Boolean
+  durationMs Int?     @map("duration_ms")
+  error      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([endpointId, createdAt])
+  @@map("webhook_delivery_logs")
 }
 
 // ── Drip sequence campaigns ───────────────────────────────────────────────────

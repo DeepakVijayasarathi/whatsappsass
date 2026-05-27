@@ -78,6 +78,23 @@ export async function webhookRoutes(app: FastifyInstance) {
     return reply.send({ message: "Deleted" });
   });
 
+  // Delivery logs for an endpoint
+  app.get("/:id/logs", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const { limit = "50" } = request.query as Record<string, string>;
+
+    const existing = await prisma.webhookEndpoint.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    if (!existing) return reply.status(404).send({ error: "Not found" });
+
+    const logs = await prisma.webhookDeliveryLog.findMany({
+      where: { endpointId: id },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(Number(limit) || 50, 200),
+    });
+    return reply.send({ logs });
+  });
+
   // Test endpoint — sends a sample payload
   app.post("/:id/test", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
     const user = request.user as JwtPayload;

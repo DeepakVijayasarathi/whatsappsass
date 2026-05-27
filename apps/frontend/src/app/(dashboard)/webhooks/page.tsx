@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, getErrMsg } from "@/lib/api";
-import { Webhook, Plus, Trash2, X, CheckCircle, XCircle, Send, ToggleLeft, ToggleRight, Copy } from "lucide-react";
+import { Webhook, Plus, Trash2, X, CheckCircle, XCircle, Send, ToggleLeft, ToggleRight, Copy, History, ChevronDown, ChevronUp } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmModal from "@/components/ConfirmModal";
 
@@ -13,6 +13,51 @@ interface WebhookEndpoint {
   events: string[];
   isActive: boolean;
   createdAt: string;
+}
+
+interface DeliveryLog {
+  id: string;
+  event: string;
+  statusCode: number | null;
+  success: boolean;
+  durationMs: number | null;
+  error: string | null;
+  createdAt: string;
+}
+
+function DeliveryLogsPanel({ endpointId }: { endpointId: string }) {
+  const [logs, setLogs] = useState<DeliveryLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/webhooks/${endpointId}/logs?limit=20`)
+      .then((r) => setLogs(r.data.logs))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [endpointId]);
+
+  if (loading) return <p className="text-xs text-gray-400 py-2">Loading logs…</p>;
+  if (logs.length === 0) return <p className="text-xs text-gray-400 py-2">No deliveries yet</p>;
+
+  return (
+    <div className="mt-3 border-t border-gray-100 pt-3 space-y-1.5">
+      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Recent deliveries</p>
+      {logs.map((log) => (
+        <div key={log.id} className="flex items-center gap-2 text-xs">
+          {log.success
+            ? <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />
+            : <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+          <span className="font-mono text-gray-600 w-40 truncate">{log.event}</span>
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${log.success ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+            {log.statusCode ?? "err"}
+          </span>
+          {log.durationMs != null && <span className="text-gray-400">{log.durationMs}ms</span>}
+          {log.error && <span className="text-red-400 truncate max-w-[160px]">{log.error}</span>}
+          <span className="text-gray-300 ml-auto shrink-0">{new Date(log.createdAt).toLocaleTimeString()}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 const ALL_EVENTS = [
@@ -122,6 +167,10 @@ export default function WebhooksPage() {
   const [showModal, setShowModal] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<WebhookEndpoint | null>(null);
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
+
+  const toggleLogs = (id: string) =>
+    setExpandedLogs((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
   const load = () => {
     setLoading(true);
@@ -241,6 +290,13 @@ export default function WebhooksPage() {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
+                      onClick={() => toggleLogs(ep.id)}
+                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                      title="Delivery logs"
+                    >
+                      {expandedLogs.has(ep.id) ? <ChevronUp className="w-3.5 h-3.5" /> : <History className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
                       onClick={() => testEndpoint(ep.id)}
                       disabled={testing === ep.id}
                       className="p-1.5 text-gray-400 hover:text-brand hover:bg-brand/10 rounded-lg transition-colors"
@@ -273,10 +329,9 @@ export default function WebhooksPage() {
                 </div>
 
                 {ep.secret && (
-                  <p className="text-xs text-gray-400 mt-2">
-                    Signed with HMAC-SHA256
-                  </p>
+                  <p className="text-xs text-gray-400 mt-2">Signed with HMAC-SHA256</p>
                 )}
+                {expandedLogs.has(ep.id) && <DeliveryLogsPanel endpointId={ep.id} />}
               </div>
             ))}
           </div>

@@ -55,21 +55,24 @@ function buildComponents(varValues: Record<number, string>): object[] {
   return params.length ? [{ type: "body", parameters: params }] : [];
 }
 
+const LEAD_STATUSES = ["new", "prospect", "qualified", "customer", "churned"];
+
 function RunModal({ campaign, onClose, onDone }: {
   campaign: RunOptions;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [contacts, setContacts] = useState<{ id: string; name: string; phone: string }[]>([]);
+  const [contacts, setContacts] = useState<{ id: string; name: string; phone: string; tags: string[]; leadStatus: string }[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [tag, setTag] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [leadStatusFilter, setLeadStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ summary: Record<string, number>; total: number } | null>(null);
   const [varValues, setVarValues] = useState<Record<number, string>>({});
   const [templateBody, setTemplateBody] = useState<string | null>(campaign.templateBody ?? null);
+  const [allTags, setAllTags] = useState<string[]>([]);
 
-  // Reset and re-fetch whenever the campaign template changes
   useEffect(() => {
     setTemplateBody(campaign.templateBody ?? null);
     setVarValues({});
@@ -84,16 +87,21 @@ function RunModal({ campaign, onClose, onDone }: {
   const variables = extractVariables(templateBody);
 
   useEffect(() => {
-    api.get("/contacts?limit=1000").then((r) => {
-      const opted = r.data.contacts.filter((c: { optIn: boolean }) => c.optIn);
+    api.get("/contacts?limit=1000&optIn=true").then((r) => {
+      const opted = (r.data.contacts as Array<{ optIn: boolean; tags: string[]; leadStatus: string; id: string; name: string; phone: string }>)
+        .filter((c) => c.optIn);
       setContacts(opted);
-      setSelectedIds(new Set(opted.map((c: { id: string }) => c.id)));
+      setSelectedIds(new Set(opted.map((c) => c.id)));
+      const tags = Array.from(new Set(opted.flatMap((c) => c.tags))).sort();
+      setAllTags(tags);
     }).finally(() => setLoading(false));
   }, []);
 
-  const filtered = tag
-    ? contacts.filter((c) => (c as unknown as { tags: string[] }).tags?.includes(tag))
-    : contacts;
+  const filtered = contacts.filter((c) => {
+    if (tagFilter && !c.tags.includes(tagFilter)) return false;
+    if (leadStatusFilter && c.leadStatus !== leadStatusFilter) return false;
+    return true;
+  });
 
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
@@ -163,13 +171,23 @@ function RunModal({ campaign, onClose, onDone }: {
           </div>
         ) : (
           <>
-            <div className="p-4 border-b border-gray-100 flex items-center gap-3">
-              <input
-                value={tag}
-                onChange={(e) => setTag(e.target.value)}
-                className="input text-sm flex-1"
-                placeholder="Filter by tag (optional)"
-              />
+            <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-2">
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className="input text-sm flex-1 min-w-[120px]"
+              >
+                <option value="">All tags</option>
+                {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <select
+                value={leadStatusFilter}
+                onChange={(e) => setLeadStatusFilter(e.target.value)}
+                className="input text-sm flex-1 min-w-[120px]"
+              >
+                <option value="">All statuses</option>
+                {LEAD_STATUSES.map((s) => <option key={s} value={s} className="capitalize">{s}</option>)}
+              </select>
               <button onClick={toggleAll} className="btn-secondary text-xs shrink-0">
                 {selectedIds.size === filtered.length ? "Deselect all" : "Select all"}
               </button>
