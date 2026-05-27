@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import clsx from "clsx";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -15,6 +15,7 @@ import { clearAuth, getUser, getWorkspace } from "@/lib/auth";
 import { useInboxNotifications } from "@/lib/useInboxNotifications";
 import { brand, nav } from "@/lib/brand";
 import type { NavRole } from "@/lib/brand";
+import { api } from "@/lib/api";
 
 // ── Icon name → component map (mirrors the icon names used in brand.ts) ──────
 const ICONS: Record<string, LucideIcon> = {
@@ -32,8 +33,16 @@ export default function Sidebar({ open = false, onClose }: Props) {
   const user      = getUser();
   const workspace = getWorkspace();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [activeSequenceCount, setActiveSequenceCount] = useState(0);
 
   useInboxNotifications(setUnreadCount);
+
+  // Fetch active sequence enrollments count (non-critical — silently ignore errors)
+  useEffect(() => {
+    api.get("/sequences/enrollments/active-count")
+      .then((r) => setActiveSequenceCount(r.data.count ?? 0))
+      .catch(() => {});
+  }, []);
 
   const handleLogout = () => { clearAuth(); router.push("/login"); };
 
@@ -83,7 +92,9 @@ export default function Sidebar({ open = false, onClose }: Props) {
           {mainItems.map(({ href, icon, label, badge }) => {
             const Icon = ICONS[icon] ?? FileText;
             const active = isActive(href);
-            const showBadge = badge === "inbox" && unreadCount > 0;
+            const showBadge =
+              (badge === "inbox" && unreadCount > 0) ||
+              (badge === "sequences" && activeSequenceCount > 0);
             return (
               <Link
                 key={href}
@@ -98,8 +109,14 @@ export default function Sidebar({ open = false, onClose }: Props) {
                 <Icon className={clsx("w-4 h-4 shrink-0", active ? "text-brand" : "text-gray-400")} />
                 <span className="flex-1 truncate">{label}</span>
                 {showBadge && (
-                  <span className="min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                  <span className={clsx(
+                    "min-w-[18px] h-[18px] text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none",
+                    badge === "inbox" ? "bg-red-500" : "bg-brand"
+                  )}>
+                    {badge === "inbox"
+                      ? (unreadCount > 99 ? "99+" : unreadCount)
+                      : (activeSequenceCount > 99 ? "99+" : activeSequenceCount)
+                    }
                   </span>
                 )}
               </Link>

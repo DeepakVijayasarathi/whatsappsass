@@ -16,7 +16,7 @@ const contactSchema = z.object({
 export async function contactRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
-    const { tag, search, sort, optIn, ...pageQuery } = request.query as Record<string, string>;
+    const { tag, search, sort, optIn, leadStatus, ...pageQuery } = request.query as Record<string, string>;
     const { page, limit, skip } = parsePagination(pageQuery, { maxLimit: 1000 });
 
     const where = {
@@ -25,6 +25,8 @@ export async function contactRoutes(app: FastifyInstance) {
       // ?optIn=true  → only opted-in contacts (used by campaign run modal)
       // ?optIn=false → only opted-out contacts
       ...(optIn === "true" ? { optIn: true } : optIn === "false" ? { optIn: false } : {}),
+      // ?leadStatus=new|prospect|qualified|customer|churned (used by CRM board)
+      ...(leadStatus ? { leadStatus } : {}),
       ...(search
         ? {
             OR: [

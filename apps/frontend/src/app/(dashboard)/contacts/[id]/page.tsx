@@ -15,6 +15,8 @@ import {
   FileText,
   Trash2,
   ChevronDown,
+  Activity,
+  TrendingUp,
 } from "lucide-react";
 
 type Contact = {
@@ -32,6 +34,12 @@ type ContactNote = {
   body: string;
   userEmail?: string;
   createdAt: string;
+};
+
+type EngagementData = {
+  score: number;
+  total: number;
+  breakdown: Record<string, number>;
 };
 
 type TimelineEntry =
@@ -61,6 +69,7 @@ export default function ContactProfilePage() {
   const [contact, setContact] = useState<Contact | null>(null);
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [engagement, setEngagement] = useState<EngagementData | null>(null);
   const [loading, setLoading] = useState(true);
   const [noteBody, setNoteBody] = useState("");
   const [savingNote, setSavingNote] = useState(false);
@@ -80,16 +89,25 @@ export default function ContactProfilePage() {
 
   const load = useCallback(async () => {
     try {
-      const [timelineRes, notesRes] = await Promise.all([
+      const [timelineRes, notesRes, engagementRes] = await Promise.allSettled([
         api.get(`/contacts/${id}/timeline`),
         api.get(`/contacts/${id}/notes`),
+        api.get(`/contacts/${id}/engagement`),
       ]);
-      setContact(timelineRes.data.contact);
-      setTimeline(timelineRes.data.timeline);
-      setNotes(notesRes.data.notes);
-    } catch {
-      toast.error("Failed to load contact");
-      router.push("/contacts");
+      if (timelineRes.status === "fulfilled") {
+        setContact(timelineRes.value.data.contact);
+        setTimeline(timelineRes.value.data.timeline);
+      } else {
+        toast.error("Failed to load contact");
+        router.push("/contacts");
+        return;
+      }
+      if (notesRes.status === "fulfilled") {
+        setNotes(notesRes.value.data.notes);
+      }
+      if (engagementRes.status === "fulfilled") {
+        setEngagement(engagementRes.value.data);
+      }
     } finally {
       setLoading(false);
     }
@@ -233,6 +251,50 @@ export default function ContactProfilePage() {
               })}
             </div>
           </div>
+
+          {/* Engagement score */}
+          {engagement && engagement.total > 0 && (
+            <div className="card">
+              <h2 className="font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide flex items-center gap-2">
+                <Activity className="w-4 h-4 text-brand" /> Engagement
+              </h2>
+              {/* Score bar */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className={`h-2.5 rounded-full transition-all duration-700 ${
+                      engagement.score >= 70 ? "bg-emerald-500" :
+                      engagement.score >= 40 ? "bg-amber-500" : "bg-red-400"
+                    }`}
+                    style={{ width: `${engagement.score}%` }}
+                  />
+                </div>
+                <span className={`text-sm font-bold tabular-nums w-9 text-right ${
+                  engagement.score >= 70 ? "text-emerald-600" :
+                  engagement.score >= 40 ? "text-amber-600" : "text-red-500"
+                }`}>{engagement.score}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {(["read", "delivered", "sent", "failed"] as const).map((status) => {
+                  const count = engagement.breakdown[status] ?? 0;
+                  const COLOR_MAP: Record<string, string> = {
+                    read: "text-brand", delivered: "text-blue-600",
+                    sent: "text-gray-600", failed: "text-red-500",
+                  };
+                  return (
+                    <div key={status} className="bg-gray-50 rounded-lg px-3 py-2 text-center">
+                      <p className={`text-base font-bold tabular-nums capitalize ${COLOR_MAP[status]}`}>{count}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5 capitalize">{status}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-400">
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>Based on last {engagement.total} messages</span>
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="card">

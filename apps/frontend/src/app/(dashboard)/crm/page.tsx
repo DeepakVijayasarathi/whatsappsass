@@ -52,15 +52,14 @@ export default function CrmPage() {
 
   const load = useCallback(async () => {
     try {
-      let page = 1;
-      let all: Contact[] = [];
-      while (true) {
-        const res = await api.get(`/contacts?page=${page}&limit=100`);
-        all = [...all, ...res.data.contacts];
-        if (all.length >= res.data.total) break;
-        page++;
-      }
-      setContacts(all);
+      // Fetch each stage in parallel — avoids serial while-loop pagination
+      // which was O(n) round-trips and could loop infinitely on large datasets.
+      const results = await Promise.all(
+        STAGES.map((stage) =>
+          api.get(`/contacts?leadStatus=${stage}&limit=500`).then((r) => r.data.contacts as Contact[])
+        )
+      );
+      setContacts(results.flat());
     } catch {
       toast.error("Failed to load contacts");
     } finally {

@@ -145,7 +145,26 @@ export default function AnalyticsPage() {
     }
   };
 
-  const trendMax = trend.reduce((m, d) => Math.max(m, d.sent + d.delivered + d.read + d.failed), 1);
+  // For >30-day ranges, aggregate daily bars into weekly buckets to avoid cramped rendering
+  const dayCount = trend.length;
+  const displayTrend: DailyStats[] = (() => {
+    if (dayCount <= 30) return trend;
+    // Group into ISO weeks (every 7 days from start)
+    const buckets: DailyStats[] = [];
+    for (let i = 0; i < trend.length; i += 7) {
+      const slice = trend.slice(i, i + 7);
+      buckets.push({
+        date: slice[0].date,
+        sent: slice.reduce((s, d) => s + d.sent, 0),
+        delivered: slice.reduce((s, d) => s + d.delivered, 0),
+        read: slice.reduce((s, d) => s + d.read, 0),
+        failed: slice.reduce((s, d) => s + d.failed, 0),
+      });
+    }
+    return buckets;
+  })();
+
+  const trendMax = displayTrend.reduce((m, d) => Math.max(m, d.sent + d.delivered + d.read + d.failed), 1);
 
   const total = overview?.totalMessages ?? 0;
   const delivered = overview?.messagesByStatus?.delivered ?? 0;
@@ -294,36 +313,47 @@ export default function AnalyticsPage() {
             <p className="empty-desc">Try a different date range</p>
           </div>
         ) : (
-          <div className="flex items-end gap-1 h-40 overflow-x-auto">
-            {trend.map((d) => {
-              const dayTotal = d.sent + d.delivered + d.read + d.failed;
-              const pct = trendMax > 0 ? (dayTotal / trendMax) * 100 : 0;
-              return (
-                <div key={d.date} className="flex-1 min-w-[28px] flex flex-col items-center group relative">
-                  <div
-                    className="w-full rounded-t flex flex-col overflow-hidden transition-all duration-300"
-                    style={{ height: `${Math.max(pct, 2)}%` }}
-                  >
-                    {d.failed > 0 && <div className="bg-red-400" style={{ flex: d.failed }} />}
-                    {d.sent > 0 && <div className="bg-blue-400" style={{ flex: d.sent }} />}
-                    {d.delivered > 0 && <div className="bg-emerald-500" style={{ flex: d.delivered }} />}
-                    {d.read > 0 && <div className="bg-brand" style={{ flex: d.read }} />}
+          <>
+            {dayCount > 30 && (
+              <p className="text-[10px] text-gray-400 mb-2 flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                Showing weekly aggregates for {dayCount}-day range
+              </p>
+            )}
+            <div className="flex items-end gap-1 h-40 overflow-x-auto">
+              {displayTrend.map((d) => {
+                const dayTotal = d.sent + d.delivered + d.read + d.failed;
+                const pct = trendMax > 0 ? (dayTotal / trendMax) * 100 : 0;
+                const label = dayCount > 30
+                  ? `Week of ${d.date.slice(5)}`
+                  : d.date.slice(5);
+                return (
+                  <div key={d.date} className="flex-1 min-w-[28px] flex flex-col items-center group relative">
+                    <div
+                      className="w-full rounded-t flex flex-col overflow-hidden transition-all duration-300"
+                      style={{ height: `${Math.max(pct, 2)}%` }}
+                    >
+                      {d.failed > 0 && <div className="bg-red-400" style={{ flex: d.failed }} />}
+                      {d.sent > 0 && <div className="bg-blue-400" style={{ flex: d.sent }} />}
+                      {d.delivered > 0 && <div className="bg-emerald-500" style={{ flex: d.delivered }} />}
+                      {d.read > 0 && <div className="bg-brand" style={{ flex: d.read }} />}
+                    </div>
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 bg-gray-900 text-white text-[10px] rounded-lg px-2 py-1.5 whitespace-nowrap shadow-lg">
+                      <p className="font-semibold mb-0.5">{label}</p>
+                      <p>Sent: {d.sent}</p>
+                      <p>Delivered: {d.delivered}</p>
+                      <p>Read: {d.read}</p>
+                      {d.failed > 0 && <p className="text-red-300">Failed: {d.failed}</p>}
+                    </div>
+                    <span className="text-[9px] text-gray-400 mt-1 hidden sm:block truncate w-full text-center">
+                      {label}
+                    </span>
                   </div>
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 bg-gray-900 text-white text-[10px] rounded-lg px-2 py-1.5 whitespace-nowrap shadow-lg">
-                    <p className="font-semibold mb-0.5">{d.date}</p>
-                    <p>Sent: {d.sent}</p>
-                    <p>Delivered: {d.delivered}</p>
-                    <p>Read: {d.read}</p>
-                    {d.failed > 0 && <p className="text-red-300">Failed: {d.failed}</p>}
-                  </div>
-                  <span className="text-[9px] text-gray-400 mt-1 hidden sm:block truncate w-full text-center">
-                    {d.date.slice(5)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 

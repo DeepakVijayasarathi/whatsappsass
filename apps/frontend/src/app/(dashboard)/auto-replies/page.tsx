@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, getErrMsg } from "@/lib/api";
-import { Bot, Plus, Pencil, Trash2, X, ToggleLeft, ToggleRight, Search } from "lucide-react";
+import { Bot, Plus, Pencil, Trash2, X, ToggleLeft, ToggleRight, Search, BookOpen } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmModal from "@/components/ConfirmModal";
+import TemplatePicker, { type Template } from "@/components/TemplatePicker";
 
 interface AutoReply {
   id: string;
@@ -44,6 +45,12 @@ function RuleModal({
 }) {
   const [form, setForm] = useState<RuleFormData>({ ...defaultForm, ...initial });
   const [saving, setSaving] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+
+  const onPickTemplate = (t: Template) => {
+    setForm((f) => ({ ...f, templateName: t.name, languageCode: t.language }));
+    setShowPicker(false);
+  };
 
   const handleSave = async () => {
     if (!form.keyword.trim() || !form.templateName.trim()) {
@@ -59,7 +66,9 @@ function RuleModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4">
+    <>
+    {showPicker && <TemplatePicker onSelect={onPickTemplate} onClose={() => setShowPicker(false)} />}
+    <div className="fixed inset-0 bg-black/40 z-40 flex items-end sm:items-center justify-center sm:p-4">
       <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md">
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <h2 className="text-lg font-bold text-gray-900">{initial?.id ? "Edit" : "New"} Auto-Reply Rule</h2>
@@ -96,12 +105,23 @@ function RuleModal({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Template name</label>
-            <input
-              value={form.templateName}
-              onChange={(e) => setForm({ ...form, templateName: e.target.value })}
-              className="input font-mono"
-              placeholder="hello_world"
-            />
+            <div className="flex gap-2">
+              <input
+                value={form.templateName}
+                onChange={(e) => setForm({ ...form, templateName: e.target.value })}
+                className="input font-mono flex-1"
+                placeholder="hello_world"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPicker(true)}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-brand border border-brand/30 rounded-xl hover:bg-brand/5 transition-colors shrink-0"
+                title="Browse templates"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                Browse
+              </button>
+            </div>
             <p className="text-xs text-gray-400 mt-1">Must be an approved WhatsApp template</p>
           </div>
 
@@ -143,6 +163,7 @@ function RuleModal({
         </div>
       </div>
     </div>
+    </>
   );
 }
 

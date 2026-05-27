@@ -13,7 +13,15 @@
       "Bash(curl -s http://103.118.158.189:4000/analytics/overview -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0ODFlY2IzNC01MjgzLTQxYmYtOGQ3Yy1iZWFiYTQxOGJiNDMiLCJ3b3Jrc3BhY2VJZCI6ImNhZTZiOGRmLWJkYjktNDc1OS1iMGM1LWZmNGY1Y2IyM2IzYiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc3OTg0NDA4MCwiZXhwIjoxNzgwNDQ4ODgwfQ.FCbuNqSriXrmRdag2hIr4ZlHKmI6d0-0jNS1nq5SotU')",
       "Bash(curl -s -X PATCH http://103.118.158.189:4000/auth/profile -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0ODFlY2IzNC01MjgzLTQxYmYtOGQ3Yy1iZWFiYTQxOGJiNDMiLCJ3b3Jrc3BhY2VJZCI6ImNhZTZiOGRmLWJkYjktNDc1OS1iMGM1LWZmNGY1Y2IyM2IzYiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc3OTg0NDA4MCwiZXhwIjoxNzgwNDQ4ODgwfQ.FCbuNqSriXrmRdag2hIr4ZlHKmI6d0-0jNS1nq5SotU' -H 'Content-Type: application/json' -d '{\"name\":\"Test User Updated\"}')",
       "Bash(Get-ChildItem -Path \"e:\\\\whatsapptoolauto\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "WebFetch(domain:ecreatorstech.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:speedsms.in)",
+      "WebSearch",
+      "WebFetch(domain:msg91.com)",
+      "WebFetch(domain:docs.msg91.com)",
+      "WebFetch(domain:api.msg91.com)",
+      "WebFetch(domain:control.msg01.com)"
     ]
   }
 }

@@ -10,7 +10,7 @@
 // ─── Nav item type ────────────────────────────────────────────────────────────
 export type NavRole  = "owner" | "admin" | "marketer";
 export type NavGroup = "main" | "admin";
-export type NavBadge = "inbox" | null;
+export type NavBadge = "inbox" | "sequences" | null;
 
 export interface NavItem {
   href:   string;
@@ -35,7 +35,7 @@ export const nav: NavItem[] = [
   { href: "/crm",              icon: "Kanban",          label: "CRM Pipeline",    roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/templates",        icon: "FileText",        label: "Templates",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/analytics",        icon: "BarChart2",       label: "Analytics",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/sequences",        icon: "GitBranch",       label: "Drip Sequences",  roles: ["owner","admin","marketer"], badge: null,    group: "main" },
+  { href: "/sequences",        icon: "GitBranch",       label: "Drip Sequences",  roles: ["owner","admin","marketer"], badge: "sequences", group: "main" },
   { href: "/guide",            icon: "BookOpen",        label: "How to Use",      roles: ["owner","admin","marketer"], badge: null,    group: "main" },
 
   // ── Admin section ─────────────────────────────────────────────────────────

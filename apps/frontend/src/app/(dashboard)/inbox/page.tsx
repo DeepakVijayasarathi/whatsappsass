@@ -70,6 +70,7 @@ export default function InboxPage() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [replyTemplate, setReplyTemplate] = useState("");
   const [replyLang, setReplyLang] = useState("en_US");
+  const [replyPreview, setReplyPreview] = useState<string | null>(null);
   const [replying, setReplying] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -147,6 +148,7 @@ export default function InboxPage() {
   const onPickTemplate = (t: Template) => {
     setReplyTemplate(t.name);
     setReplyLang(t.language);
+    setReplyPreview(t.body ?? null);
     setShowPicker(false);
   };
 
@@ -352,21 +354,18 @@ export default function InboxPage() {
                 </button>
                 <input
                   value={replyTemplate}
-                  onChange={(e) => setReplyTemplate(e.target.value)}
+                  onChange={(e) => { setReplyTemplate(e.target.value); setReplyPreview(null); }}
                   onKeyDown={(e) => e.key === "Enter" && sendReply()}
                   className="input flex-1 text-sm font-mono"
                   placeholder="Template name (e.g. hello_world)"
                 />
-                <select
+                <input
                   value={replyLang}
                   onChange={(e) => setReplyLang(e.target.value)}
-                  className="input w-24 text-xs shrink-0"
-                >
-                  <option value="en_US">en_US</option>
-                  <option value="en">en</option>
-                  <option value="hi">hi</option>
-                  <option value="es">es</option>
-                </select>
+                  className="input w-24 text-xs shrink-0 font-mono"
+                  placeholder="en_US"
+                  title="Language code (e.g. en_US, hi, es)"
+                />
                 <button
                   onClick={sendReply}
                   disabled={replying || !replyTemplate.trim()}
@@ -376,6 +375,12 @@ export default function InboxPage() {
                   <span className="hidden sm:inline">{replying ? "Sending…" : "Send"}</span>
                 </button>
               </div>
+              {replyPreview && (
+                <div className="mt-2 mx-0.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 line-clamp-3">
+                  <span className="font-medium text-gray-400 mr-1.5">Preview:</span>
+                  {replyPreview}
+                </div>
+              )}
               <p className="text-[10px] text-gray-400 mt-1.5 pl-1">
                 Only approved WhatsApp templates can be sent as replies
               </p>

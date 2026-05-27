@@ -231,4 +231,17 @@ export async function sequenceRoutes(app: FastifyInstance) {
 
     return reply.send({ stats, total: enrollments.length });
   });
+
+  // ── Active enrollment count (sidebar badge) ────────────────────────────────
+  app.get("/enrollments/active-count", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    // SequenceEnrollment has no workspaceId — filter through the parent sequence
+    const count = await prisma.sequenceEnrollment.count({
+      where: {
+        status: "active",
+        sequence: { workspaceId: user.workspaceId },
+      },
+    });
+    return reply.send({ count });
+  });
 }

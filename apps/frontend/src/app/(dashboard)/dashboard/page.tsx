@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import {
   Users, Megaphone, MessageSquare, CheckCircle2,
   Send, Inbox, Plus, ArrowRight, TrendingUp,
-  RefreshCw, Zap, Eye, Clock, Activity,
+  RefreshCw, Zap, Eye, Clock, Activity, Reply,
 } from "lucide-react";
 import Link from "next/link";
 import { SkeletonStatCard } from "@/components/Skeleton";
@@ -24,6 +24,10 @@ interface RecentCampaign {
   name: string;
   status: string;
   scheduledAt: string | null;
+}
+
+interface CampaignReplyCounts {
+  [campaignId: string]: { total: number; unread: number };
 }
 
 interface RecentContact {
@@ -81,6 +85,7 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
   const [recentCampaigns, setRecentCampaigns] = useState<RecentCampaign[]>([]);
   const [recentContacts, setRecentContacts]   = useState<RecentContact[]>([]);
+  const [campaignReplies, setCampaignReplies] = useState<CampaignReplyCounts>({});
   const user = getUser();
 
   const load = useCallback((silent = false) => {
@@ -94,8 +99,9 @@ export default function DashboardPage() {
       api.get("/meta/status"),
       api.get("/campaigns?limit=5"),
       api.get("/contacts?limit=5&sort=recent"),
+      api.get("/whatsapp/campaign-replies"),
     ])
-      .then(([overview, meta, campaigns, contacts]) => {
+      .then(([overview, meta, campaigns, contacts, replies]) => {
         let anyError = false;
 
         if (overview.status === "fulfilled") {
@@ -115,6 +121,10 @@ export default function DashboardPage() {
 
         if (contacts.status === "fulfilled") {
           setRecentContacts(contacts.value.data.contacts ?? []);
+        }
+
+        if (replies.status === "fulfilled") {
+          setCampaignReplies(replies.value.data.replies ?? {});
         }
 
         if (!anyError) setLastUpdated(new Date());
@@ -329,8 +339,9 @@ export default function DashboardPage() {
                     draft: "badge badge-gray", running: "badge badge-blue", paused: "badge badge-yellow",
                     completed: "badge badge-green",
                   };
+                  const replyInfo = campaignReplies[c.id];
                   return (
-                    <div key={c.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                    <div key={c.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0 gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-gray-800 truncate">{c.name}</p>
                         {c.scheduledAt && (
@@ -340,9 +351,23 @@ export default function DashboardPage() {
                           </p>
                         )}
                       </div>
-                      <span className={STATUS_BADGE[c.status] ?? "badge badge-gray"}>
-                        {c.status}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {replyInfo && replyInfo.total > 0 && (
+                          <Link href="/inbox" title={`${replyInfo.total} replies${replyInfo.unread > 0 ? `, ${replyInfo.unread} unread` : ""}`}>
+                            <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                              replyInfo.unread > 0
+                                ? "bg-brand text-white"
+                                : "bg-gray-100 text-gray-500"
+                            }`}>
+                              <Reply className="w-3 h-3" />
+                              {replyInfo.unread > 0 ? replyInfo.unread : replyInfo.total}
+                            </span>
+                          </Link>
+                        )}
+                        <span className={STATUS_BADGE[c.status] ?? "badge badge-gray"}>
+                          {c.status}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
