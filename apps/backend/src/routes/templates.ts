@@ -75,12 +75,20 @@ async function fetchMsg91Templates(authKey: string, integratedNumber: string): P
       const axiosErr = err as { response?: { status?: number; data?: unknown }; code?: string };
       if (axiosErr.response) {
         // Got an HTTP response — this host works, report the actual API error
+        const status = axiosErr.response.status;
         const d = axiosErr.response.data as Record<string, unknown> | undefined;
+        console.error(`[templates] MSG91 HTTP error (${host}):`, status, JSON.stringify(d));
+
+        // MSG91 response shape: { status:"fail", errors:"Unauthorized", apiError:"201" }
+        // 401 always means the auth key is wrong or expired
+        if (status === 401) {
+          throw new Error("MSG91 Auth Key is invalid or expired. Go to Settings → WhatsApp Provider and re-enter your Auth Key.");
+        }
         const msg =
           (typeof d?.message === "string" && d.message) ||
+          (typeof d?.errors === "string" && d.errors) ||
           (typeof d?.error === "string" && d.error) ||
-          `MSG91 API error (HTTP ${axiosErr.response.status})`;
-        console.error(`[templates] MSG91 HTTP error (${host}):`, axiosErr.response.status, JSON.stringify(d));
+          `MSG91 API error (HTTP ${status})`;
         throw new Error(msg);
       }
       // DNS / connection error — try next host

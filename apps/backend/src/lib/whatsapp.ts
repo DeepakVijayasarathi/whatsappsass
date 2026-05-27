@@ -154,12 +154,17 @@ async function sendViaMsg91(
   } catch (err: unknown) {
     const axiosErr = err as { response?: { status?: number; data?: unknown } };
     if (axiosErr.response) {
+      const status = axiosErr.response.status;
       const d = axiosErr.response.data as Record<string, unknown> | undefined;
+      console.error("[whatsapp] MSG91 send HTTP error:", status, JSON.stringify(d));
+      if (status === 401) {
+        throw new Error("MSG91 Auth Key is invalid or expired. Go to Settings → WhatsApp Provider and re-enter your Auth Key.");
+      }
       const msg =
         (typeof d?.message === "string" && d.message) ||
+        (typeof d?.errors === "string" && d.errors) ||
         (typeof d?.error === "string" && d.error) ||
-        `MSG91 send error (HTTP ${axiosErr.response.status})`;
-      console.error("[whatsapp] MSG91 send HTTP error:", axiosErr.response.status, JSON.stringify(d));
+        `MSG91 send error (HTTP ${status})`;
       throw new Error(msg);
     }
     throw err;
