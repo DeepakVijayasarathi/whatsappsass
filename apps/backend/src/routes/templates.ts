@@ -44,15 +44,38 @@ async function fetchMetaTemplates(wabaId: string, accessToken: string): Promise<
 }
 
 async function fetchMsg91Templates(authKey: string): Promise<NormalizedTemplate[]> {
-  const { data } = await axios.get(
-    "https://api.msg91.com/api/v5/whatsapp/wa-template/",
-    { headers: { authkey: authKey } }
-  );
+  let data: unknown;
+  try {
+    const res = await axios.get(
+      "https://api.msg91.com/api/v5/whatsapp/wa-template/",
+      { headers: { authkey: authKey } }
+    );
+    data = res.data;
+  } catch (err: unknown) {
+    const axiosErr = err as { response?: { status?: number; data?: unknown } };
+    if (axiosErr.response) {
+      const d = axiosErr.response.data as Record<string, unknown> | undefined;
+      const msg =
+        (typeof d?.message === "string" && d.message) ||
+        (typeof d?.error === "string" && d.error) ||
+        `MSG91 API error (HTTP ${axiosErr.response.status})`;
+      throw new Error(msg);
+    }
+    throw err;
+  }
 
-  const raw: unknown[] = Array.isArray(data?.data)
-    ? data.data
+  const d = data as Record<string, unknown>;
+
+  // MSG91 returns { type: "error", message: "..." } when auth fails
+  if (d?.type === "error" || d?.status === "error") {
+    const msg = typeof d.message === "string" ? d.message : "MSG91 authentication failed";
+    throw new Error(msg);
+  }
+
+  const raw: unknown[] = Array.isArray(d?.data)
+    ? (d.data as unknown[])
     : Array.isArray(data)
-    ? data
+    ? (data as unknown[])
     : [];
 
   return raw.map((t): NormalizedTemplate => {
@@ -112,8 +135,9 @@ export async function templateRoutes(app: FastifyInstance) {
       const templates = await fetchMsg91Templates(workspace.msg91AuthKey);
       return reply.send({ templates, provider: "msg91", total: templates.length });
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })
-        .response?.data?.message ?? "Failed to fetch templates from MSG91";
+      const msg =
+        (err instanceof Error && err.message) ||
+        "Failed to fetch templates from MSG91";
       return reply.status(502).send({ error: msg });
     }
   });
