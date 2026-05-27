@@ -69,6 +69,7 @@ async function fetchMsg91Templates(authKey: string): Promise<NormalizedTemplate[
   // MSG91 returns { type: "error", message: "..." } when auth fails
   if (d?.type === "error" || d?.status === "error") {
     const msg = typeof d.message === "string" ? d.message : "MSG91 authentication failed";
+    console.error("[templates] MSG91 auth error response:", JSON.stringify(d));
     throw new Error(msg);
   }
 
@@ -149,6 +150,8 @@ export async function templateRoutes(app: FastifyInstance) {
       const msg =
         (err instanceof Error && err.message) ||
         "Failed to fetch templates from MSG91";
+      // Log the full error so it appears in container logs for debugging
+      console.error("[templates] MSG91 fetch failed:", msg);
       return reply.status(502).send({ error: msg });
     }
   });
