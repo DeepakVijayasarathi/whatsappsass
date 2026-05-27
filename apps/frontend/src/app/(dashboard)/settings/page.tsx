@@ -577,14 +577,25 @@ function AccountSettings() {
   const [showNew, setShowNew]         = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // Password fields are optional — user can rename without changing password.
+  // If newPassword is provided, currentPassword is required.
   const schema = z.object({
     name:            z.string().min(1, "Name is required"),
-    currentPassword: z.string().min(1, "Enter your current password"),
-    newPassword:     z.string().min(8, "At least 8 characters"),
-    confirmPassword: z.string(),
-  }).refine((d) => d.newPassword === d.confirmPassword, {
-    path: ["confirmPassword"],
-    message: "Passwords do not match",
+    currentPassword: z.string().optional(),
+    newPassword:     z.string().optional(),
+    confirmPassword: z.string().optional(),
+  }).superRefine((d, ctx) => {
+    if (d.newPassword) {
+      if (d.newPassword.length < 8) {
+        ctx.addIssue({ code: "custom", path: ["newPassword"], message: "At least 8 characters" });
+      }
+      if (!d.currentPassword) {
+        ctx.addIssue({ code: "custom", path: ["currentPassword"], message: "Enter your current password" });
+      }
+      if (d.newPassword !== d.confirmPassword) {
+        ctx.addIssue({ code: "custom", path: ["confirmPassword"], message: "Passwords do not match" });
+      }
+    }
   });
   type AccountForm = z.infer<typeof schema>;
 
@@ -603,12 +614,14 @@ function AccountSettings() {
 
   const save = async (data: AccountForm) => {
     try {
-      await api.patch("/workspace/profile", {
-        name: data.name.trim(),
-        currentPassword: data.currentPassword,
-        newPassword: data.newPassword,
-      });
-      toast.success("Password changed successfully");
+      const payload: Record<string, string> = { name: data.name.trim() };
+      // Only include password fields when the user is intentionally changing their password
+      if (data.newPassword) {
+        payload.currentPassword = data.currentPassword ?? "";
+        payload.newPassword = data.newPassword;
+      }
+      await api.patch("/workspace/profile", payload);
+      toast.success(data.newPassword ? "Profile and password updated" : "Display name updated");
       reset({ name: data.name.trim(), currentPassword: "", newPassword: "", confirmPassword: "" });
     } catch (err: unknown) {
       toast.error(getErrMsg(err, "Failed to update account"));

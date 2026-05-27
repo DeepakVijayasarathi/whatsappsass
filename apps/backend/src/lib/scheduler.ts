@@ -41,7 +41,10 @@ async function runScheduledCampaigns() {
         await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "paused" } });
         continue;
       }
+      // metaWhatsappEnabled is the global "send messages" toggle — it applies to
+      // both Meta and MSG91. If disabled, no sends go out regardless of provider.
       if (!ws.metaWhatsappEnabled) {
+        console.warn(`[scheduler] Campaign ${campaign.id} skipped — WhatsApp sending is disabled`);
         await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "paused" } });
         continue;
       }
@@ -142,11 +145,33 @@ async function runSequenceSteps() {
 
     try {
       const ws = await getWorkspaceConfig(contact.workspaceId);
-      if (!ws || ws.status !== "active") continue; // workspace deleted or suspended — skip
-      if (!ws.metaWhatsappEnabled) continue;
+      // For early-exit conditions after the step is claimed, roll back so it retries next tick.
+      if (!ws || ws.status !== "active") {
+        // Workspace deleted or suspended — roll back so it retries if workspace is re-activated
+        await prisma.sequenceEnrollment.update({
+          where: { id: enrollment.id },
+          data: { currentStep: enrollment.currentStep },
+        });
+        continue;
+      }
+      // metaWhatsappEnabled = global send toggle for both Meta and MSG91
+      if (!ws.metaWhatsappEnabled) {
+        console.warn(`[scheduler] Sequence enrollment ${enrollment.id} skipped — WhatsApp sending is disabled`);
+        // Roll back so it retries when the toggle is re-enabled
+        await prisma.sequenceEnrollment.update({
+          where: { id: enrollment.id },
+          data: { currentStep: enrollment.currentStep },
+        });
+        continue;
+      }
 
       if (!ws.whatsappProvider) {
         console.warn(`[scheduler] Sequence enrollment ${enrollment.id} skipped — no WhatsApp provider configured`);
+        // Roll back so it retries once a provider is configured
+        await prisma.sequenceEnrollment.update({
+          where: { id: enrollment.id },
+          data: { currentStep: enrollment.currentStep },
+        });
         continue;
       }
 

@@ -90,12 +90,13 @@ function RunModal({ campaign, onClose, onDone }: {
   const variables = extractVariables(templateBody);
 
   useEffect(() => {
-    api.get("/contacts?limit=1000&optIn=true").then((r) => {
-      const opted = (r.data.contacts as Array<{ optIn: boolean; tags: string[]; leadStatus: string; id: string; name: string; phone: string }>)
-        .filter((c) => c.optIn);
-      setContacts(opted);
-      setSelectedIds(new Set(opted.map((c) => c.id)));
-      const tags = Array.from(new Set(opted.flatMap((c) => c.tags))).sort();
+    // API already filters to optIn=true — no client-side re-filter needed.
+    // Limit raised to 5000 so larger workspaces don't silently miss contacts.
+    api.get("/contacts?limit=5000&optIn=true").then((r) => {
+      const contacts = r.data.contacts as Array<{ optIn: boolean; tags: string[]; leadStatus: string; id: string; name: string; phone: string }>;
+      setContacts(contacts);
+      setSelectedIds(new Set(contacts.map((c) => c.id)));
+      const tags = Array.from(new Set(contacts.flatMap((c) => c.tags))).sort();
       setAllTags(tags);
     }).finally(() => setLoading(false));
   }, []);

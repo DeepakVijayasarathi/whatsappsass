@@ -390,6 +390,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
             metaPhoneNumberId: true,
             metaAccessToken: true,
             msg91AuthKey: true,
+            msg91IntegratedNumber: true,
             whatsappProvider: true,
             metaWhatsappEnabled: true,
             smtpHost: true,
@@ -404,7 +405,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       const providerConfigured =
         workspace.whatsappProvider === "meta"
           ? !!(workspace.metaPhoneNumberId && workspace.metaAccessToken)
-          : !!(workspace.msg91AuthKey);
+          : !!(workspace.msg91AuthKey && workspace.msg91IntegratedNumber);
 
       return reply.send({
         steps: {

@@ -222,7 +222,7 @@ export async function contactRoutes(app: FastifyInstance) {
   });
 
   // ── Contact deduplication ─────────────────────────────────────────────────
-  app.post("/deduplicate", { preHandler: [authenticate] }, async (request, reply) => {
+  app.post("/deduplicate", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
     const user = request.user as JwtPayload;
 
     // Find all duplicate phone groups
@@ -270,7 +270,7 @@ export async function contactRoutes(app: FastifyInstance) {
   });
 
   // ── CRM: update lead status ───────────────────────────────────────────────
-  app.patch("/:id/lead-status", { preHandler: [authenticate] }, async (request, reply) => {
+  app.patch("/:id/lead-status", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const { id } = request.params as { id: string };
     const { status } = request.body as { status: string };

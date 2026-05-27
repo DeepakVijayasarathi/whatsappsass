@@ -17,9 +17,10 @@ export async function requireWhatsappEnabled(
     return reply.status(403).send({ error: "Workspace is suspended or not found" });
   }
 
+  // metaWhatsappEnabled is the global "send messages" toggle — applies to both Meta and MSG91
   if (!workspace.metaWhatsappEnabled) {
     return reply.status(403).send({
-      error: "WhatsApp integration is disabled for this workspace. Enable it in settings.",
+      error: "WhatsApp sending is disabled for this workspace. Enable it in Settings → WhatsApp Provider.",
     });
   }
 }
