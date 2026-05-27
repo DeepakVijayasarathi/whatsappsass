@@ -133,7 +133,7 @@ export async function authRoutes(app: FastifyInstance) {
       data: { userId: user.id, tokenHash, expiresAt },
     });
 
-    const frontendUrl = process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
     const smtpConfigured = !!(ws?.smtpHost && ws.smtpUser && ws.smtpPass && ws.smtpFromEmail);

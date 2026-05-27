@@ -78,13 +78,6 @@ async function bootstrap() {
 
   app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
 
-  // ── Public runtime config — safe values only, no secrets ──────────────────
-  app.get("/config", async () => ({
-    appUrl:       process.env.APP_URL || process.env.FRONTEND_URL || "",
-    appName:      process.env.APP_NAME || "WA SaaS Lite",
-    contactEmail: process.env.CONTACT_EMAIL || "hello@example.com",
-  }));
-
   await app.register(authRoutes, { prefix: "/auth" });
   await app.register(workspaceRoutes, { prefix: "/workspace" });
   await app.register(licenseRoutes, { prefix: "/license" });
