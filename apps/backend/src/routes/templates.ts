@@ -55,10 +55,12 @@ async function fetchMsg91Templates(authKey: string): Promise<NormalizedTemplate[
     const axiosErr = err as { response?: { status?: number; data?: unknown } };
     if (axiosErr.response) {
       const d = axiosErr.response.data as Record<string, unknown> | undefined;
+      // MSG91 often returns HTTP 401/403 with { type: "error", message: "..." }
       const msg =
         (typeof d?.message === "string" && d.message) ||
         (typeof d?.error === "string" && d.error) ||
         `MSG91 API error (HTTP ${axiosErr.response.status})`;
+      console.error("[templates] MSG91 HTTP error:", axiosErr.response.status, JSON.stringify(d));
       throw new Error(msg);
     }
     throw err;
@@ -66,26 +68,47 @@ async function fetchMsg91Templates(authKey: string): Promise<NormalizedTemplate[
 
   const d = data as Record<string, unknown>;
 
-  // MSG91 returns { type: "error", message: "..." } when auth fails
-  if (d?.type === "error" || d?.status === "error") {
-    const msg = typeof d.message === "string" ? d.message : "MSG91 authentication failed";
+  // MSG91 returns HTTP 200 with an error body in several shapes:
+  //   { type: "error", message: "..." }
+  //   { status: "error", message: "..." }
+  //   { code: 0, message: "..." }   (code 0 = failure, non-zero = success)
+  //   { success: false, message: "..." }
+  const isErrorBody =
+    d?.type === "error" ||
+    d?.status === "error" ||
+    d?.success === false ||
+    (typeof d?.code === "number" && d.code === 0 && !Array.isArray(d?.data));
+
+  if (isErrorBody) {
+    const msg =
+      (typeof d.message === "string" && d.message) ||
+      (typeof d.error === "string" && d.error) ||
+      "MSG91 authentication failed";
     console.error("[templates] MSG91 auth error response:", JSON.stringify(d));
     throw new Error(msg);
   }
 
+  // Support multiple response shapes:
+  //   { data: [...] }   — most common
+  //   { templates: [...] }
+  //   [...]             — bare array
   const raw: unknown[] = Array.isArray(d?.data)
     ? (d.data as unknown[])
+    : Array.isArray((d as Record<string, unknown>)?.templates)
+    ? ((d as Record<string, unknown>).templates as unknown[])
     : Array.isArray(data)
     ? (data as unknown[])
     : [];
 
+  console.log(`[templates] MSG91 fetched ${raw.length} templates`);
+
   return raw.map((t): NormalizedTemplate => {
     const item = t as Record<string, unknown>;
     return {
-      id: String(item.id ?? item.template_id ?? Math.random()),
+      id: String(item.id ?? item.template_id ?? item._id ?? Math.random()),
       name: String(item.template_name ?? item.name ?? ""),
       status: String(item.status ?? "UNKNOWN").toUpperCase(),
-      language: String(item.language ?? "en"),
+      language: String(item.language ?? item.lang ?? "en"),
       category: String(item.category ?? "UTILITY"),
       body: item.body != null ? String(item.body) : item.data != null ? String(item.data) : null,
       provider: "msg91",

@@ -8,6 +8,7 @@ import { parsePagination } from "../lib/queryParams";
 const campaignSchema = z.object({
   name: z.string().min(1),
   template: z.string().min(1),
+  languageCode: z.string().default("en_US"),
   scheduledAt: z.string().datetime().optional(),
 });
 

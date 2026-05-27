@@ -135,13 +135,14 @@ model ContactNote {
 }
 
 model Campaign {
-  id          String    @id @default(uuid())
-  workspaceId String    @map("workspace_id")
-  name        String
-  template    String
-  status      String    @default("draft")
-  scheduledAt DateTime? @map("scheduled_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id           String    @id @default(uuid())
+  workspaceId  String    @map("workspace_id")
+  name         String
+  template     String
+  languageCode String    @default("en_US") @map("language_code")
+  status       String    @default("draft")
+  scheduledAt  DateTime? @map("scheduled_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   messageLogs     MessageLog[]

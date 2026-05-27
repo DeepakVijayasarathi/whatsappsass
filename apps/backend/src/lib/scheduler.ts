@@ -24,7 +24,7 @@ async function runScheduledCampaigns() {
 
   const due = await prisma.campaign.findMany({
     where: { status: "draft", scheduledAt: { lte: now } },
-    select: { id: true, workspaceId: true, template: true },
+    select: { id: true, workspaceId: true, template: true, languageCode: true },
   });
 
   for (const campaign of due) {
@@ -63,7 +63,7 @@ async function runScheduledCampaigns() {
       for (const contact of contacts) {
         try {
           const result = await sendWhatsAppTemplate(
-            { to: contact.phone, templateName: campaign.template, languageCode: "en_US", components: [] },
+            { to: contact.phone, templateName: campaign.template, languageCode: campaign.languageCode ?? "en_US", components: [] },
             config
           );
           await prisma.messageLog.create({

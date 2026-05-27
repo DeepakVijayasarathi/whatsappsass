@@ -76,18 +76,57 @@ async function sendViaMsg91(
     throw new Error("MSG91 credentials not configured for this workspace");
   }
 
+  // MSG91 bulk template API:
+  // https://docs.msg91.com/whatsapp/template-bulk
+  // The recipient phone and per-recipient components go inside
+  // payload.template.to_and_components[], NOT at the top level of payload.
+  const toAndComponents: { to: string[]; components: Record<string, unknown> } = {
+    to: [opts.to],
+    components: {},
+  };
+
+  // If caller supplies Meta-style components array, convert to MSG91's
+  // { body_1: { type, value }, button_1: { ... } } keyed object.
+  // For simple sends with no variable components this stays empty ({}).
+  if (opts.components && opts.components.length > 0) {
+    let bodyIdx = 1;
+    let buttonIdx = 1;
+    for (const comp of opts.components as Array<Record<string, unknown>>) {
+      if (comp.type === "body") {
+        const params = (comp.parameters as Array<Record<string, unknown>>) ?? [];
+        for (const p of params) {
+          toAndComponents.components[`body_${bodyIdx}`] = {
+            type: p.type ?? "text",
+            value: p.text ?? p.payload ?? "",
+          };
+          bodyIdx++;
+        }
+      } else if (comp.type === "button") {
+        const params = (comp.parameters as Array<Record<string, unknown>>) ?? [];
+        for (const p of params) {
+          toAndComponents.components[`button_${buttonIdx}`] = {
+            subtype: comp.sub_type ?? "url",
+            type: p.type ?? "text",
+            value: p.text ?? p.payload ?? "",
+          };
+          buttonIdx++;
+        }
+      }
+    }
+  }
+
   const { data } = await axios.post(
     "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
     {
       integrated_number: msg91IntegratedNumber,
       content_type: "template",
       payload: {
-        to: opts.to,
+        messaging_product: "whatsapp",
         type: "template",
         template: {
           name: opts.templateName,
-          language: { code: opts.languageCode },
-          components: opts.components ?? [],
+          language: { code: opts.languageCode, policy: "deterministic" },
+          to_and_components: [toAndComponents],
         },
       },
     },
@@ -99,10 +138,11 @@ async function sendViaMsg91(
     }
   );
 
-  // MSG91 response varies; best-effort extract a message ID
-  const wamid = (data as { request_id?: string; msgid?: string })?.request_id
-    ?? (data as { request_id?: string; msgid?: string })?.msgid
-    ?? null;
+  // MSG91 response: { type: "success", request_id: "...", message: "..." }
+  // or nested: { data: { request_id: "..." } }
+  type Msg91Response = { type?: string; request_id?: string; msgid?: string; message?: string; data?: { request_id?: string } };
+  const d = data as Msg91Response;
+  const wamid = d?.request_id ?? d?.data?.request_id ?? d?.msgid ?? null;
   return { provider: "msg91", wamid, raw: data };
 }
 

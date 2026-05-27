@@ -16,6 +16,7 @@ interface Campaign {
   id: string;
   name: string;
   template: string;
+  languageCode: string;
   status: "draft" | "running" | "paused" | "completed";
   scheduledAt: string | null;
   createdAt: string;
@@ -27,12 +28,14 @@ interface RunOptions {
   campaignId: string;
   name: string;
   template: string;
+  languageCode: string;
   templateBody?: string | null;
 }
 
 const schema = z.object({
   name: z.string().min(1, "Name required"),
   template: z.string().min(1, "Template name required"),
+  languageCode: z.string().default("en_US"),
   scheduledAt: z.string().optional(),
 });
 type FormData = z.infer<typeof schema>;
@@ -128,7 +131,7 @@ function RunModal({ campaign, onClose, onDone }: {
         campaignId: campaign.campaignId,
         contactIds: Array.from(selectedIds),
         templateName: campaign.template,
-        languageCode: "en_US",
+        languageCode: campaign.languageCode || "en_US",
         components: buildComponents(varValues),
       });
       await api.patch(`/campaigns/${campaign.campaignId}`, { status: "completed" });
@@ -335,6 +338,8 @@ export default function CampaignsPage() {
 
   const handleTemplateSelect = (t: Template) => {
     setValue("template", t.name, { shouldValidate: true });
+    // Carry the template's language code so campaigns send in the correct locale
+    setValue("languageCode", t.language, { shouldValidate: true });
     setShowTemplatePicker(false);
   };
 
@@ -501,6 +506,13 @@ export default function CampaignsPage() {
               </div>
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Language code
+                <span className="ml-1 text-gray-400 font-normal text-xs">(auto-set when you Browse &amp; select a template)</span>
+              </label>
+              <input {...register("languageCode")} className="input font-mono" placeholder="en_US" />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Schedule (optional)</label>
               <input {...register("scheduledAt")} type="datetime-local" className="input" />
             </div>
@@ -612,7 +624,7 @@ export default function CampaignsPage() {
                         {/* Run */}
                         {(c.status === "draft" || c.status === "paused") && (
                           <button
-                            onClick={() => setRunTarget({ campaignId: c.id, name: c.name, template: c.template })}
+                            onClick={() => setRunTarget({ campaignId: c.id, name: c.name, template: c.template, languageCode: c.languageCode || "en_US" })}
                             className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="Run campaign"
                           >
