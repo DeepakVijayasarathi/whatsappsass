@@ -74,10 +74,10 @@ export default function SettingsPage() {
 
   const selectedProvider = watch("whatsappProvider");
 
-  // DOM refs for secret fields — browser autofill sets DOM value without firing React onChange,
-  // so we read the actual input value from the DOM at submit time.
+  // DOM refs — read actual DOM values at submit time to bypass RHF reset() race and autofill gaps
   const metaAccessTokenRef = useRef<HTMLInputElement | null>(null);
   const msg91AuthKeyRef = useRef<HTMLInputElement | null>(null);
+  const msg91IntegratedNumberRef = useRef<HTMLInputElement | null>(null);
 
   const loadStatus = () => {
     // Clear any stale errors immediately (before API resolves) so they never
@@ -131,15 +131,17 @@ export default function SettingsPage() {
 
     const domAccessToken = metaAccessTokenRef.current?.value ?? "";
     const domMsg91AuthKey = msg91AuthKeyRef.current?.value ?? "";
+    const domMsg91Number = msg91IntegratedNumberRef.current?.value ?? "";
     const resolvedAccessToken = domAccessToken.trim() || str(data.metaAccessToken);
     const resolvedMsg91AuthKey = domMsg91AuthKey.trim() || str(data.msg91AuthKey);
+    const resolvedMsg91Number = domMsg91Number.trim() || str(data.msg91IntegratedNumber);
 
     const payload: ProviderForm = {
       ...data,
       metaPhoneNumberId: data.metaPhoneNumberId ?? "",
       metaWabaId: data.metaWabaId ?? "",
       metaWebhookVerifyToken: data.metaWebhookVerifyToken ?? "",
-      msg91IntegratedNumber: data.msg91IntegratedNumber ?? "",
+      msg91IntegratedNumber: resolvedMsg91Number,
       metaAccessToken: resolvedAccessToken,
       msg91AuthKey: resolvedMsg91AuthKey,
     };
@@ -374,6 +376,7 @@ export default function SettingsPage() {
                       placeholder="91XXXXXXXXXX"
                       autoComplete="off"
                       {...regProvider("msg91IntegratedNumber")}
+                      domRef={msg91IntegratedNumberRef}
                       error={providerErrors.msg91IntegratedNumber}
                     />
                     <p className="text-xs text-gray-400">
