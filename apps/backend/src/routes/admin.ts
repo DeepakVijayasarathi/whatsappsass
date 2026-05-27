@@ -159,12 +159,13 @@ export async function adminRoutes(app: FastifyInstance) {
     });
     if (!target) return reply.status(404).send({ error: "User not found" });
 
+    // Short-lived token for impersonation sessions — 1 hour is enough for debugging
     const token = await reply.jwtSign({
       userId: target.id,
       workspaceId: target.workspaceId,
       role: target.role,
       impersonatedBy: actor.userId,
-    });
+    }, { expiresIn: "1h" });
 
     await logAudit({ workspaceId: target.workspaceId, userId: actor.userId, action: "super.impersonated_user", entityType: "user", entityId: userId, meta: { targetEmail: target.email } });
     return reply.send({ token, user: target });

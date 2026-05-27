@@ -16,12 +16,15 @@ const contactSchema = z.object({
 export async function contactRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
-    const { tag, search, sort, ...pageQuery } = request.query as Record<string, string>;
-    const { page, limit, skip } = parsePagination(pageQuery, { maxLimit: 200 });
+    const { tag, search, sort, optIn, ...pageQuery } = request.query as Record<string, string>;
+    const { page, limit, skip } = parsePagination(pageQuery, { maxLimit: 1000 });
 
     const where = {
       workspaceId: user.workspaceId,
       ...(tag ? { tags: { has: tag } } : {}),
+      // ?optIn=true  → only opted-in contacts (used by campaign run modal)
+      // ?optIn=false → only opted-out contacts
+      ...(optIn === "true" ? { optIn: true } : optIn === "false" ? { optIn: false } : {}),
       ...(search
         ? {
             OR: [
@@ -122,23 +125,25 @@ export async function contactRoutes(app: FastifyInstance) {
     const { ids, tags, mode } = parsed.data;
 
     if (mode === "replace") {
-      await prisma.contact.updateMany({
+      // updateMany scopes to workspaceId — count reflects actually-updated rows
+      const result = await prisma.contact.updateMany({
         where: { id: { in: ids }, workspaceId: user.workspaceId },
         data: { tags },
       });
-    } else {
-      // Add mode — merge without duplicates via raw update for each contact
-      const contacts = await prisma.contact.findMany({
-        where: { id: { in: ids }, workspaceId: user.workspaceId },
-        select: { id: true, tags: true },
-      });
-      await Promise.all(contacts.map((c: { id: string; tags: string[] }) => {
-        const merged = Array.from(new Set([...c.tags, ...tags]));
-        return prisma.contact.update({ where: { id: c.id }, data: { tags: merged } });
-      }));
+      return reply.send({ updated: result.count });
     }
 
-    return reply.send({ updated: ids.length });
+    // Add mode — merge without duplicates per contact
+    const contacts = await prisma.contact.findMany({
+      where: { id: { in: ids }, workspaceId: user.workspaceId },
+      select: { id: true, tags: true },
+    });
+    await Promise.all(contacts.map((c: { id: string; tags: string[] }) => {
+      const merged = Array.from(new Set([...c.tags, ...tags]));
+      return prisma.contact.update({ where: { id: c.id }, data: { tags: merged } });
+    }));
+    // Return actual count — may differ from ids.length if some IDs don't belong to this workspace
+    return reply.send({ updated: contacts.length });
   });
 
   app.delete("/:id", { preHandler: [authenticate] }, async (request, reply) => {

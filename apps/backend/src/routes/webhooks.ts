@@ -70,7 +70,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     if (!existing) return reply.status(404).send({ error: "Not found" });
 
     const updated = await prisma.webhookEndpoint.update({ where: { id }, data: parsed.data });
-    return reply.send(updated);
+    return reply.send(sanitize(updated));
   });
 
   // Delete endpoint

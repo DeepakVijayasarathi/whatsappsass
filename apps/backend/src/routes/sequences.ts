@@ -153,26 +153,47 @@ export async function sequenceRoutes(app: FastifyInstance) {
       });
     }
 
-    // Skip already-enrolled contacts
-    const existing = await prisma.sequenceEnrollment.findMany({
+    // Skip contacts that are already actively enrolled (status = "active" or "completed")
+    // Allow re-enrollment of stopped/failed contacts by resetting them
+    const existingEnrollments = await prisma.sequenceEnrollment.findMany({
       where: { sequenceId: id, contactId: { in: parsed.data.contactIds } },
-      select: { contactId: true },
+      select: { contactId: true, status: true },
     });
-    const alreadyEnrolled = new Set((existing as Array<{ contactId: string }>).map((e) => e.contactId));
-    const toEnroll = parsed.data.contactIds.filter((cid) => !alreadyEnrolled.has(cid));
+    type EnrollRow = { contactId: string; status: string };
+    const activeOrCompleted = new Set(
+      (existingEnrollments as EnrollRow[])
+        .filter((e) => e.status === "active" || e.status === "completed")
+        .map((e) => e.contactId)
+    );
+    const stoppedIds = (existingEnrollments as EnrollRow[])
+      .filter((e) => e.status === "stopped")
+      .map((e) => e.contactId);
 
-    if (toEnroll.length === 0) return reply.send({ enrolled: 0, skipped: alreadyEnrolled.size });
+    const toEnroll = parsed.data.contactIds.filter((cid) => !activeOrCompleted.has(cid));
+    if (toEnroll.length === 0) return reply.send({ enrolled: 0, skipped: activeOrCompleted.size });
 
-    await prisma.sequenceEnrollment.createMany({
-      data: toEnroll.map((contactId) => ({
-        sequenceId: id,
-        contactId,
-        currentStep: 0,
-        status: "active",
-      })),
-    });
+    // Reset stopped enrollments so they restart from step 0
+    if (stoppedIds.length > 0) {
+      await prisma.sequenceEnrollment.updateMany({
+        where: { sequenceId: id, contactId: { in: stoppedIds } },
+        data: { status: "active", currentStep: 0, completedAt: null },
+      });
+    }
 
-    return reply.send({ enrolled: toEnroll.length, skipped: alreadyEnrolled.size });
+    // Create new enrollments for contacts that have never been enrolled
+    const brandNewIds = toEnroll.filter((cid) => !stoppedIds.includes(cid));
+    if (brandNewIds.length > 0) {
+      await prisma.sequenceEnrollment.createMany({
+        data: brandNewIds.map((contactId) => ({
+          sequenceId: id,
+          contactId,
+          currentStep: 0,
+          status: "active",
+        })),
+      });
+    }
+
+    return reply.send({ enrolled: toEnroll.length, skipped: activeOrCompleted.size });
   });
 
   // ── Stop enrollment for a contact ─────────────────────────────────────────
