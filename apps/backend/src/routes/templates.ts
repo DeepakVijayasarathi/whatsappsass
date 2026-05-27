@@ -43,12 +43,17 @@ async function fetchMetaTemplates(wabaId: string, accessToken: string): Promise<
   }));
 }
 
-async function fetchMsg91Templates(authKey: string): Promise<NormalizedTemplate[]> {
+async function fetchMsg91Templates(authKey: string, integratedNumber: string): Promise<NormalizedTemplate[]> {
   let data: unknown;
   try {
+    // Correct endpoint: control.msg01.com (not api.msg91.com)
+    // Requires ?number=<integrated_number> and auth_key header
     const res = await axios.get(
-      "https://api.msg91.com/api/v5/whatsapp/wa-template/",
-      { headers: { authkey: authKey } }
+      "https://control.msg01.com/api/v5/whatsapp/get-template-plugins/",
+      {
+        params: { number: integratedNumber },
+        headers: { auth_key: authKey },
+      }
     );
     data = res.data;
   } catch (err: unknown) {
@@ -60,7 +65,7 @@ async function fetchMsg91Templates(authKey: string): Promise<NormalizedTemplate[
         (typeof d?.message === "string" && d.message) ||
         (typeof d?.error === "string" && d.error) ||
         `MSG91 API error (HTTP ${axiosErr.response.status})`;
-      console.error("[templates] MSG91 HTTP error:", axiosErr.response.status, JSON.stringify(d));
+      console.error("[templates] MSG91 HTTP error (control.msg01.com):", axiosErr.response.status, JSON.stringify(d));
       throw new Error(msg);
     }
     throw err;
@@ -128,6 +133,7 @@ export async function templateRoutes(app: FastifyInstance) {
         metaWabaId: true,
         metaAccessToken: true,
         msg91AuthKey: true,
+        msg91IntegratedNumber: true,
       },
     });
 
@@ -166,8 +172,13 @@ export async function templateRoutes(app: FastifyInstance) {
         error: "MSG91 Auth Key required. Configure it in Settings → WhatsApp Provider.",
       });
     }
+    if (!workspace.msg91IntegratedNumber) {
+      return reply.status(422).send({
+        error: "MSG91 Integrated Number required. Configure it in Settings → WhatsApp Provider.",
+      });
+    }
     try {
-      const templates = await fetchMsg91Templates(workspace.msg91AuthKey);
+      const templates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
       return reply.send({ templates, provider: "msg91", total: templates.length });
     } catch (err: unknown) {
       const msg =
