@@ -817,58 +817,64 @@ export async function whatsappRoutes(app: FastifyInstance) {
       const limitNum = Math.min(Math.max(1, Number(limit)), 200);
       const skip = (pageNum - 1) * limitNum;
 
-      // Get latest message per sender using raw SQL (Prisma groupBy with orderBy _max is unreliable)
-      type LatestRow = {
-        id: string; from_phone: string; contact_id: string | null;
-        body: string | null; type: string; received_at: Date; read: boolean;
-      };
-      const latestRows = await prisma.$queryRaw<LatestRow[]>`
-        SELECT DISTINCT ON (from_phone)
-          id, from_phone, contact_id, body, type, received_at, read
-        FROM inbound_messages
-        WHERE workspace_id = ${user.workspaceId}
-        ORDER BY from_phone, received_at DESC
-      `;
+      try {
+        // Get latest message per sender using raw SQL (Prisma groupBy with orderBy _max is unreliable)
+        type LatestRow = {
+          id: string; from_phone: string; contact_id: string | null;
+          body: string | null; type: string; received_at: Date; read: boolean;
+        };
+        const latestRows = await prisma.$queryRaw<LatestRow[]>`
+          SELECT DISTINCT ON (from_phone)
+            id, from_phone, contact_id, body, type, received_at, read
+          FROM inbound_messages
+          WHERE workspace_id = ${user.workspaceId}
+          ORDER BY from_phone, received_at DESC
+        `;
 
-      // Sort by most recent and paginate
-      latestRows.sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
-      const total = latestRows.length;
-      const paginated = latestRows.slice(skip, skip + limitNum);
+        // Sort by most recent and paginate
+        latestRows.sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
+        const total = latestRows.length;
+        const paginated = latestRows.slice(skip, skip + limitNum);
 
-      // Get contact info for each sender
-      const contactIds = paginated.map((r) => r.contact_id).filter(Boolean) as string[];
-      const contacts = contactIds.length > 0
-        ? await prisma.contact.findMany({
-            where: { id: { in: contactIds } },
-            select: { id: true, name: true, phone: true },
-          })
-        : [];
-      const contactMap = new Map(contacts.map((c) => [c.id, c]));
+        // Get contact info for each sender
+        const contactIds = paginated.map((r) => r.contact_id).filter(Boolean) as string[];
+        const contacts = contactIds.length > 0
+          ? await prisma.contact.findMany({
+              where: { id: { in: contactIds } },
+              select: { id: true, name: true, phone: true },
+            })
+          : [];
+        const contactMap = new Map(contacts.map((c) => [c.id, c]));
 
-      // Get unread counts per sender
-      const unreadGroups = await prisma.inboundMessage.groupBy({
-        by: ["fromPhone"],
-        where: { workspaceId: user.workspaceId, read: false },
-        _count: { id: true },
-      });
-      type UnreadRow = (typeof unreadGroups)[number];
-      const unreadMap = new Map(unreadGroups.map((g: UnreadRow) => [g.fromPhone, g._count.id]));
+        // Get unread counts per sender
+        const unreadGroups = await prisma.inboundMessage.groupBy({
+          by: ["fromPhone"],
+          where: { workspaceId: user.workspaceId, read: false },
+          _count: { id: true },
+        });
+        type UnreadRow = (typeof unreadGroups)[number];
+        const unreadMap = new Map(unreadGroups.map((g: UnreadRow) => [g.fromPhone, g._count.id]));
 
-      const conversations = paginated.map((r) => ({
-        fromPhone: r.from_phone,
-        contactId: r.contact_id,
-        contact: r.contact_id ? (contactMap.get(r.contact_id) ?? null) : null,
-        latestMessage: {
-          id: r.id,
-          body: r.body,
-          type: r.type,
-          receivedAt: r.received_at,
-          read: r.read,
-        },
-        unreadCount: unreadMap.get(r.from_phone) ?? 0,
-      }));
+        const conversations = paginated.map((r) => ({
+          fromPhone: r.from_phone,
+          contactId: r.contact_id,
+          contact: r.contact_id ? (contactMap.get(r.contact_id) ?? null) : null,
+          latestMessage: {
+            id: r.id,
+            body: r.body,
+            type: r.type,
+            receivedAt: r.received_at,
+            read: r.read,
+          },
+          unreadCount: unreadMap.get(r.from_phone) ?? 0,
+        }));
 
-      return reply.send({ conversations, total, page: pageNum, limit: limitNum });
+        return reply.send({ conversations, total, page: pageNum, limit: limitNum });
+      } catch (err: unknown) {
+        const msg = (err instanceof Error) ? err.message : String(err);
+        app.log.error({ err }, "[conversations] query failed");
+        return reply.status(500).send({ error: msg });
+      }
     }
   );
 
