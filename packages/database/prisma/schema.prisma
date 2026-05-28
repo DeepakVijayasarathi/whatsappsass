@@ -211,7 +211,10 @@ model MessageLog {
   @@index([workspaceId])
   @@index([campaignId])
   @@index([sequenceId])
-  @@index([contactId]) // timeline queries per contact
+  @@index([contactId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, createdAt])
+  @@index([wamid])
   @@index([wamid]) // delivery receipt lookups by provider message ID
   @@index([workspaceId, status]) // analytics breakdown by status
   @@index([workspaceId, createdAt]) // date-range trend queries

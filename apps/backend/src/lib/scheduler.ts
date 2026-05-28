@@ -112,13 +112,23 @@ async function runSequenceSteps() {
           steps: { orderBy: { stepNumber: "asc" } },
         },
       },
-      contact: { select: { id: true, phone: true, workspaceId: true } },
+      contact: { select: { id: true, phone: true, workspaceId: true, optIn: true } },
     },
   });
 
   for (const enrollment of enrollments) {
     const { sequence, contact } = enrollment;
     if (sequence.status !== "active") continue;
+
+    // Skip if contact has opted out mid-sequence
+    if (!contact.optIn) {
+      await prisma.sequenceEnrollment.update({
+        where: { id: enrollment.id },
+        data: { status: "stopped" },
+      });
+      console.warn(`[scheduler] Enrollment ${enrollment.id} stopped — contact ${contact.id} opted out`);
+      continue;
+    }
 
     const steps = sequence.steps;
     const nextStep = steps[enrollment.currentStep];

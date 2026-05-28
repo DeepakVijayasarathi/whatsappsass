@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "crypto";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
@@ -87,7 +88,12 @@ async function bootstrap() {
     return reply.status(status).send({ error: error.message });
   });
 
-  app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString(), version: "2ef8b67" }));
+  // Add request ID to every request for tracing
+  app.addHook("onRequest", async (request) => {
+    request.headers["x-request-id"] = request.headers["x-request-id"] ?? crypto.randomUUID();
+  });
+
+  app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString(), version: "d8e506b" }));
 
   await app.register(authRoutes, { prefix: "/auth" });
   await app.register(workspaceRoutes, { prefix: "/workspace" });
@@ -110,6 +116,15 @@ async function bootstrap() {
   console.log(`Backend running on http://localhost:${port}`);
 
   startScheduler();
+
+  // Graceful shutdown — finish in-flight requests before exiting
+  const shutdown = async (signal: string) => {
+    console.log(`[server] ${signal} received — shutting down gracefully`);
+    await app.close();
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT",  () => shutdown("SIGINT"));
 }
 
 bootstrap().catch((err) => {

@@ -15,12 +15,9 @@ pipeline {
         REPO_URL  = "https://github.com/DeepakVijayasarathi/whatsappsass.git"
         BRANCH    = "main"
 
-        DATABASE_URL  = "postgresql://admin:Password2026@204.168.165.148:5432/whatsappsaa"
-        JWT_SECRET    = "changeme-use-a-long-random-secret-in-production"
         NODE_ENV      = "production"
         FRONTEND_URL  = "http://103.118.158.189:3000"
         BACKEND_URL   = "http://127.0.0.1:4000"
-
     }
 
     stages {
@@ -64,21 +61,26 @@ pipeline {
 
         stage('Run Container') {
             steps {
-                sh '''
-                docker run -d \
-                  --name $CONTAINER_NAME \
-                  --restart=always \
-                  -p $FRONTEND_PORT:$FRONTEND_PORT \
-                  -p $BACKEND_PORT:$BACKEND_PORT \
-                  -e FRONTEND_PORT=$FRONTEND_PORT \
-                  -e BACKEND_PORT=$BACKEND_PORT \
-                  -e BACKEND_URL=$BACKEND_URL \
-                  -e FRONTEND_URL=$FRONTEND_URL \
-                  -e DATABASE_URL="$DATABASE_URL" \
-                  -e JWT_SECRET="$JWT_SECRET" \
-                  -e NODE_ENV=$NODE_ENV \
-                  $IMAGE_NAME
-                '''
+                withCredentials([
+                    string(credentialsId: 'DATABASE_URL', variable: 'DATABASE_URL'),
+                    string(credentialsId: 'JWT_SECRET',   variable: 'JWT_SECRET')
+                ]) {
+                    sh '''
+                    docker run -d \
+                      --name $CONTAINER_NAME \
+                      --restart=always \
+                      -p $FRONTEND_PORT:$FRONTEND_PORT \
+                      -p $BACKEND_PORT:$BACKEND_PORT \
+                      -e FRONTEND_PORT=$FRONTEND_PORT \
+                      -e BACKEND_PORT=$BACKEND_PORT \
+                      -e BACKEND_URL=$BACKEND_URL \
+                      -e FRONTEND_URL=$FRONTEND_URL \
+                      -e DATABASE_URL="$DATABASE_URL" \
+                      -e JWT_SECRET="$JWT_SECRET" \
+                      -e NODE_ENV=$NODE_ENV \
+                      $IMAGE_NAME
+                    '''
+                }
             }
         }
 
