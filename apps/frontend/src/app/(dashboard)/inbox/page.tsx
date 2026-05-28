@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { api, getErrMsg } from "@/lib/api";
+import Cookies from "js-cookie";
 import {
   Bot, CheckCheck, ChevronLeft, ExternalLink, MessageSquare,
   Search, Send, Plus, Trash2, X, Pencil, Zap,
@@ -180,7 +181,7 @@ export default function InboxPage() {
     loadCannedResponses();
 
     // Connect to SSE stream — pass token as query param since EventSource can't set headers
-    const token = (await import("js-cookie")).default.get("token") ?? "";
+    const token = Cookies.get("token") ?? "";
     const es = new EventSource(`/api/whatsapp/inbox/stream?token=${encodeURIComponent(token)}`);
     sseRef.current = es;
 
