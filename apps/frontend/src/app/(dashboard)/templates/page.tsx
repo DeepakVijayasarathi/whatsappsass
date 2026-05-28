@@ -325,6 +325,106 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
   );
 }
 
+const customSchema = z.object({
+  name:     z.string().min(1, "Name required").regex(/^[a-z0-9_]+$/, "Lowercase letters, digits and underscores only"),
+  category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).default("UTILITY"),
+  language: z.string().min(1, "Language required").default("en_US"),
+  body:     z.string().min(1, "Body required").max(1024, "Max 1024 characters"),
+});
+type CustomForm = z.infer<typeof customSchema>;
+
+function CreateCustomTemplatePanel({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<CustomForm>({
+    resolver: zodResolver(customSchema),
+    defaultValues: { language: "en_US", category: "UTILITY" },
+  });
+  const bodyVal = watch("body") ?? "";
+  const previewText = bodyVal.replace(/\{\{(\d+)\}\}/g, (_, n) => `[Variable ${n}]`);
+
+  const onSubmit = async (data: CustomForm) => {
+    try {
+      await api.post("/templates/custom", data);
+      toast.success(`Template "${data.name}" saved`);
+      reset();
+      setOpen(false);
+      onCreated();
+    } catch (err: unknown) {
+      toast.error(getErrMsg(err, "Failed to save template"));
+    }
+  };
+
+  return (
+    <div className="card mb-6">
+      <button onClick={() => setOpen((v) => !v)} className="flex items-center justify-between w-full">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-brand/10 rounded-xl flex items-center justify-center shrink-0">
+            <Plus className="w-4 h-4 text-brand" />
+          </div>
+          <div className="text-left">
+            <p className="font-semibold text-gray-900 text-sm">Add Template</p>
+            <p className="text-xs text-gray-400">Save a template name + body to use in campaigns</p>
+          </div>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+      </button>
+
+      {open && (
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-5 pt-5 border-t border-gray-100 space-y-4">
+          <div className="flex items-start gap-2 p-3 bg-purple-50 rounded-xl text-xs text-purple-700">
+            <Info className="w-4 h-4 shrink-0 mt-0.5" />
+            <p>Enter the exact template name from your MSG91 dashboard. Use <code className="bg-purple-100 px-1 rounded">{"{{1}}"}</code> <code className="bg-purple-100 px-1 rounded">{"{{2}}"}</code> for variables.</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Template name</label>
+              <input {...register("name")} className="input font-mono text-sm" placeholder="hello_world" />
+              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <select {...register("category")} className="input text-sm">
+                <option value="UTILITY">Utility</option>
+                <option value="MARKETING">Marketing</option>
+                <option value="AUTHENTICATION">Authentication</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Language</label>
+              <select {...register("language")} className="input text-sm">
+                {COMMON_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Body text</label>
+            <textarea {...register("body")} rows={3} className="input text-sm resize-none" placeholder="Hello {{1}}, your appointment is on {{2}}." />
+            {errors.body && <p className="text-red-500 text-xs mt-1">{errors.body.message}</p>}
+          </div>
+
+          {bodyVal && (
+            <div className="bg-[#e5ddd5] rounded-xl p-3">
+              <p className="text-[10px] text-gray-500 mb-1 font-medium">Preview</p>
+              <div className="bg-white rounded-xl rounded-tl-none px-4 py-3 shadow-sm max-w-[90%]">
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{previewText}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button type="submit" disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? "Saving..." : "Save Template"}
+            </button>
+            <button type="button" onClick={() => { setOpen(false); reset(); }} className="btn-secondary">Cancel</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -353,7 +453,11 @@ export default function TemplatesPage() {
   const deleteTemplate = async (t: Template) => {
     setDeleting(true);
     try {
-      await api.delete(`/templates/${encodeURIComponent(t.name)}`);
+      if (provider === "msg91") {
+        await api.delete(`/templates/custom/${t.id}`);
+      } else {
+        await api.delete(`/templates/${encodeURIComponent(t.name)}`);
+      }
       toast.success(`Template "${t.name}" deleted`);
       setConfirmDelete(null);
       load();
@@ -392,7 +496,7 @@ export default function TemplatesPage() {
       {confirmDelete && (
         <ConfirmModal
           title={`Delete template "${confirmDelete.name}"?`}
-          message="This will permanently delete the template from your Meta account. Campaigns using this template will fail. This cannot be undone."
+          message={provider === "msg91" ? "This will remove the template from your app. The template in MSG91 dashboard is not affected." : "This will permanently delete the template from your Meta account. Campaigns using this template will fail. This cannot be undone."}
           confirmLabel="Delete template"
           onConfirm={() => deleteTemplate(confirmDelete)}
           onCancel={() => setConfirmDelete(null)}
@@ -404,7 +508,7 @@ export default function TemplatesPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Templates</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {provider ? `Fetched from ${provider.toUpperCase()}` : "WhatsApp message templates"}
+            {provider === "msg91" ? "MSG91 — templates stored in your app" : provider ? `Fetched from ${provider.toUpperCase()}` : "WhatsApp message templates"}
             {!loading && !error && ` · ${templates.length} templates`}
           </p>
         </div>
@@ -418,10 +522,9 @@ export default function TemplatesPage() {
         </button>
       </div>
 
-      {/* Template creation panel (Meta only) */}
-      {!loading && !error && isMetaProvider && (
-        <CreateTemplatePanel onCreated={load} />
-      )}
+      {/* Template creation panel */}
+      {!loading && !error && isMetaProvider && <CreateTemplatePanel onCreated={load} />}
+      {!loading && !error && provider === "msg91" && <CreateCustomTemplatePanel onCreated={load} />}
 
       {/* Status summary pills */}
       {!loading && !error && templates.length > 0 && (
@@ -512,7 +615,7 @@ export default function TemplatesPage() {
           <p className="text-gray-400 text-sm mt-1">
             {search || filterStatus !== "ALL"
               ? "Try clearing the search or changing the status filter"
-              : "Create a template above (Meta) or via your MSG91 dashboard"}
+              : provider === "msg91" ? "Add a template using the form above" : "Create a template above or via your Meta dashboard"}
           </p>
         </div>
       ) : (
@@ -525,7 +628,7 @@ export default function TemplatesPage() {
                 <th className="px-5 py-3 text-left font-medium text-gray-500 hidden md:table-cell">Language</th>
                 <th className="px-5 py-3 text-left font-medium text-gray-500">Status</th>
                 <th className="px-5 py-3 text-left font-medium text-gray-500">Body preview</th>
-                {isMetaProvider && <th className="px-5 py-3 text-right font-medium text-gray-500" />}
+                <th className="px-5 py-3 text-right font-medium text-gray-500" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -561,17 +664,15 @@ export default function TemplatesPage() {
                         {t.body && <Eye className="w-3.5 h-3.5 text-gray-300 group-hover:text-brand transition-colors shrink-0" />}
                       </button>
                     </td>
-                    {isMetaProvider && (
-                      <td className="px-5 py-3.5 text-right">
-                        <button
-                          onClick={() => setConfirmDelete(t)}
-                          className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete template"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    )}
+                    <td className="px-5 py-3.5 text-right">
+                      <button
+                        onClick={() => setConfirmDelete(t)}
+                        className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete template"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 );
               })}

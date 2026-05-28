@@ -263,31 +263,85 @@ export async function templateRoutes(app: FastifyInstance) {
       }
     }
 
-    // MSG91 — basic plan does not support template listing API.
-    // Return empty list so the UI works; users enter template names manually.
+    // MSG91 — return custom templates stored in DB (basic plan has no listing API)
     if (!workspace.msg91AuthKey) {
       return reply.status(422).send({
         error: "MSG91 Auth Key required. Configure it in Settings → WhatsApp Provider.",
       });
     }
-    return reply.send({ templates: [], provider: "msg91", total: 0, msg91Note: "MSG91 does not provide a template listing API on the current plan. Enter template names manually when sending." });
+    const custom = await prisma.customTemplate.findMany({
+      where: { workspaceId: user.workspaceId },
+      orderBy: { createdAt: "desc" },
+    });
+    const templates: NormalizedTemplate[] = custom.map((t) => ({
+      id: t.id,
+      name: t.name,
+      status: t.status,
+      language: t.language,
+      category: t.category,
+      body: t.body,
+      provider: "msg91",
+    }));
+    return reply.send({ templates, provider: "msg91", total: templates.length });
+  });
 
-    // Dead code below kept for reference if plan is upgraded
-    if (!workspace.msg91IntegratedNumber) {
-      return reply.status(422).send({
-        error: "MSG91 Integrated Number required. Configure it in Settings → WhatsApp Provider.",
-      });
-    }
-    try {
-      const templates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
-      return reply.send({ templates, provider: "msg91", total: templates.length });
-    } catch (err: unknown) {
-      const msg =
-        (err instanceof Error && err.message) ||
-        "Failed to fetch templates from MSG91";
-      console.error("[templates] MSG91 fetch failed:", msg);
-      return reply.status(502).send({ error: msg });
-    }
+  // ── POST /templates/custom — create a custom template (MSG91) ───────────────
+  app.post("/custom", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const schema = z.object({
+      name:     z.string().min(1).max(100).regex(/^[a-z0-9_]+$/, "Name must be lowercase letters, numbers, underscores only"),
+      category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).default("UTILITY"),
+      language: z.string().min(2).max(10).default("en_US"),
+      body:     z.string().min(1).max(1024),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const existing = await prisma.customTemplate.findUnique({
+      where: { workspaceId_name: { workspaceId: user.workspaceId, name: parsed.data.name } },
+    });
+    if (existing) return reply.status(409).send({ error: `Template "${parsed.data.name}" already exists.` });
+
+    const template = await prisma.customTemplate.create({
+      data: { workspaceId: user.workspaceId, ...parsed.data },
+    });
+    return reply.status(201).send(template);
+  });
+
+  // ── PUT /templates/custom/:id — update a custom template (MSG91) ────────────
+  app.put("/custom/:id", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const schema = z.object({
+      category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).optional(),
+      language: z.string().min(2).max(10).optional(),
+      body:     z.string().min(1).max(1024).optional(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const existing = await prisma.customTemplate.findFirst({
+      where: { id, workspaceId: user.workspaceId },
+    });
+    if (!existing) return reply.status(404).send({ error: "Template not found" });
+
+    const updated = await prisma.customTemplate.update({
+      where: { id },
+      data: parsed.data,
+    });
+    return reply.send(updated);
+  });
+
+  // ── DELETE /templates/custom/:id — delete a custom template (MSG91) ─────────
+  app.delete("/custom/:id", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const existing = await prisma.customTemplate.findFirst({
+      where: { id, workspaceId: user.workspaceId },
+    });
+    if (!existing) return reply.status(404).send({ error: "Template not found" });
+    await prisma.customTemplate.delete({ where: { id } });
+    return reply.send({ message: "Template deleted" });
   });
 
   // ── POST /templates — create a new template (Meta only) ─────────────────────
