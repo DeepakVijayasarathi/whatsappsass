@@ -215,9 +215,6 @@ model MessageLog {
   @@index([workspaceId, status])
   @@index([workspaceId, createdAt])
   @@index([wamid])
-  @@index([wamid]) // delivery receipt lookups by provider message ID
-  @@index([workspaceId, status]) // analytics breakdown by status
-  @@index([workspaceId, createdAt]) // date-range trend queries
   @@map("message_logs")
 }
 
