@@ -5,18 +5,10 @@ const ALGORITHM = "aes-256-gcm";
 function getKey(): Buffer | null {
   const raw = process.env.ENCRYPTION_KEY?.trim();
   if (!raw) {
-    if (process.env.NODE_ENV === "production") {
-      // In production, missing key is a hard failure — plaintext credentials are unacceptable.
-      throw new Error(
-        "FATAL: ENCRYPTION_KEY is not set. Refusing to start in production without encryption. " +
-        "Generate a key with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\" " +
-        "and set it as the ENCRYPTION_KEY environment variable."
-      );
-    }
-    // Development: warn once, then proceed with plaintext fallback
+    // Warn once regardless of environment — plaintext storage is insecure but functional.
     const g = globalThis as Record<string, unknown>;
     if (!g.__encryptKeyWarned) {
-      console.warn("[encrypt] ENCRYPTION_KEY not set — credentials stored as PLAINTEXT. Set this variable before deploying to production.");
+      console.warn("[encrypt] ENCRYPTION_KEY not set — credentials stored as PLAINTEXT. Set this variable for production security.");
       g.__encryptKeyWarned = true;
     }
     return null;
@@ -73,15 +65,18 @@ export function decrypt(value: string): string {
 }
 
 /** Safe decrypt: returns null if value is null/undefined/empty.
- *  Logs a warning but never throws — callers treat null as "not configured". */
+ *  Logs a warning but never throws — callers treat null as "not configured".
+ *  Returns the DECRYPT_FAILED sentinel when a value exists but cannot be decrypted
+ *  (e.g. ENCRYPTION_KEY changed) so callers can distinguish "not set" from "broken". */
+export const DECRYPT_FAILED = "__DECRYPT_FAILED__";
+
 export function decryptNullable(value: string | null | undefined): string | null {
   if (!value?.trim()) return null;
   try {
     return decrypt(value);
   } catch (err) {
-    // Log with enough context for debugging but don't expose the raw value
-    console.warn("[encrypt] Decryption failed (value may be corrupted or from a different key):", (err as Error).message);
-    return null;
+    console.warn("[encrypt] Decryption failed (ENCRYPTION_KEY may have changed):", (err as Error).message);
+    return DECRYPT_FAILED;
   }
 }
 

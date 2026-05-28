@@ -8,7 +8,7 @@ import type { JwtPayload } from "../middleware/authenticate";
 import { sendWhatsAppTemplate } from "../lib/whatsapp";
 import type { ProviderConfig } from "../lib/whatsapp";
 import { fireWebhooks } from "../lib/webhookDispatcher";
-import { decryptNullable } from "../lib/encrypt";
+import { decryptNullable, DECRYPT_FAILED } from "../lib/encrypt";
 
 const META_APP_SECRET = process.env.META_APP_SECRET;
 
@@ -41,11 +41,19 @@ async function getProviderConfig(workspaceId: string): Promise<ProviderConfig> {
   if (!provider) {
     throw new Error("No WhatsApp provider configured. Go to Settings → WhatsApp Provider and select Meta Cloud API or MSG91.");
   }
+
+  const metaAccessToken = decryptNullable(ws?.metaAccessToken);
+  const msg91AuthKey = decryptNullable(ws?.msg91AuthKey);
+
+  if (metaAccessToken === DECRYPT_FAILED || msg91AuthKey === DECRYPT_FAILED) {
+    throw new Error("Stored credentials could not be decrypted (ENCRYPTION_KEY may have changed). Please re-enter your credentials in Settings → WhatsApp Provider.");
+  }
+
   return {
     provider,
     metaPhoneNumberId: ws?.metaPhoneNumberId ?? undefined,
-    metaAccessToken: decryptNullable(ws?.metaAccessToken) ?? undefined,
-    msg91AuthKey: decryptNullable(ws?.msg91AuthKey) ?? undefined,
+    metaAccessToken: metaAccessToken ?? undefined,
+    msg91AuthKey: msg91AuthKey ?? undefined,
     msg91IntegratedNumber: ws?.msg91IntegratedNumber ?? undefined,
   };
 }

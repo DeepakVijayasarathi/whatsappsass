@@ -36,6 +36,7 @@ interface ProviderConfig {
   hasMsg91AuthKey?: boolean;
   metaAccessTokenHint?: string | null;
   msg91AuthKeyHint?: string | null;
+  credentialDecryptError?: string | null;
 }
 
 export default function SettingsPage() {
@@ -303,6 +304,11 @@ export default function SettingsPage() {
                 </button>
               </div>
 
+              {providerConfig?.credentialDecryptError && (
+                <p className="text-xs text-red-700 bg-red-50 rounded-lg px-3 py-2 mt-2">
+                  ⚠ {providerConfig.credentialDecryptError}
+                </p>
+              )}
               {!metaEnabled && (
                 <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
                   ⚠ WhatsApp sending is disabled. Configure your provider credentials below, then toggle this on.

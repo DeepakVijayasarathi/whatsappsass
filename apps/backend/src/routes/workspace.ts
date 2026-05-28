@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
-import { encrypt, decryptNullable, maskHint } from "../lib/encrypt";
+import { encrypt, decryptNullable, maskHint, DECRYPT_FAILED } from "../lib/encrypt";
 
 export async function workspaceRoutes(app: FastifyInstance) {
   app.get("/me", { preHandler: [authenticate] }, async (request, reply) => {
@@ -410,18 +410,25 @@ export async function workspaceRoutes(app: FastifyInstance) {
       });
       if (!workspace) return reply.status(404).send({ error: "Not found" });
       // Decrypt to get plaintext for hint generation, but NEVER send the actual value
-      const metaTokenPlain = decryptNullable(workspace.metaAccessToken);
-      const msg91KeyPlain  = decryptNullable(workspace.msg91AuthKey);
-      const webhookTokenPlain = decryptNullable(workspace.metaWebhookVerifyToken);
+      const metaTokenRaw = decryptNullable(workspace.metaAccessToken);
+      const msg91KeyRaw  = decryptNullable(workspace.msg91AuthKey);
+      const webhookTokenRaw = decryptNullable(workspace.metaWebhookVerifyToken);
+      // Treat DECRYPT_FAILED as "present but unreadable" — show a hint so user knows to re-enter
+      const metaTokenPlain = metaTokenRaw === DECRYPT_FAILED ? null : metaTokenRaw;
+      const msg91KeyPlain  = msg91KeyRaw  === DECRYPT_FAILED ? null : msg91KeyRaw;
+      const webhookTokenPlain = webhookTokenRaw === DECRYPT_FAILED ? null : webhookTokenRaw;
       const { metaAccessToken, msg91AuthKey, metaWebhookVerifyToken, ...safe } = workspace;
       return reply.send({
         ...safe,
-        hasMetaAccessToken:        !!(metaTokenPlain),
-        hasMsg91AuthKey:           !!(msg91KeyPlain),
-        metaAccessTokenHint:       maskHint(metaTokenPlain),
-        msg91AuthKeyHint:          maskHint(msg91KeyPlain),
-        metaWebhookVerifyToken:    webhookTokenPlain,      // not a signing secret — safe to return
-        metaWebhookVerifyTokenHint: maskHint(webhookTokenPlain),
+        hasMetaAccessToken:         metaTokenRaw === DECRYPT_FAILED ? true : !!(metaTokenPlain),
+        hasMsg91AuthKey:            msg91KeyRaw  === DECRYPT_FAILED ? true : !!(msg91KeyPlain),
+        metaAccessTokenHint:        metaTokenRaw === DECRYPT_FAILED ? "⚠ Re-enter (key changed)" : maskHint(metaTokenPlain),
+        msg91AuthKeyHint:           msg91KeyRaw  === DECRYPT_FAILED ? "⚠ Re-enter (key changed)" : maskHint(msg91KeyPlain),
+        metaWebhookVerifyToken:     webhookTokenPlain,
+        metaWebhookVerifyTokenHint: webhookTokenRaw === DECRYPT_FAILED ? "⚠ Re-enter (key changed)" : maskHint(webhookTokenPlain),
+        credentialDecryptError:     (metaTokenRaw === DECRYPT_FAILED || msg91KeyRaw === DECRYPT_FAILED)
+                                      ? "Stored credentials could not be decrypted. ENCRYPTION_KEY may have changed. Please re-enter your credentials."
+                                      : undefined,
       });
     }
   );
@@ -452,10 +459,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
 
       if (!workspace) return reply.status(404).send({ error: "Not found" });
 
+      const metaTokenOk = decryptNullable(workspace.metaAccessToken);
+      const msg91KeyOk  = decryptNullable(workspace.msg91AuthKey);
       const providerConfigured =
         workspace.whatsappProvider === "meta"
-          ? !!(workspace.metaPhoneNumberId && workspace.metaAccessToken)
-          : !!(workspace.msg91AuthKey && workspace.msg91IntegratedNumber);
+          ? !!(workspace.metaPhoneNumberId && metaTokenOk && metaTokenOk !== DECRYPT_FAILED)
+          : !!(msg91KeyOk && msg91KeyOk !== DECRYPT_FAILED && workspace.msg91IntegratedNumber);
 
       return reply.send({
         steps: {
