@@ -17,10 +17,6 @@ pipeline {
         FRONTEND_URL  = "http://103.118.158.189:3000"
         BACKEND_URL   = "http://127.0.0.1:4000"
 
-        WHATSAPP_PHONE_NUMBER_ID      = "974977779042152"
-        WHATSAPP_BUSINESS_ACCOUNT_ID  = "3219906024875976"
-        WHATSAPP_WEBHOOK_VERIFY_TOKEN = "ovbatteries_whatsapp_2026"
-        WHATSAPP_API_URL              = "https://graph.facebook.com/v22.0"
     }
 
     stages {
@@ -65,8 +61,7 @@ pipeline {
         stage('Run Container') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'WHATSAPP_API_TOKEN', variable: 'WHATSAPP_API_TOKEN'),
-                    string(credentialsId: 'ENCRYPTION_KEY',     variable: 'ENCRYPTION_KEY')
+                    string(credentialsId: 'ENCRYPTION_KEY', variable: 'ENCRYPTION_KEY')
                 ]) {
                     sh '''
                     docker run -d \
@@ -81,11 +76,6 @@ pipeline {
                       -e DATABASE_URL="$DATABASE_URL" \
                       -e JWT_SECRET="$JWT_SECRET" \
                       -e NODE_ENV=$NODE_ENV \
-                      -e WHATSAPP_API_TOKEN="$WHATSAPP_API_TOKEN" \
-                      -e WHATSAPP_PHONE_NUMBER_ID="$WHATSAPP_PHONE_NUMBER_ID" \
-                      -e WHATSAPP_BUSINESS_ACCOUNT_ID="$WHATSAPP_BUSINESS_ACCOUNT_ID" \
-                      -e WHATSAPP_WEBHOOK_VERIFY_TOKEN="$WHATSAPP_WEBHOOK_VERIFY_TOKEN" \
-                      -e WHATSAPP_API_URL="$WHATSAPP_API_URL" \
                       -e ENCRYPTION_KEY="$ENCRYPTION_KEY" \
                       $IMAGE_NAME
                     '''
