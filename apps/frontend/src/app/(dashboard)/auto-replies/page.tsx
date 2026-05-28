@@ -189,14 +189,16 @@ export default function AutoRepliesPage() {
 
   const load = () => {
     setLoading(true);
-    api.get("/workspace/provider").then((r) => setProvider(r.data.whatsappProvider ?? "")).catch(() => {});
     api.get("/auto-replies")
       .then((r) => setRules(r.data.rules))
       .catch(() => { /* toast shown by interceptor */ })
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    api.get("/workspace/provider").then((r) => setProvider(r.data.whatsappProvider ?? "")).catch(() => {});
+    load();
+  }, []);
 
   const handleSave = async (data: RuleFormData) => {
     try {

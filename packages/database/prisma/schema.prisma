@@ -54,7 +54,7 @@ model CustomTemplate {
   workspaceId String   @map("workspace_id")
   name        String
   category    String   @default("UTILITY")
-  language    String   @default("en_US")
+  language    String   @default("en_US")  @map("language")
   body        String
   status      String   @default("APPROVED")
   createdAt   DateTime @default(now()) @map("created_at")

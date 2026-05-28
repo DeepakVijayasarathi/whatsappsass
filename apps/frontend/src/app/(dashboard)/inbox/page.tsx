@@ -142,7 +142,6 @@ export default function InboxPage() {
   const [selected,       setSelected]       = useState<Conversation | null>(null);
   const [timeline,       setTimeline]       = useState<TimelineEntry[]>([]);
   const [loadingConvos,  setLoadingConvos]  = useState(true);
-  const [provider,       setProvider]       = useState<string>("");
   const [loadingThread,  setLoadingThread]  = useState(false);
   const [search,         setSearch]         = useState("");
   const [unreadOnly,     setUnreadOnly]     = useState(false);
@@ -176,7 +175,6 @@ export default function InboxPage() {
 
   // ── SSE real-time updates ────────────────────────────────────────────────
   useEffect(() => {
-    api.get("/workspace/provider").then((r) => setProvider(r.data.whatsappProvider ?? "")).catch(() => {});
     loadConversations();
     loadCannedResponses();
 

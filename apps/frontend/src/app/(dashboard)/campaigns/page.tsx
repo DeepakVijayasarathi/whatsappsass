@@ -347,7 +347,6 @@ export default function CampaignsPage() {
 
   const load = useCallback((p: number) => {
     setLoading(true);
-    api.get("/workspace/provider").then((r) => setProvider(r.data.whatsappProvider ?? "")).catch(() => {});
     const statusParam = statusFilter ? `&status=${statusFilter}` : "";
     const searchParam = search ? `&search=${encodeURIComponent(search)}` : "";
     Promise.all([
@@ -363,6 +362,8 @@ export default function CampaignsPage() {
       .finally(() => setLoading(false));
   }, [statusFilter, search]);
 
+  // Load provider once on mount
+  useEffect(() => { api.get("/workspace/provider").then((r) => setProvider(r.data.whatsappProvider ?? "")).catch(() => {}); }, []);
   // Reset to page 1 when filters change
   useEffect(() => { setPage(1); }, [statusFilter, search]);
   useEffect(() => { load(page); }, [page, load]);
