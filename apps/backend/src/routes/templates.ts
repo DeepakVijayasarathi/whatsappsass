@@ -263,12 +263,16 @@ export async function templateRoutes(app: FastifyInstance) {
       }
     }
 
-    // MSG91
+    // MSG91 — basic plan does not support template listing API.
+    // Return empty list so the UI works; users enter template names manually.
     if (!workspace.msg91AuthKey) {
       return reply.status(422).send({
         error: "MSG91 Auth Key required. Configure it in Settings → WhatsApp Provider.",
       });
     }
+    return reply.send({ templates: [], provider: "msg91", total: 0, msg91Note: "MSG91 does not provide a template listing API on the current plan. Enter template names manually when sending." });
+
+    // Dead code below kept for reference if plan is upgraded
     if (!workspace.msg91IntegratedNumber) {
       return reply.status(422).send({
         error: "MSG91 Integrated Number required. Configure it in Settings → WhatsApp Provider.",
@@ -281,7 +285,6 @@ export async function templateRoutes(app: FastifyInstance) {
       const msg =
         (err instanceof Error && err.message) ||
         "Failed to fetch templates from MSG91";
-      // Log the full error so it appears in container logs for debugging
       console.error("[templates] MSG91 fetch failed:", msg);
       return reply.status(502).send({ error: msg });
     }

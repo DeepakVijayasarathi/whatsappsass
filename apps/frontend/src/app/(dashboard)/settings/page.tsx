@@ -191,7 +191,8 @@ export default function SettingsPage() {
     try {
       const r = await api.get("/templates");
       const count = r.data.total ?? (r.data.templates?.length ?? 0);
-      setTestResult({ ok: true, msg: `Connected ✓ — ${count} template${count !== 1 ? "s" : ""} found` });
+      const note = r.data.msg91Note;
+      setTestResult({ ok: true, msg: note ? `Connected ✓ — ${note}` : `Connected ✓ — ${count} template${count !== 1 ? "s" : ""} found` });
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Credentials test failed";
       setTestResult({ ok: false, msg });
