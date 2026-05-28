@@ -60,26 +60,21 @@ pipeline {
 
         stage('Run Container') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'ENCRYPTION_KEY', variable: 'ENCRYPTION_KEY')
-                ]) {
-                    sh '''
-                    docker run -d \
-                      --name $CONTAINER_NAME \
-                      --restart=always \
-                      -p $FRONTEND_PORT:$FRONTEND_PORT \
-                      -p $BACKEND_PORT:$BACKEND_PORT \
-                      -e FRONTEND_PORT=$FRONTEND_PORT \
-                      -e BACKEND_PORT=$BACKEND_PORT \
-                      -e BACKEND_URL=$BACKEND_URL \
-                      -e FRONTEND_URL=$FRONTEND_URL \
-                      -e DATABASE_URL="$DATABASE_URL" \
-                      -e JWT_SECRET="$JWT_SECRET" \
-                      -e NODE_ENV=$NODE_ENV \
-                      -e ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-                      $IMAGE_NAME
-                    '''
-                }
+                sh '''
+                docker run -d \
+                  --name $CONTAINER_NAME \
+                  --restart=always \
+                  -p $FRONTEND_PORT:$FRONTEND_PORT \
+                  -p $BACKEND_PORT:$BACKEND_PORT \
+                  -e FRONTEND_PORT=$FRONTEND_PORT \
+                  -e BACKEND_PORT=$BACKEND_PORT \
+                  -e BACKEND_URL=$BACKEND_URL \
+                  -e FRONTEND_URL=$FRONTEND_URL \
+                  -e DATABASE_URL="$DATABASE_URL" \
+                  -e JWT_SECRET="$JWT_SECRET" \
+                  -e NODE_ENV=$NODE_ENV \
+                  $IMAGE_NAME
+                '''
             }
         }
 
