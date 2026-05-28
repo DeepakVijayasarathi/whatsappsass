@@ -159,8 +159,6 @@ export default function SettingsPage() {
       if (!str(payload.metaWabaId)) errs.metaWabaId = "WABA ID required";
       const hasToken = (str(payload.metaAccessToken).length > 0) || !!(providerConfig?.hasMetaAccessToken);
       if (!hasToken) errs.metaAccessToken = "Access Token required";
-      const hasVerifyToken = (str(payload.metaWebhookVerifyToken).length > 0) || !!(providerConfig?.metaWebhookVerifyToken);
-      if (!hasVerifyToken) errs.metaWebhookVerifyToken = "Webhook Verify Token required";
     } else {
       const hasAuthKey = (str(payload.msg91AuthKey).length > 0) || !!(providerConfig?.hasMsg91AuthKey);
       if (!hasAuthKey) errs.msg91AuthKey = "MSG91 Auth Key required";
@@ -349,6 +347,7 @@ export default function SettingsPage() {
                         onChange={(e) => {
                           regProvider("whatsappProvider").onChange(e);
                           setProviderErrors({});
+                          setTestResult(null);
                         }}
                       />
                       <div>
@@ -369,6 +368,7 @@ export default function SettingsPage() {
                       placeholder="1234567890"
                       mono
                       {...regProvider("metaPhoneNumberId")}
+                      onChange={(e) => { regProvider("metaPhoneNumberId").onChange(e); setProviderErrors((prev) => ({ ...prev, metaPhoneNumberId: undefined })); }}
                       error={providerErrors.metaPhoneNumberId}
                     />
                     <Field
@@ -376,6 +376,7 @@ export default function SettingsPage() {
                       placeholder="102290129340823"
                       mono
                       {...regProvider("metaWabaId")}
+                      onChange={(e) => { regProvider("metaWabaId").onChange(e); setProviderErrors((prev) => ({ ...prev, metaWabaId: undefined })); }}
                       error={providerErrors.metaWabaId}
                     />
                     <Field
