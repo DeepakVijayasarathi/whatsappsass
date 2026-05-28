@@ -206,13 +206,17 @@ async function fetchMsg91Templates(authKey: string, integratedNumber: string): P
 
   return raw.map((t): NormalizedTemplate => {
     const item = t as Record<string, unknown>;
+    const content = item.content as Record<string, unknown> | undefined;
     return {
-      id: String(item.id ?? item.template_id ?? item._id ?? Math.random()),
+      id: String(item.template_id ?? item.id ?? item._id ?? `msg91_${Date.now()}`),
       name: String(item.template_name ?? item.name ?? ""),
-      status: String(item.status ?? "UNKNOWN").toUpperCase(),
+      status: String(item.state ?? item.status ?? "UNKNOWN").toUpperCase(),
       language: String(item.language ?? item.lang ?? "en"),
-      category: String(item.category ?? "UTILITY"),
-      body: item.body != null ? String(item.body) : item.data != null ? String(item.data) : null,
+      category: String(item.category_name ?? item.category ?? "UTILITY"),
+      body: item.body != null ? String(item.body)
+          : content?.body != null ? String(content.body)
+          : item.data != null ? String(item.data)
+          : null,
       provider: "msg91",
     };
   });
