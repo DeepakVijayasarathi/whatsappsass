@@ -57,8 +57,12 @@ export default function ProfilePage() {
   const onSaveProfile = async (data: ProfileForm) => {
     try {
       const res = await api.patch("/workspace/profile", data);
-      // Update local storage so sidebar reflects new name
-      setAuth(getToken() ?? "", { ...res.data, id: me!.id }, workspace!);
+      // Update local storage so the sidebar reflects the new display name.
+      // Guard against the edge case where the user session was cleared by another tab.
+      const token = getToken();
+      if (token && me && workspace) {
+        setAuth(token, { ...res.data, id: me.id }, workspace);
+      }
       toast.success("Profile updated");
     } catch (err: unknown) {
       toast.error(getErrMsg(err, "Update failed"));

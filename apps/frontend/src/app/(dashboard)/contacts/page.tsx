@@ -416,35 +416,30 @@ export default function ContactsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const [exporting, setExporting] = useState(false);
+
   const exportContacts = async () => {
+    if (exporting) return;
+    setExporting(true);
     try {
-      let all: Contact[] = [];
-      let pg = 1;
-      const exportLimit = 500;
-      const MAX_PAGES = 200; // safety guard — prevents infinite loop on pagination bugs
-      while (pg <= MAX_PAGES) {
-        const res = await api.get(`/contacts?page=${pg}&limit=${exportLimit}`);
-        all = [...all, ...res.data.contacts];
-        if (all.length >= res.data.total || res.data.contacts.length === 0) break;
-        pg++;
-      }
-      if (pg > MAX_PAGES) {
-        toast.error("Export exceeded maximum page limit — only partial data exported");
-      }
-      const esc = (v: string) => `"${v.replace(/"/g, '""').replace(/\r/g, " ").replace(/\n/g, " ")}"`;
-      const header = "name,phone,tags,optIn";
-      const rows = all.map((c) =>
-        `${esc(c.name)},${esc(c.phone)},${esc(c.tags.join("|"))},${c.optIn}`
-      );
-      const csv = [header, ...rows].join("\n");
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
+      // Use the dedicated backend export endpoint:
+      //  - single efficient DB query (up to 50 000 rows)
+      //  - proper CSV headers with all columns (id, name, phone, email, tags, opt_in, lead_status)
+      //  - streams the file directly as an attachment
+      const res = await api.get("/contacts/export", { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement("a");
-      a.href = url; a.download = "contacts.csv"; a.click();
+      a.href = url;
+      a.download = `contacts-${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success(`Exported ${all.length} contacts`);
+      toast.success("Contacts exported");
     } catch {
       toast.error("Export failed");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -517,8 +512,9 @@ export default function ContactsPage() {
           <button onClick={deduplicateContacts} disabled={deduplicating} className="btn-secondary flex items-center gap-2 text-sm">
             <GitMerge className="w-4 h-4" /> <span className="hidden sm:inline">{deduplicating ? "Deduplicating..." : "Deduplicate"}</span>
           </button>
-          <button onClick={exportContacts} className="btn-secondary flex items-center gap-2 text-sm">
-            <Download className="w-4 h-4" /> <span className="hidden sm:inline">Export CSV</span>
+          <button onClick={exportContacts} disabled={exporting} className="btn-secondary flex items-center gap-2 text-sm disabled:opacity-50">
+            <Download className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+            <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export CSV"}</span>
           </button>
           <button onClick={() => setTab("import")} className="btn-secondary flex items-center gap-2 text-sm">
             <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Import</span>
@@ -670,7 +666,7 @@ export default function ContactsPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="input pl-9"
-                placeholder="Search by name or phone..."
+                placeholder="Search by name, phone or email..."
               />
             </div>
             {selectedIds.size > 0 && (

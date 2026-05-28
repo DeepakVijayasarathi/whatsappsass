@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { sendWhatsAppTemplate } from "./whatsapp";
 import type { ProviderConfig } from "./whatsapp";
 import { fireWebhooks } from "./webhookDispatcher";
+import { decryptNullable } from "./encrypt";
 
 async function getWorkspaceConfig(workspaceId: string) {
   return prisma.workspace.findUnique({
@@ -49,7 +50,7 @@ async function runScheduledCampaigns() {
         continue;
       }
 
-      if (!ws.whatsappProvider) {
+      if (!ws.whatsappProvider?.trim()) {
         console.warn(`[scheduler] Campaign ${campaign.id} skipped — no WhatsApp provider configured`);
         await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "paused" } });
         continue;
@@ -58,8 +59,8 @@ async function runScheduledCampaigns() {
       const config: ProviderConfig = {
         provider: ws.whatsappProvider as "meta" | "msg91",
         metaPhoneNumberId: ws.metaPhoneNumberId ?? undefined,
-        metaAccessToken: ws.metaAccessToken ?? undefined,
-        msg91AuthKey: ws.msg91AuthKey ?? undefined,
+        metaAccessToken: decryptNullable(ws.metaAccessToken) ?? undefined,
+        msg91AuthKey: decryptNullable(ws.msg91AuthKey) ?? undefined,
         msg91IntegratedNumber: ws.msg91IntegratedNumber ?? undefined,
       };
 
@@ -178,8 +179,8 @@ async function runSequenceSteps() {
       const config: ProviderConfig = {
         provider: ws.whatsappProvider as "meta" | "msg91",
         metaPhoneNumberId: ws.metaPhoneNumberId ?? undefined,
-        metaAccessToken: ws.metaAccessToken ?? undefined,
-        msg91AuthKey: ws.msg91AuthKey ?? undefined,
+        metaAccessToken: decryptNullable(ws.metaAccessToken) ?? undefined,
+        msg91AuthKey: decryptNullable(ws.msg91AuthKey) ?? undefined,
         msg91IntegratedNumber: ws.msg91IntegratedNumber ?? undefined,
       };
 

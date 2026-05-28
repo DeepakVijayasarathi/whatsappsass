@@ -25,7 +25,9 @@ export async function logAudit(opts: AuditOptions) {
         meta: opts.meta !== undefined ? (opts.meta as any) : undefined,
       },
     });
-  } catch {
-    // Audit log failures should never break the main flow
+  } catch (err) {
+    // Audit log failures must never break the main flow, but we log to stderr
+    // so DB outages are observable in container logs (grep for "[audit]").
+    console.error("[audit] Failed to write audit log:", (err as Error).message, { action: opts.action, workspaceId: opts.workspaceId });
   }
 }

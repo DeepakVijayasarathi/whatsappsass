@@ -4,10 +4,33 @@ import toast from "react-hot-toast";
 import { clearAuth } from "./auth";
 
 /** Safely extract a human-readable string from an API error response.
- *  Handles both plain-string errors and Zod flatten() objects. */
+ *  Handles three shapes:
+ *  1. Plain string:  { error: "Something went wrong" }
+ *  2. Zod flatten:  { error: { fieldErrors: { phone: ["Invalid"] }, formErrors: [] } }
+ *  3. Zod form-level: { error: { formErrors: ["Must have at least one step"] } }
+ */
 export function getErrMsg(err: unknown, fallback: string): string {
-  const data = (err as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
-  return typeof data === "string" && data.length > 0 ? data : fallback;
+  const errData = (err as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
+
+  // Shape 1 — plain string
+  if (typeof errData === "string" && errData.length > 0) return errData;
+
+  // Shape 2 & 3 — Zod flatten object
+  if (errData !== null && typeof errData === "object") {
+    const { fieldErrors, formErrors } = errData as {
+      fieldErrors?: Record<string, string[] | undefined>;
+      formErrors?: string[];
+    };
+    // Pick the first field error message (most specific)
+    if (fieldErrors) {
+      const first = Object.values(fieldErrors).flat().find((m): m is string => !!m);
+      if (first) return first;
+    }
+    // Fall back to form-level errors
+    if (formErrors?.[0]) return formErrors[0];
+  }
+
+  return fallback;
 }
 
 // All requests go to /api/* on the same origin.

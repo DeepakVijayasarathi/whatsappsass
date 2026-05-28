@@ -19,9 +19,15 @@ import { adminRoutes } from "./routes/admin";
 import { autoReplyRoutes } from "./routes/auto-replies";
 import { webhookRoutes } from "./routes/webhooks";
 import { sequenceRoutes } from "./routes/sequences";
+import { cannedResponseRoutes } from "./routes/canned-responses";
 import { startScheduler } from "./lib/scheduler";
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger: true,
+  // 5 MB max body — prevents memory exhaustion from large payloads.
+  // Webhooks (Meta / MSG91) send small JSON so this doesn't affect them.
+  bodyLimit: 5 * 1024 * 1024,
+});
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -31,9 +37,18 @@ if (!JWT_SECRET) {
 
 async function bootstrap() {
   await app.register(helmet, { global: true });
-  // Allow all origins — set CORS_ORIGIN_RESTRICT=true in env to re-enable allowlist
+  // When FRONTEND_URL is set, restrict CORS to that exact origin.
+  // The comparison is exact (not prefix) to prevent subdomain-bypass attacks.
+  // null/undefined origin (e.g. server-side tool calls) are blocked in production.
+  const frontendOrigin = process.env.FRONTEND_URL?.replace(/\/$/, "") ?? null;
+  const corsOrigin = frontendOrigin
+    ? (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => {
+        const normalised = origin?.replace(/\/$/, "");
+        cb(null, normalised === frontendOrigin);
+      }
+    : true; // dev: allow all
   await app.register(cors, {
-    origin: true,
+    origin: corsOrigin,
     credentials: true,
   });
   await app.register(jwt, { secret: JWT_SECRET! });
@@ -43,8 +58,12 @@ async function bootstrap() {
   await app.register(rateLimit as any, {
     max: 100,
     timeWindow: "1 minute",
-    // Exclude Meta webhook endpoints from rate limiting — Meta can burst many events
-    skip: (req: { url?: string }) => req.url?.startsWith("/whatsapp/webhook") ?? false,
+    // Exclude exact Meta webhook paths from rate limiting — Meta can burst many events.
+    // Only the two exact paths are skipped; a typo/variant won't accidentally bypass the limit.
+    skip: (req: { url?: string }) => {
+      const path = req.url?.split("?")[0];
+      return path === "/whatsapp/webhook" || path === "/whatsapp/msg91-webhook";
+    },
     // Expose standard headers so clients can self-throttle
     addHeaders: {
       "x-ratelimit-limit": true,
@@ -84,6 +103,7 @@ async function bootstrap() {
   await app.register(autoReplyRoutes, { prefix: "/auto-replies" });
   await app.register(webhookRoutes, { prefix: "/webhooks" });
   await app.register(sequenceRoutes, { prefix: "/sequences" });
+  await app.register(cannedResponseRoutes, { prefix: "/canned-responses" });
 
   const port = Number(process.env.PORT) || 4000;
   await app.listen({ port, host: "0.0.0.0" });

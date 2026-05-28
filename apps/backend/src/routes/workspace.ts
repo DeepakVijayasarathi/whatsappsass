@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
+import { encrypt, decryptNullable, maskHint } from "../lib/encrypt";
 
 export async function workspaceRoutes(app: FastifyInstance) {
   app.get("/me", { preHandler: [authenticate] }, async (request, reply) => {
@@ -270,8 +271,23 @@ export async function workspaceRoutes(app: FastifyInstance) {
         },
       });
 
-      const keepIfBlank = (submitted: string | undefined, stored: string | null | undefined): string =>
-        submitted && submitted.trim().length > 0 ? submitted.trim() : (stored ?? "");
+      // Keep the submitted value if non-blank, otherwise keep stored, otherwise null.
+      // Never stores empty string — that would cause downstream parsers (e.g. MSG91 number formats)
+      // to produce garbage. null means "not configured" and is handled gracefully everywhere.
+      const keepOrNull = (submitted: string | undefined, stored: string | null | undefined): string | null => {
+        const s = submitted?.trim() ?? "";
+        if (s.length > 0) return s;
+        const t = stored?.trim() ?? "";
+        return t.length > 0 ? t : null;
+      };
+
+      // Encrypt new secret values; keep (already-encrypted) stored value when blank
+      const encryptIfNew = (submitted: string | undefined, stored: string | null | undefined): string | null => {
+        const s = submitted?.trim() ?? "";
+        if (s.length > 0) return encrypt(s);           // new value → encrypt
+        const t = stored?.trim() ?? "";
+        return t.length > 0 ? t : null;                // keep stored (already encrypted) or null
+      };
 
       const updateData =
         parsed.data.whatsappProvider === "meta"
@@ -279,16 +295,15 @@ export async function workspaceRoutes(app: FastifyInstance) {
               whatsappProvider: "meta" as const,
               metaPhoneNumberId: parsed.data.metaPhoneNumberId?.trim() ?? "",
               metaWabaId: parsed.data.metaWabaId?.trim() ?? "",
-              // Secrets / optional: preserve existing when blank
-              metaAccessToken: keepIfBlank(parsed.data.metaAccessToken, existing?.metaAccessToken),
-              metaWebhookVerifyToken: keepIfBlank(parsed.data.metaWebhookVerifyToken, existing?.metaWebhookVerifyToken),
+              metaAccessToken: encryptIfNew(parsed.data.metaAccessToken, existing?.metaAccessToken),
+              metaWebhookVerifyToken: encryptIfNew(parsed.data.metaWebhookVerifyToken, existing?.metaWebhookVerifyToken),
               msg91AuthKey: null,
               msg91IntegratedNumber: null,
             }
           : {
               whatsappProvider: "msg91" as const,
-              msg91AuthKey: keepIfBlank(parsed.data.msg91AuthKey, existing?.msg91AuthKey),
-              msg91IntegratedNumber: keepIfBlank(parsed.data.msg91IntegratedNumber, existing?.msg91IntegratedNumber),
+              msg91AuthKey: encryptIfNew(parsed.data.msg91AuthKey, existing?.msg91AuthKey),
+              msg91IntegratedNumber: keepOrNull(parsed.data.msg91IntegratedNumber, existing?.msg91IntegratedNumber),
               metaPhoneNumberId: null,
               metaWabaId: null,
               metaAccessToken: null,
@@ -322,14 +337,35 @@ export async function workspaceRoutes(app: FastifyInstance) {
         smtpHost:      z.string().min(1),
         smtpPort:      z.number().int().min(1).max(65535).default(587),
         smtpUser:      z.string().min(1),
-        smtpPass:      z.string().min(1),
+        smtpPass:      z.string().optional(), // blank = keep existing
         smtpFromEmail: z.string().email(),
         smtpFromName:  z.string().optional(),
       });
       const parsed = schema.safeParse(request.body);
       if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
 
-      await prisma.workspace.update({ where: { id: user.workspaceId }, data: parsed.data });
+      const { smtpPass, ...rest } = parsed.data;
+
+      // Only update smtpPass when a new value is supplied
+      const updatePass = smtpPass?.trim()
+        ? { smtpPass: encrypt(smtpPass.trim()) }
+        : {};
+
+      // Validate that the workspace has a password (either stored or newly supplied)
+      if (!smtpPass?.trim()) {
+        const existing = await prisma.workspace.findUnique({
+          where: { id: user.workspaceId },
+          select: { smtpPass: true },
+        });
+        if (!existing?.smtpPass) {
+          return reply.status(400).send({ error: "SMTP password is required" });
+        }
+      }
+
+      await prisma.workspace.update({
+        where: { id: user.workspaceId },
+        data: { ...rest, ...updatePass },
+      });
       return reply.send({ message: "Email config saved" });
     }
   );
@@ -341,9 +377,16 @@ export async function workspaceRoutes(app: FastifyInstance) {
       const user = request.user as JwtPayload;
       const ws = await prisma.workspace.findUnique({
         where: { id: user.workspaceId },
-        select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpFromEmail: true, smtpFromName: true },
+        select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPass: true, smtpFromEmail: true, smtpFromName: true },
       });
-      return reply.send(ws ?? {});
+      if (!ws) return reply.send({});
+      const { smtpPass, ...safe } = ws;
+      const passPlain = decryptNullable(smtpPass);
+      return reply.send({
+        ...safe,
+        hasSmtpPass: !!(passPlain),
+        smtpPassHint: maskHint(passPlain),
+      });
     }
   );
 
@@ -366,12 +409,19 @@ export async function workspaceRoutes(app: FastifyInstance) {
         },
       });
       if (!workspace) return reply.status(404).send({ error: "Not found" });
-      // Never expose secret values — convert to boolean presence flags
-      const { metaAccessToken, msg91AuthKey, ...safe } = workspace;
+      // Decrypt to get plaintext for hint generation, but NEVER send the actual value
+      const metaTokenPlain = decryptNullable(workspace.metaAccessToken);
+      const msg91KeyPlain  = decryptNullable(workspace.msg91AuthKey);
+      const webhookTokenPlain = decryptNullable(workspace.metaWebhookVerifyToken);
+      const { metaAccessToken, msg91AuthKey, metaWebhookVerifyToken, ...safe } = workspace;
       return reply.send({
         ...safe,
-        hasMetaAccessToken: !!(metaAccessToken && metaAccessToken.trim()),
-        hasMsg91AuthKey: !!(msg91AuthKey && msg91AuthKey.trim()),
+        hasMetaAccessToken:        !!(metaTokenPlain),
+        hasMsg91AuthKey:           !!(msg91KeyPlain),
+        metaAccessTokenHint:       maskHint(metaTokenPlain),
+        msg91AuthKeyHint:          maskHint(msg91KeyPlain),
+        metaWebhookVerifyToken:    webhookTokenPlain,      // not a signing secret — safe to return
+        metaWebhookVerifyTokenHint: maskHint(webhookTokenPlain),
       });
     }
   );

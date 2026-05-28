@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
 import { api, getErrMsg } from "@/lib/api";
-import { Send, BookOpen } from "lucide-react";
+import { Send, BookOpen, Loader2 } from "lucide-react";
 import TemplatePicker, { type Template } from "@/components/TemplatePicker";
 
 const schema = z.object({
@@ -37,6 +37,8 @@ export default function SendPage() {
   const [showPicker, setShowPicker] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [varValues, setVarValues] = useState<Record<number, string>>({});
+  const [lookingUp, setLookingUp] = useState(false);
+  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     register,
@@ -49,6 +51,34 @@ export default function SendPage() {
 
   const templateName = watch("templateName");
   const variables = extractVariables(selectedTemplate?.body ?? null);
+
+  // Auto-lookup template body when user types a name manually (debounced 600ms)
+  useEffect(() => {
+    if (!templateName || templateName === selectedTemplate?.name) return;
+    if (lookupTimer.current) clearTimeout(lookupTimer.current);
+    lookupTimer.current = setTimeout(async () => {
+      setLookingUp(true);
+      try {
+        const r = await api.get("/templates");
+        const match = (r.data.templates as Template[]).find(
+          (t) => t.name.toLowerCase() === templateName.toLowerCase()
+        );
+        if (match) {
+          setSelectedTemplate(match);
+          setValue("languageCode", match.language, { shouldValidate: false });
+        } else {
+          // Template not found in provider — keep the typed name but clear the cached template
+          setSelectedTemplate(null);
+        }
+      } catch {
+        // silently ignore — user can still type and send
+      } finally {
+        setLookingUp(false);
+      }
+    }, 600);
+    return () => { if (lookupTimer.current) clearTimeout(lookupTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateName]);
 
   const onSelect = (t: Template) => {
     setValue("templateName", t.name, { shouldValidate: true });
@@ -80,7 +110,7 @@ export default function SendPage() {
     }
   };
 
-  // Highlight template body substituting variables
+  // Preview with variable substitution
   const previewBody = selectedTemplate?.body
     ? selectedTemplate.body.replace(/\{\{(\d+)\}\}/g, (_, n) => varValues[Number(n)] || `{{${n}}}`)
     : null;
@@ -134,20 +164,35 @@ export default function SendPage() {
                   Browse templates
                 </button>
               </div>
-              <input
-                {...register("templateName")}
-                className="input font-mono"
-                placeholder="hello_world"
-                onChange={(e) => {
-                  setValue("templateName", e.target.value, { shouldValidate: true });
-                  if (selectedTemplate && e.target.value !== selectedTemplate.name) {
-                    setSelectedTemplate(null);
-                    setVarValues({});
-                  }
-                }}
-              />
+              <div className="relative">
+                <input
+                  {...register("templateName")}
+                  className="input font-mono pr-8"
+                  placeholder="hello_world"
+                  onChange={(e) => {
+                    setValue("templateName", e.target.value, { shouldValidate: true });
+                    // Clear cached template if name is manually edited away from it
+                    if (selectedTemplate && e.target.value !== selectedTemplate.name) {
+                      setSelectedTemplate(null);
+                      setVarValues({});
+                    }
+                  }}
+                />
+                {lookingUp && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-gray-400" />
+                )}
+              </div>
               {errors.templateName && (
                 <p className="text-red-500 text-xs mt-1">{errors.templateName.message}</p>
+              )}
+              {selectedTemplate && !lookingUp && (
+                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block" />
+                  Template found · {selectedTemplate.category.toLowerCase()} · {selectedTemplate.language}
+                </p>
+              )}
+              {templateName && !selectedTemplate && !lookingUp && (
+                <p className="text-xs text-amber-500 mt-1">Template not found in provider — you can still send if it exists</p>
               )}
             </div>
 
@@ -192,9 +237,12 @@ export default function SendPage() {
           {previewBody ? (
             <div className="card">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Message preview</p>
-              <div className="bg-gray-50 rounded-xl p-4 relative">
-                <div className="absolute -left-1 top-3 w-2 h-4 bg-gray-50 rounded-l" />
-                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{previewBody}</p>
+              {/* WhatsApp-style bubble */}
+              <div className="bg-[#e5ddd5] rounded-xl p-3">
+                <div className="bg-white rounded-xl rounded-tl-none px-4 py-3 shadow-sm max-w-[90%]">
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{previewBody}</p>
+                  <p className="text-[10px] text-gray-400 text-right mt-1">WhatsApp template</p>
+                </div>
               </div>
               <p className="text-[10px] text-gray-400 mt-2 text-right">
                 Template: <code className="font-mono">{templateName}</code>
@@ -213,7 +261,8 @@ export default function SendPage() {
             <ul className="space-y-1.5 text-xs text-blue-600">
               <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>Include country code: <code className="font-mono">+1</code> for USA, <code className="font-mono">+91</code> for India</li>
               <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>Only approved Meta templates can be sent</li>
-              <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>For bulk sends, use Campaigns instead</li>
+              <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>Type a template name to auto-look up its body and variables</li>
+              <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>For bulk sends, use <a href="/campaigns" className="underline font-semibold">Campaigns</a> instead</li>
             </ul>
           </div>
         </div>

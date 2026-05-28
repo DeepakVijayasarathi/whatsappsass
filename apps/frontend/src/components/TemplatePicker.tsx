@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import Link from "next/link";
-import { X, Search, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { X, Search, CheckCircle2, AlertCircle, Clock, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 
 export interface Template {
@@ -21,13 +21,18 @@ interface Props {
   onClose: () => void;
 }
 
-const statusStyle: Record<string, { badge: string; icon: React.ElementType }> = {
-  APPROVED:  { badge: "bg-green-100 text-green-700",  icon: CheckCircle2 },
-  PENDING:   { badge: "bg-yellow-100 text-yellow-700", icon: Clock },
-  REJECTED:  { badge: "bg-red-100 text-red-600",      icon: AlertCircle },
-  PAUSED:    { badge: "bg-gray-100 text-gray-600",     icon: AlertCircle },
-  DISABLED:  { badge: "bg-gray-100 text-gray-500",     icon: AlertCircle },
+const STATUS_META: Record<string, { badge: string; icon: React.ElementType; label: string }> = {
+  APPROVED:  { badge: "bg-green-100 text-green-700",  icon: CheckCircle2, label: "Approved" },
+  PENDING:   { badge: "bg-yellow-100 text-yellow-700", icon: Clock,        label: "Pending" },
+  REJECTED:  { badge: "bg-red-100 text-red-600",       icon: AlertCircle,  label: "Rejected" },
+  PAUSED:    { badge: "bg-gray-100 text-gray-600",     icon: AlertCircle,  label: "Paused" },
+  DISABLED:  { badge: "bg-gray-100 text-gray-500",     icon: AlertCircle,  label: "Disabled" },
 };
+
+// Module-level cache so the picker doesn't re-fetch on every open during the same session
+let _cachedTemplates: Template[] | null = null;
+let _cacheTs = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export default function TemplatePicker({ onSelect, onClose }: Props) {
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -35,17 +40,39 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"ALL" | "APPROVED">("APPROVED");
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const fetchTemplates = (force = false) => {
+    const now = Date.now();
+    if (!force && _cachedTemplates && now - _cacheTs < CACHE_TTL_MS) {
+      setTemplates(_cachedTemplates);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
     api.get("/templates")
-      .then((r) => setTemplates(r.data.templates))
+      .then((r) => {
+        const tmpl: Template[] = r.data.templates ?? [];
+        _cachedTemplates = tmpl;
+        _cacheTs = Date.now();
+        setTemplates(tmpl);
+      })
       .catch((e) => setError(e.response?.data?.error ?? "Failed to load templates"))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchTemplates();
+    // Focus search input after mount
+    setTimeout(() => searchRef.current?.focus(), 80);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = templates.filter((t) => {
     const matchStatus = filterStatus === "ALL" || t.status === filterStatus;
-    const matchSearch = !search || t.name.toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase();
+    const matchSearch = !q || t.name.toLowerCase().includes(q) || (t.body ?? "").toLowerCase().includes(q);
     return matchStatus && matchSearch;
   });
 
@@ -58,9 +85,19 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
             <h2 className="text-lg font-bold text-gray-900">Select Template</h2>
             <p className="text-xs text-gray-400 mt-0.5">Choose from your approved WhatsApp templates</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fetchTemplates(true)}
+              disabled={loading}
+              className="icon-btn"
+              title="Refresh templates"
+            >
+              <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -68,10 +105,11 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              ref={searchRef}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="input pl-9 text-sm"
-              placeholder="Search templates..."
+              placeholder="Search by name or body text..."
             />
           </div>
           <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0">
@@ -95,8 +133,8 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
         {/* List */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
-              Loading templates...
+            <div className="flex items-center justify-center py-16 text-gray-400 text-sm gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin" /> Loading templates...
             </div>
           ) : error ? (
             <div className="p-6">
@@ -116,14 +154,19 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
               </div>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-sm">
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-sm gap-1">
               <p>No templates found</p>
-              {search && <p className="text-xs mt-1">Try a different search term</p>}
+              {search && <p className="text-xs">Try a different search term</p>}
+              {filterStatus === "APPROVED" && !search && (
+                <p className="text-xs mt-1">
+                  <button onClick={() => setFilterStatus("ALL")} className="text-brand underline">Show all statuses</button>
+                </p>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
               {filtered.map((t) => {
-                const style = statusStyle[t.status] ?? { badge: "bg-gray-100 text-gray-600", icon: AlertCircle };
+                const style = STATUS_META[t.status] ?? { badge: "bg-gray-100 text-gray-600", icon: AlertCircle, label: t.status };
                 const StatusIcon = style.icon;
                 const isApproved = t.status === "APPROVED";
                 return (
@@ -133,9 +176,7 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
                     disabled={!isApproved}
                     className={clsx(
                       "w-full text-left px-5 py-4 transition-colors",
-                      isApproved
-                        ? "hover:bg-brand/5 cursor-pointer"
-                        : "opacity-60 cursor-not-allowed"
+                      isApproved ? "hover:bg-brand/5 cursor-pointer" : "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <div className="flex items-start gap-3">
@@ -144,7 +185,7 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
                           <span className="font-semibold text-sm text-gray-900 font-mono">{t.name}</span>
                           <span className={clsx("inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full", style.badge)}>
                             <StatusIcon className="w-3 h-3" />
-                            {t.status}
+                            {style.label}
                           </span>
                           <span className="text-[11px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{t.language}</span>
                           <span className="text-[11px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full capitalize">{t.category.toLowerCase()}</span>
@@ -164,8 +205,13 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400">
-          {!loading && !error && `${filtered.length} of ${templates.length} templates shown`}
+        <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between">
+          <span>{!loading && !error && `${filtered.length} of ${templates.length} templates`}</span>
+          {!loading && !error && (
+            <Link href="/templates" onClick={onClose} className="text-brand hover:underline font-medium">
+              Manage templates →
+            </Link>
+          )}
         </div>
       </div>
     </div>

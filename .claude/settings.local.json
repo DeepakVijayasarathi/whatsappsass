@@ -21,7 +21,9 @@
       "WebFetch(domain:msg91.com)",
       "WebFetch(domain:docs.msg91.com)",
       "WebFetch(domain:api.msg91.com)",
-      "WebFetch(domain:control.msg01.com)"
+      "WebFetch(domain:control.msg01.com)",
+      "Bash(Get-ChildItem -Path \"D:\\\\poc\\\\whatsappsass\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)"
     ]
   }
 }

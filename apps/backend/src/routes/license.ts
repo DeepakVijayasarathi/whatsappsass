@@ -43,16 +43,28 @@ export async function licenseRoutes(app: FastifyInstance) {
         return reply.status(410).send({ error: "License key has expired" });
       }
 
-      await prisma.$transaction([
-        prisma.licenseKey.update({
-          where: { key: parsed.data.key },
-          data: { workspaceId: user.workspaceId, status: "active" },
-        }),
-        prisma.workspace.update({
-          where: { id: user.workspaceId },
-          data: { licenseKey: parsed.data.key, plan: license.plan },
-        }),
-      ]);
+      // Atomic "claim" using updateMany with a WHERE condition — prevents TOCTOU.
+      // Two concurrent requests both pass the checks above, but only ONE can
+      // win this updateMany because it matches only unassigned (workspaceId IS NULL) rows.
+      const claimed = await prisma.licenseKey.updateMany({
+        where: { key: parsed.data.key, workspaceId: null },
+        data: { workspaceId: user.workspaceId, status: "active" },
+      });
+
+      if (claimed.count === 0) {
+        // Another request beat us to it (or the key was already assigned)
+        const current = await prisma.licenseKey.findUnique({ where: { key: parsed.data.key }, select: { workspaceId: true } });
+        if (current?.workspaceId && current.workspaceId !== user.workspaceId) {
+          return reply.status(409).send({ error: "License key is already in use by another workspace" });
+        }
+        // If same workspace claimed it in the race, fall through to success
+      }
+
+      // Bind the license to this workspace (idempotent — safe to call even if already set)
+      await prisma.workspace.update({
+        where: { id: user.workspaceId },
+        data: { licenseKey: parsed.data.key, plan: license.plan },
+      });
 
       return reply.send({
         message: "License activated successfully",

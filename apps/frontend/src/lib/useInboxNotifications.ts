@@ -10,9 +10,13 @@ export function useInboxNotifications(
   const prevCountRef = useRef<number | null>(null);
 
   const requestPermission = () => {
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+    if (typeof Notification === "undefined") return;
+    // Only prompt once — "default" means not yet decided; "granted"/"denied" are final.
+    if (Notification.permission !== "default") return;
+    // Delay to avoid prompting immediately on page load (bad UX)
+    setTimeout(() => {
       Notification.requestPermission().catch(() => {});
-    }
+    }, 5_000);
   };
 
   const check = async () => {

@@ -17,6 +17,12 @@ interface OverviewData {
   totalCampaigns: number;
   totalMessages: number;
   messagesByStatus: Record<string, number>;
+  trends?: {
+    messagesThisWeek: number;
+    messagesTrend: number | null;
+    contactsThisWeek: number;
+    contactsTrend: number | null;
+  };
 }
 
 interface RecentCampaign {
@@ -52,9 +58,9 @@ const quickActions = [
   { href: "/inbox",     icon: Inbox,     label: "View Inbox",    desc: "Check incoming replies",   color: "text-orange-500",bg: "bg-orange-50" },
 ];
 
-function StatCard({ label, value, icon: Icon, color, bg, trend }: {
+function StatCard({ label, value, icon: Icon, color, bg, trend, trendCls }: {
   label: string; value: string | number; icon: React.ElementType;
-  color: string; bg: string; trend?: string;
+  color: string; bg: string; trend?: string; trendCls?: string;
 }) {
   return (
     <div className="card flex items-center gap-4 hover:shadow-md transition-all duration-200 group">
@@ -68,7 +74,7 @@ function StatCard({ label, value, icon: Icon, color, bg, trend }: {
         <p className="text-sm text-gray-500 mt-0.5">{label}</p>
       </div>
       {trend && (
-        <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg shrink-0">
+        <span className={`text-xs font-semibold px-2 py-1 rounded-lg shrink-0 ${trendCls ?? "text-emerald-600 bg-emerald-50"}`}>
           {trend}
         </span>
       )}
@@ -147,11 +153,18 @@ export default function DashboardPage() {
   const deliveryRate    = totalMessages > 0 ? Math.round(((delivered + read) / totalMessages) * 100) : 0;
   const readRate        = totalMessages > 0 ? Math.round((read / totalMessages) * 100) : 0;
 
+  const fmtTrend = (v: number | null | undefined) => {
+    if (v === null || v === undefined) return undefined;
+    return v >= 0 ? `+${v}% vs last week` : `${v}% vs last week`;
+  };
+  const trendColor = (v: number | null | undefined) =>
+    v === null || v === undefined ? "" : v >= 0 ? "text-emerald-600 bg-emerald-50" : "text-red-600 bg-red-50";
+
   const stats = [
-    { label: "Total Contacts",  value: data?.totalContacts ?? 0,  icon: Users,         color: "text-blue-500",   bg: "bg-blue-50" },
+    { label: "Total Contacts",  value: data?.totalContacts ?? 0,  icon: Users,         color: "text-blue-500",   bg: "bg-blue-50",   trend: fmtTrend(data?.trends?.contactsTrend), trendCls: trendColor(data?.trends?.contactsTrend) },
     { label: "Campaigns",       value: data?.totalCampaigns ?? 0, icon: Megaphone,     color: "text-purple-500", bg: "bg-purple-50" },
-    { label: "Messages Sent",   value: totalMessages,             icon: MessageSquare, color: "text-emerald-500",bg: "bg-emerald-50" },
-    { label: "Delivery Rate",   value: `${deliveryRate}%`,        icon: CheckCircle2,  color: "text-brand",      bg: "bg-brand/10",  trend: deliveryRate >= 90 ? "Excellent" : undefined },
+    { label: "Messages Sent",   value: totalMessages,             icon: MessageSquare, color: "text-emerald-500",bg: "bg-emerald-50", trend: fmtTrend(data?.trends?.messagesTrend), trendCls: trendColor(data?.trends?.messagesTrend) },
+    { label: "Delivery Rate",   value: `${deliveryRate}%`,        icon: CheckCircle2,  color: "text-brand",      bg: "bg-brand/10",  trend: deliveryRate >= 90 ? "Excellent" : undefined, trendCls: "text-emerald-600 bg-emerald-50" },
   ];
 
   const greetingHour = new Date().getHours();

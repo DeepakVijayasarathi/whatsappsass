@@ -42,7 +42,7 @@ const AVATAR_COLORS = [
 ];
 
 function avatarColor(name: string) {
-  return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+  return AVATAR_COLORS[(name.charCodeAt(0) || 0) % AVATAR_COLORS.length];
 }
 
 export default function CrmPage() {
@@ -160,7 +160,7 @@ export default function CrmPage() {
                     {/* Name + avatar */}
                     <div className="flex items-start gap-2 mb-2">
                       <div className={clsx("w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold mt-0.5", avatarColor(contact.name))}>
-                        {contact.name[0]?.toUpperCase()}
+                        {contact.name?.[0]?.toUpperCase() ?? "?"}
                       </div>
                       <div className="flex-1 min-w-0">
                         <Link

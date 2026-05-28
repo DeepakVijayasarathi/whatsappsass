@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Shield, Key, Wifi, RefreshCw, Building2, Mail, CheckCircle2, UserCog, Eye, EyeOff } from "lucide-react";
+import { Shield, Key, Wifi, RefreshCw, Building2, Mail, CheckCircle2, UserCog, Eye, EyeOff, AlertTriangle, Clipboard, FlaskConical } from "lucide-react";
 import clsx from "clsx";
 
 const licenseSchema = z.object({
@@ -30,9 +30,12 @@ interface ProviderConfig {
   metaPhoneNumberId?: string | null;
   metaWabaId?: string | null;
   metaWebhookVerifyToken?: string | null;
+  metaWebhookVerifyTokenHint?: string | null;
   msg91IntegratedNumber?: string | null;
   hasMetaAccessToken?: boolean;
   hasMsg91AuthKey?: boolean;
+  metaAccessTokenHint?: string | null;
+  msg91AuthKeyHint?: string | null;
 }
 
 export default function SettingsPage() {
@@ -42,6 +45,8 @@ export default function SettingsPage() {
   const [metaEnabled, setMetaEnabled] = useState(false);
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
   const [toggling, setToggling] = useState(false);
+  const [testingProvider, setTestingProvider] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"provider" | "email" | "workspace" | "account" | "license">("provider");
 
   const {
@@ -166,9 +171,33 @@ export default function SettingsPage() {
     try {
       await api.patch("/workspace/provider", payload);
       toast.success("Provider saved");
+      setTestResult(null);
       loadStatus();
     } catch (err: unknown) {
-      toast.error(getErrMsg(err, "Failed to save provider"));
+      // Surface backend field-level validation errors when present
+      const errData = (err as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
+      if (errData && typeof errData === "object" && "fieldErrors" in errData) {
+        const fieldErrors = (errData as { fieldErrors: Record<string, string[]> }).fieldErrors;
+        const first = Object.values(fieldErrors).flat()[0];
+        toast.error(first ?? "Validation failed — check your inputs");
+      } else {
+        toast.error(getErrMsg(err, "Failed to save provider"));
+      }
+    }
+  };
+
+  const testProviderCredentials = async () => {
+    setTestingProvider(true);
+    setTestResult(null);
+    try {
+      const r = await api.get("/templates");
+      const count = r.data.total ?? (r.data.templates?.length ?? 0);
+      setTestResult({ ok: true, msg: `Connected ✓ — ${count} template${count !== 1 ? "s" : ""} found` });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Credentials test failed";
+      setTestResult({ ok: false, msg });
+    } finally {
+      setTestingProvider(false);
     }
   };
 
@@ -222,25 +251,43 @@ export default function SettingsPage() {
         {/* ── Provider tab ── */}
         {activeTab === "provider" && (
           <>
-            {/* Enable / disable toggle */}
+            {/* Enable / disable toggle + status */}
             <div className="card">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center">
-                  <Wifi className="w-5 h-5 text-green-500" />
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center">
+                    <Wifi className="w-5 h-5 text-green-500" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900">WhatsApp sending</p>
+                    <p className="text-xs text-gray-400">
+                      Provider:{" "}
+                      <span className="font-medium capitalize">
+                        {providerConfig?.whatsappProvider ?? "—"}
+                      </span>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-gray-900">WhatsApp API toggle</p>
-                  <p className="text-xs text-gray-400">
-                    Current provider:{" "}
-                    <span className="font-medium capitalize">
-                      {providerConfig?.whatsappProvider ?? "—"}
+                {/* Configuration completeness badge */}
+                {providerConfig && (() => {
+                  const isConfigured = providerConfig.whatsappProvider === "meta"
+                    ? !!(providerConfig.hasMetaAccessToken && providerConfig.metaPhoneNumberId && providerConfig.metaWabaId)
+                    : !!(providerConfig.hasMsg91AuthKey && providerConfig.msg91IntegratedNumber);
+                  return isConfigured ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
+                      <CheckCircle2 className="w-3 h-3" /> Configured
                     </span>
-                  </p>
-                </div>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
+                      <AlertTriangle className="w-3 h-3" /> Credentials missing
+                    </span>
+                  );
+                })()}
               </div>
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl mb-3">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Send messages</p>
+                  <p className="text-sm font-medium text-gray-900">Enable sending</p>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {metaEnabled ? "Enabled — messages can be sent" : "Disabled — all sends are blocked"}
                   </p>
@@ -252,13 +299,15 @@ export default function SettingsPage() {
                     metaEnabled ? "bg-brand" : "bg-gray-300"
                   }`}
                 >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                      metaEnabled ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${metaEnabled ? "translate-x-6" : "translate-x-1"}`} />
                 </button>
               </div>
+
+              {!metaEnabled && (
+                <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                  ⚠ WhatsApp sending is disabled. Configure your provider credentials below, then toggle this on.
+                </p>
+              )}
             </div>
 
             {/* Provider selection + credentials */}
@@ -324,28 +373,23 @@ export default function SettingsPage() {
                       error={providerErrors.metaWabaId}
                     />
                     <Field
-                      label={providerConfig?.hasMetaAccessToken
-                        ? "Access Token (stored ✓ — leave blank to keep)"
-                        : "Access Token"}
-                      placeholder={providerConfig?.hasMetaAccessToken
-                        ? "••••••••  (only fill to change)"
-                        : "EAAxxxxxxxx…"}
+                      label="Access Token"
+                      placeholder={providerConfig?.hasMetaAccessToken ? "Leave blank to keep current token" : "EAAxxxxxxxx…"}
                       mono
                       type="password"
                       autoComplete="new-password"
                       {...regProvider("metaAccessToken")}
                       domRef={metaAccessTokenRef}
+                      hint={providerConfig?.metaAccessTokenHint}
                       error={providerErrors.metaAccessToken}
                     />
                     <Field
-                      label={providerConfig?.metaWebhookVerifyToken
-                        ? "Webhook Verify Token (stored ✓ — leave blank to keep)"
-                        : "Webhook Verify Token"}
-                      placeholder={providerConfig?.metaWebhookVerifyToken
-                        ? "••••••••  (only fill to change)"
-                        : "my_random_verify_token"}
+                      label="Webhook Verify Token"
+                      placeholder={providerConfig?.metaWebhookVerifyTokenHint ? "Leave blank to keep current token" : "my_random_verify_token"}
                       mono
+                      type="password"
                       {...regProvider("metaWebhookVerifyToken")}
+                      hint={providerConfig?.metaWebhookVerifyTokenHint}
                       error={providerErrors.metaWebhookVerifyToken}
                     />
                     <p className="text-xs text-gray-400">
@@ -358,17 +402,14 @@ export default function SettingsPage() {
                 {selectedProvider === "msg91" && (
                   <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
                     <Field
-                      label={providerConfig?.hasMsg91AuthKey
-                        ? "MSG91 Auth Key (stored ✓ — leave blank to keep)"
-                        : "MSG91 Auth Key"}
-                      placeholder={providerConfig?.hasMsg91AuthKey
-                        ? "••••••••  (only fill to change)"
-                        : "Enter your MSG91 auth key"}
+                      label="MSG91 Auth Key"
+                      placeholder={providerConfig?.hasMsg91AuthKey ? "Leave blank to keep current key" : "Enter your MSG91 auth key"}
                       mono
                       type="password"
                       autoComplete="new-password"
                       {...regProvider("msg91AuthKey")}
                       domRef={msg91AuthKeyRef}
+                      hint={providerConfig?.msg91AuthKeyHint}
                       error={providerErrors.msg91AuthKey}
                     />
                     <Field
@@ -385,9 +426,74 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                <button type="submit" disabled={providerSubmitting} className="btn-primary">
-                  {providerSubmitting ? "Saving..." : "Save Provider"}
-                </button>
+                {/* Webhook URL hints */}
+                {selectedProvider === "meta" && (
+                  <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700 space-y-2">
+                    <p className="font-semibold">Meta Business Manager setup</p>
+                    <p>In your <strong>Meta App → WhatsApp → Configuration</strong>, set:</p>
+                    <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-blue-100">
+                      <code className="flex-1 font-mono text-[11px] text-blue-900 break-all">
+                        {typeof window !== "undefined" ? window.location.origin : "https://yourdomain.com"}/api/whatsapp/webhook
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/api/whatsapp/webhook`); toast.success("Copied!"); }}
+                        className="shrink-0 text-blue-400 hover:text-blue-700"
+                        title="Copy URL"
+                      >
+                        <Clipboard className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <p>Use your <strong>Webhook Verify Token</strong> value above as the "Verify token" in Meta.</p>
+                    <p>Subscribe to <code className="bg-blue-100 px-1 rounded">messages</code> and <code className="bg-blue-100 px-1 rounded">message_status_updates</code> fields.</p>
+                  </div>
+                )}
+
+                {selectedProvider === "msg91" && (
+                  <div className="p-3 bg-purple-50 rounded-xl text-xs text-purple-700 space-y-2">
+                    <p className="font-semibold">MSG91 dashboard setup</p>
+                    <p>In <strong>MSG91 → WhatsApp → Webhooks</strong>, set your delivery/inbound webhook to:</p>
+                    <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-purple-100">
+                      <code className="flex-1 font-mono text-[11px] text-purple-900 break-all">
+                        {typeof window !== "undefined" ? window.location.origin : "https://yourdomain.com"}/api/whatsapp/msg91-webhook
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/api/whatsapp/msg91-webhook`); toast.success("Copied!"); }}
+                        className="shrink-0 text-purple-400 hover:text-purple-700"
+                        title="Copy URL"
+                      >
+                        <Clipboard className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <p>This URL receives delivery receipts and inbound messages from MSG91.</p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <button type="submit" disabled={providerSubmitting} className="btn-primary">
+                    {providerSubmitting ? "Saving..." : "Save Provider"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={testProviderCredentials}
+                    disabled={testingProvider || providerSubmitting}
+                    className="btn-secondary flex items-center gap-2"
+                  >
+                    <FlaskConical className="w-4 h-4" />
+                    {testingProvider ? "Testing..." : "Test credentials"}
+                  </button>
+                </div>
+
+                {/* Test result */}
+                {testResult && (
+                  <div className={`flex items-center gap-2 text-sm rounded-xl px-3 py-2 ${testResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                    {testResult.ok
+                      ? <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                    <span>{testResult.msg}</span>
+                  </div>
+                )}
               </form>
             </div>
           </>
@@ -464,27 +570,51 @@ function Field({
   error,
   mono,
   domRef,
+  hint,
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   error?: string;
   mono?: boolean;
+  hint?: string | null;
   // Extra DOM ref for reading autofilled values that bypass React onChange
   domRef?: React.MutableRefObject<HTMLInputElement | null>;
 }) {
-  const { ref: rhfRef, ...restProps } = props as typeof props & { ref?: React.Ref<HTMLInputElement> };
+  const [showSecret, setShowSecret] = useState(false);
+  const isSecret = props.type === "password";
+  const { ref: rhfRef, type, ...restProps } = props as typeof props & { ref?: React.Ref<HTMLInputElement> };
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <input
-        className={clsx("input", mono && "font-mono text-xs")}
-        {...restProps}
-        ref={(el: HTMLInputElement | null) => {
-          if (typeof rhfRef === "function") rhfRef(el);
-          else if (rhfRef && "current" in rhfRef) (rhfRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
-          if (domRef) domRef.current = el;
-        }}
-      />
+      <div className="relative">
+        <input
+          className={clsx("input pr-9", mono && "font-mono text-xs")}
+          type={isSecret && !showSecret ? "password" : "text"}
+          {...restProps}
+          ref={(el: HTMLInputElement | null) => {
+            if (typeof rhfRef === "function") rhfRef(el);
+            else if (rhfRef && "current" in rhfRef) (rhfRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+            if (domRef) domRef.current = el;
+          }}
+        />
+        {isSecret && (
+          <button
+            type="button"
+            onClick={() => setShowSecret((v) => !v)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            tabIndex={-1}
+            title={showSecret ? "Hide" : "Show"}
+          >
+            {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        )}
+      </div>
+      {hint && (
+        <p className="text-[11px] text-gray-400 mt-1 font-mono flex items-center gap-1">
+          <span className="text-green-600">✓ Stored:</span> {hint}
+        </p>
+      )}
       {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>
   );
@@ -737,12 +867,14 @@ function EmailSettings() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testOk, setTestOk] = useState<boolean | null>(null);
+  const [showSmtpPass, setShowSmtpPass] = useState(false);
+  const [smtpPassHint, setSmtpPassHint] = useState<string | null>(null);
 
   const schema = z.object({
     smtpHost:      z.string().min(1, "Host required"),
     smtpPort:      z.coerce.number().int().min(1).max(65535).default(587),
     smtpUser:      z.string().min(1, "Username required"),
-    smtpPass:      z.string().min(1, "Password required"),
+    smtpPass:      z.string().optional(),
     smtpFromEmail: z.string().email("Invalid from email"),
     smtpFromName:  z.string().optional(),
   });
@@ -753,7 +885,8 @@ function EmailSettings() {
     defaultValues: async () => {
       try {
         const res = await api.get("/workspace/smtp");
-        return { smtpPort: 587, ...res.data };
+        setSmtpPassHint(res.data.smtpPassHint ?? null);
+        return { smtpPort: 587, ...res.data, smtpPass: "" };
       } catch {
         return { smtpPort: 587, smtpHost: "", smtpUser: "", smtpPass: "", smtpFromEmail: "", smtpFromName: "" };
       }
@@ -826,7 +959,22 @@ function EmailSettings() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password / App Password</label>
-            <input {...register("smtpPass")} type="password" className="input" placeholder="••••••••" />
+            <div className="relative">
+              <input
+                {...register("smtpPass")}
+                type={showSmtpPass ? "text" : "password"}
+                className="input pr-9"
+                placeholder={smtpPassHint ? "Leave blank to keep current password" : "App password"}
+              />
+              <button type="button" onClick={() => setShowSmtpPass((v) => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabIndex={-1}>
+                {showSmtpPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            {smtpPassHint && (
+              <p className="text-[11px] text-gray-400 mt-1 font-mono flex items-center gap-1">
+                <span className="text-green-600">✓ Stored:</span> {smtpPassHint}
+              </p>
+            )}
             {errors.smtpPass && <p className="text-red-500 text-xs mt-1">{errors.smtpPass.message}</p>}
           </div>
         </div>

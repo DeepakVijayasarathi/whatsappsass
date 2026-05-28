@@ -24,7 +24,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    // In production, send to your error tracker (Sentry, etc.)
+    // Production: forward to your error tracker (Sentry, etc.)
     console.error("[ErrorBoundary] Uncaught error:", error, info.componentStack);
   }
 
@@ -35,26 +35,35 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-[40vh] p-8 text-center">
-          <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mb-4">
-            <AlertTriangle className="w-7 h-7 text-red-500" />
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex flex-col items-center justify-center min-h-[40vh] p-8 text-center animate-fade-in"
+        >
+          <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mb-5 shadow-sm">
+            <AlertTriangle className="w-8 h-8 text-red-400" aria-hidden="true" />
           </div>
-          <h2 className="text-lg font-bold text-gray-900 mb-1">Something went wrong</h2>
-          <p className="text-sm text-gray-500 mb-1 max-w-xs">
+
+          <h2 className="text-lg font-bold text-gray-900 mb-1.5">
+            Something went wrong
+          </h2>
+          <p className="text-sm text-gray-500 mb-1 max-w-sm leading-relaxed">
             {this.props.label
-              ? `An error occurred in ${this.props.label}.`
-              : "An unexpected error occurred."}
+              ? `An unexpected error occurred in ${this.props.label}.`
+              : "An unexpected error occurred. The page may be in an inconsistent state."}
           </p>
-          {process.env.NODE_ENV === "development" && (
-            <pre className="mt-2 mb-4 text-left text-xs bg-gray-50 border border-gray-200 rounded-lg p-3 max-w-lg overflow-auto text-red-700">
+
+          {process.env.NODE_ENV === "development" && this.state.error && (
+            <pre className="mt-3 mb-5 text-left text-xs bg-gray-50 border border-gray-200 rounded-xl p-4 max-w-lg w-full overflow-auto text-red-600 shadow-xs">
               {this.state.error.message}
             </pre>
           )}
+
           <button
             onClick={this.handleReset}
-            className="mt-3 flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            className="btn-secondary mt-4 flex items-center gap-2"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className="w-4 h-4" aria-hidden="true" />
             Try again
           </button>
         </div>

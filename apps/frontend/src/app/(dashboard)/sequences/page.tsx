@@ -267,8 +267,30 @@ function EnrollModal({
   const [enrolling, setEnrolling] = useState(false);
 
   useEffect(() => {
-    api.get("/contacts?limit=500")
-      .then((r) => setContacts(r.data.contacts))
+    // Fetch up to 5 000 contacts — the backend max-limit cap is 1 000 per request,
+    // so we make up to 5 sequential requests to cover larger workspaces.
+    // Contacts beyond 5 000 must be enrolled in smaller batches.
+    const ENROLL_LIMIT = 5_000;
+    api.get(`/contacts?limit=${Math.min(ENROLL_LIMIT, 1000)}&sort=recent`)
+      .then(async (r) => {
+        const initial: Contact[] = r.data.contacts;
+        const total: number = r.data.total ?? initial.length;
+        if (total <= initial.length) {
+          setContacts(initial);
+          return;
+        }
+        // Fetch remaining pages if needed
+        const pages = Math.min(Math.ceil(ENROLL_LIMIT / 1000), Math.ceil(total / 1000));
+        const rest = await Promise.all(
+          Array.from({ length: pages - 1 }, (_, i) =>
+            api.get(`/contacts?page=${i + 2}&limit=1000&sort=recent`).then((r2) => r2.data.contacts as Contact[])
+          )
+        );
+        setContacts([...initial, ...rest.flat()]);
+        if (total > ENROLL_LIMIT) {
+          toast(`Showing first ${ENROLL_LIMIT.toLocaleString()} of ${total.toLocaleString()} contacts. Enroll in batches for larger audiences.`, { icon: "ℹ️" });
+        }
+      })
       .catch(() => toast.error("Failed to load contacts"))
       .finally(() => setLoading(false));
   }, []);

@@ -43,6 +43,7 @@ model Workspace {
   autoReplies       AutoReply[]
   webhookEndpoints  WebhookEndpoint[]
   campaignSequences CampaignSequence[]
+  cannedResponses   CannedResponse[]
 
   @@map("workspaces")
 }
@@ -112,6 +113,10 @@ model Contact {
   notes               ContactNote[]
   sequenceEnrollments SequenceEnrollment[]
 
+  // NOTE: a @@unique([workspaceId, phone]) constraint is intentionally absent.
+  // Adding it requires a prior deduplication migration to remove existing duplicates —
+  // adding the constraint directly will fail on any database that already has duplicate
+  // (workspaceId, phone) pairs. Deduplication is handled via POST /contacts/deduplicate.
   @@index([workspaceId])
   @@index([phone])
   @@index([workspaceId, createdAt])
@@ -260,6 +265,21 @@ model InboundMessage {
   @@map("inbound_messages")
 }
 
+// ── Canned responses (saved reply texts for quick use in inbox) ───────────────
+model CannedResponse {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  title       String
+  body        String
+  shortcut    String?  // optional e.g. "/thanks" — typed to quick-pick
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("canned_responses")
+}
+
 // ── Auto-reply rules ──────────────────────────────────────────────────────────
 model AutoReply {
   id           String   @id @default(uuid())
@@ -357,6 +377,7 @@ model SequenceEnrollment {
   @@unique([sequenceId, contactId])
   @@index([sequenceId])
   @@index([contactId])
-  @@index([status]) // scheduler: findMany where status = "active"
+  @@index([status])                   // scheduler: findMany where status = "active"
+  @@index([sequenceId, status])       // scheduler: active enrollments per sequence
   @@map("sequence_enrollments")
 }

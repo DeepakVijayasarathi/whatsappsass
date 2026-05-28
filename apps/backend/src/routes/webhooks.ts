@@ -3,9 +3,10 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireOwnerOrAdmin } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
-import { fireWebhooks, type WebhookEvent } from "../lib/webhookDispatcher";
+import { fireWebhooks, isPrivateWebhookUrl, type WebhookEvent } from "../lib/webhookDispatcher";
+import { encrypt, decryptNullable, maskHint } from "../lib/encrypt";
 
-const VALID_EVENTS: WebhookEvent[] = [
+export const VALID_EVENTS: WebhookEvent[] = [
   "message.inbound",
   "message.delivered",
   "message.read",
@@ -17,12 +18,21 @@ const VALID_EVENTS: WebhookEvent[] = [
 ];
 
 const bodySchema = z.object({
-  url:      z.string().url("Must be a valid URL").refine(
-    (u) => u.startsWith("https://"),
-    { message: "Webhook URL must use HTTPS" }
-  ),
+  url: z
+    .string()
+    .url("Must be a valid URL")
+    .refine((u) => u.startsWith("https://"), { message: "Webhook URL must use HTTPS" })
+    .refine((u) => !isPrivateWebhookUrl(u), {
+      message: "Webhook URL must not point to a private/internal address",
+    }),
   secret:   z.string().optional(),
-  events:   z.array(z.string()).min(1, "Select at least one event"),
+  events:   z
+    .array(z.string())
+    .min(1, "Select at least one event")
+    .refine(
+      (evts) => evts.every((e) => (VALID_EVENTS as string[]).includes(e)),
+      { message: `Events must be one of: ${VALID_EVENTS.join(", ")}` }
+    ),
   isActive: z.boolean().default(true),
 });
 
@@ -32,9 +42,11 @@ export async function webhookRoutes(app: FastifyInstance) {
     return reply.send({ events: VALID_EVENTS });
   });
 
+  // Strip secret from response; add hasSecret + secretHint for UX
   const sanitize = (ep: { secret?: string | null; [key: string]: unknown }) => {
     const { secret, ...rest } = ep;
-    return { ...rest, hasSecret: !!(secret && secret.trim()) };
+    const plain = decryptNullable(secret);
+    return { ...rest, hasSecret: !!(plain), secretHint: maskHint(plain) };
   };
 
   // List endpoints
@@ -53,8 +65,14 @@ export async function webhookRoutes(app: FastifyInstance) {
     const parsed = bodySchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
 
+    const { secret, ...rest } = parsed.data;
     const endpoint = await prisma.webhookEndpoint.create({
-      data: { workspaceId: user.workspaceId, ...parsed.data },
+      data: {
+        workspaceId: user.workspaceId,
+        ...rest,
+        // Encrypt the signing secret at rest — decrypted only when computing HMAC
+        secret: secret ? encrypt(secret) : null,
+      },
     });
     return reply.status(201).send(sanitize(endpoint));
   });
@@ -69,7 +87,15 @@ export async function webhookRoutes(app: FastifyInstance) {
     const existing = await prisma.webhookEndpoint.findFirst({ where: { id, workspaceId: user.workspaceId } });
     if (!existing) return reply.status(404).send({ error: "Not found" });
 
-    const updated = await prisma.webhookEndpoint.update({ where: { id }, data: parsed.data });
+    const { secret, ...rest } = parsed.data;
+    const updateData: Record<string, unknown> = { ...rest };
+    if (secret !== undefined) {
+      // Explicitly provided (even empty string clears the secret)
+      updateData.secret = secret.trim() ? encrypt(secret.trim()) : null;
+    }
+    // If secret is not in the payload, keep the existing stored value
+
+    const updated = await prisma.webhookEndpoint.update({ where: { id }, data: updateData });
     return reply.send(sanitize(updated));
   });
 
@@ -87,17 +113,23 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.get("/:id/logs", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const { id } = request.params as { id: string };
-    const { limit = "50" } = request.query as Record<string, string>;
+    const { limit = "50", page = "1" } = request.query as Record<string, string>;
+    const limitNum = Math.min(Number(limit) || 50, 200);
+    const skip = (Math.max(1, Number(page)) - 1) * limitNum;
 
     const existing = await prisma.webhookEndpoint.findFirst({ where: { id, workspaceId: user.workspaceId } });
     if (!existing) return reply.status(404).send({ error: "Not found" });
 
-    const logs = await prisma.webhookDeliveryLog.findMany({
-      where: { endpointId: id },
-      orderBy: { createdAt: "desc" },
-      take: Math.min(Number(limit) || 50, 200),
-    });
-    return reply.send({ logs });
+    const [logs, total] = await Promise.all([
+      prisma.webhookDeliveryLog.findMany({
+        where: { endpointId: id },
+        orderBy: { createdAt: "desc" },
+        take: limitNum,
+        skip,
+      }),
+      prisma.webhookDeliveryLog.count({ where: { endpointId: id } }),
+    ]);
+    return reply.send({ logs, total, page: Number(page), limit: limitNum });
   });
 
   // Test endpoint — sends a sample payload
@@ -107,15 +139,19 @@ export async function webhookRoutes(app: FastifyInstance) {
     const existing = await prisma.webhookEndpoint.findFirst({ where: { id, workspaceId: user.workspaceId } });
     if (!existing) return reply.status(404).send({ error: "Not found" });
 
-    await fireWebhooks(user.workspaceId, "message.inbound", {
+    const { event = "message.inbound" } = request.body as { event?: string } ?? {};
+    const testEvent = (VALID_EVENTS as string[]).includes(event)
+      ? (event as WebhookEvent)
+      : "message.inbound";
+
+    await fireWebhooks(user.workspaceId, testEvent, {
       test: true,
       messageId: "test-msg-id-000",
       fromPhone: "919999999999",
-      fromName: "Test Contact",
       type: "text",
       body: "This is a test webhook delivery from WhatsApp SaaS",
       timestamp: new Date().toISOString(),
     });
-    return reply.send({ ok: true });
+    return reply.send({ ok: true, event: testEvent });
   });
 }

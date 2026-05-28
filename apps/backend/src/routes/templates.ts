@@ -1,9 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import axios from "axios";
+import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { decryptNullable } from "../lib/encrypt";
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v19.0";
-import { authenticate } from "../middleware/authenticate";
+import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
 
 export interface NormalizedTemplate {
@@ -243,13 +245,14 @@ export async function templateRoutes(app: FastifyInstance) {
     }
 
     if (workspace.whatsappProvider === "meta") {
-      if (!workspace.metaWabaId || !workspace.metaAccessToken) {
+      const metaToken = decryptNullable(workspace.metaAccessToken);
+      if (!workspace.metaWabaId || !metaToken) {
         return reply.status(422).send({
           error: "Meta WABA ID and Access Token required. Configure them in Settings → WhatsApp Provider.",
         });
       }
       try {
-        const templates = await fetchMetaTemplates(workspace.metaWabaId, workspace.metaAccessToken);
+        const templates = await fetchMetaTemplates(workspace.metaWabaId, metaToken);
         return reply.send({ templates, provider: "meta", total: templates.length });
       } catch (err: unknown) {
         const rawMsg = (err as { response?: { data?: { error?: { message?: string } } } })
@@ -263,7 +266,8 @@ export async function templateRoutes(app: FastifyInstance) {
     }
 
     // MSG91
-    if (!workspace.msg91AuthKey) {
+    const msg91Key = decryptNullable(workspace.msg91AuthKey);
+    if (!msg91Key) {
       return reply.status(422).send({
         error: "MSG91 Auth Key required. Configure it in Settings → WhatsApp Provider.",
       });
@@ -274,7 +278,7 @@ export async function templateRoutes(app: FastifyInstance) {
       });
     }
     try {
-      const templates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
+      const templates = await fetchMsg91Templates(msg91Key, workspace.msg91IntegratedNumber);
       return reply.send({ templates, provider: "msg91", total: templates.length });
     } catch (err: unknown) {
       const msg =
@@ -282,6 +286,135 @@ export async function templateRoutes(app: FastifyInstance) {
         "Failed to fetch templates from MSG91";
       // Log the full error so it appears in container logs for debugging
       console.error("[templates] MSG91 fetch failed:", msg);
+      return reply.status(502).send({ error: msg });
+    }
+  });
+
+  // ── POST /templates — create a new template (Meta only) ─────────────────────
+  app.post("/", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+
+    const schema = z.object({
+      name: z
+        .string()
+        .min(1)
+        .max(512)
+        .regex(/^[a-z0-9_]+$/, "Template name may only contain lowercase letters, digits, and underscores"),
+      category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]),
+      language: z.string().min(2).max(10).default("en_US"),
+      body: z.string().min(1).max(1024),
+      footer: z.string().max(60).optional(),
+      header: z
+        .object({
+          format: z.enum(["TEXT", "IMAGE", "VIDEO", "DOCUMENT"]),
+          text: z.string().max(60).optional(),
+        })
+        .optional(),
+      buttons: z
+        .array(
+          z.union([
+            z.object({ type: z.literal("QUICK_REPLY"), text: z.string().min(1).max(25) }),
+            z.object({ type: z.literal("URL"), text: z.string().min(1).max(25), url: z.string().url() }),
+            z.object({ type: z.literal("PHONE_NUMBER"), text: z.string().min(1).max(25), phone_number: z.string().min(7) }),
+          ])
+        )
+        .max(10)
+        .optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { whatsappProvider: true, metaWabaId: true, metaAccessToken: true },
+    });
+
+    if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
+    if (workspace.whatsappProvider !== "meta") {
+      return reply.status(422).send({ error: "Template creation is only supported for Meta Cloud API. MSG91 templates must be created in the MSG91 dashboard." });
+    }
+    const createToken = decryptNullable(workspace.metaAccessToken);
+    if (!workspace.metaWabaId || !createToken) {
+      return reply.status(422).send({ error: "Meta WABA ID and Access Token required. Configure them in Settings → WhatsApp Provider." });
+    }
+
+    const { name, category, language, body, footer, header, buttons } = parsed.data;
+
+    // Build components array for Meta API
+    const components: object[] = [];
+    if (header) {
+      const hComp: Record<string, unknown> = { type: "HEADER", format: header.format };
+      if (header.format === "TEXT" && header.text) hComp.text = header.text;
+      components.push(hComp);
+    }
+    components.push({ type: "BODY", text: body });
+    if (footer) components.push({ type: "FOOTER", text: footer });
+    if (buttons && buttons.length > 0) {
+      components.push({ type: "BUTTONS", buttons });
+    }
+
+    try {
+      const { data } = await axios.post(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/${workspace.metaWabaId}/message_templates`,
+        { name, category, language, components },
+        { headers: { Authorization: `Bearer ${createToken}`, "Content-Type": "application/json" } }
+      );
+
+      return reply.status(201).send({
+        message: "Template submitted for review. It will appear as PENDING until Meta approves it.",
+        id: (data as { id?: string }).id,
+        status: (data as { status?: string }).status ?? "PENDING",
+        name,
+        language,
+        category,
+      });
+    } catch (err: unknown) {
+      const axErr = err as { response?: { data?: { error?: { message?: string; error_user_msg?: string } } } };
+      const msg =
+        axErr.response?.data?.error?.error_user_msg ||
+        axErr.response?.data?.error?.message ||
+        "Failed to create template via Meta API";
+      console.error("[templates] Meta create error:", msg);
+      return reply.status(502).send({ error: msg });
+    }
+  });
+
+  // ── DELETE /templates/:id — delete a template (Meta only) ──────────────────
+  app.delete("/:name", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { name } = request.params as { name: string };
+
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { whatsappProvider: true, metaWabaId: true, metaAccessToken: true },
+    });
+
+    if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
+    if (workspace.whatsappProvider !== "meta") {
+      return reply.status(422).send({ error: "Template deletion is only supported for Meta Cloud API." });
+    }
+    const deleteToken = decryptNullable(workspace.metaAccessToken);
+    if (!workspace.metaWabaId || !deleteToken) {
+      return reply.status(422).send({ error: "Meta WABA ID and Access Token required." });
+    }
+
+    try {
+      await axios.delete(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/${workspace.metaWabaId}/message_templates`,
+        {
+          params: { name },
+          headers: { Authorization: `Bearer ${deleteToken}` },
+        }
+      );
+      return reply.send({ message: "Template deleted" });
+    } catch (err: unknown) {
+      const axErr = err as { response?: { data?: { error?: { message?: string; error_user_msg?: string } } } };
+      const msg =
+        axErr.response?.data?.error?.error_user_msg ||
+        axErr.response?.data?.error?.message ||
+        "Failed to delete template via Meta API";
+      console.error("[templates] Meta delete error:", msg);
       return reply.status(502).send({ error: msg });
     }
   });

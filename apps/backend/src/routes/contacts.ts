@@ -32,6 +32,7 @@ export async function contactRoutes(app: FastifyInstance) {
             OR: [
               { name: { contains: search, mode: "insensitive" as const } },
               { phone: { contains: search } },
+              { email: { contains: search, mode: "insensitive" as const } },
             ],
           }
         : {}),

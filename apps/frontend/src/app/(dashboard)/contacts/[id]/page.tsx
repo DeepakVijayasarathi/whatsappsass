@@ -95,8 +95,8 @@ export default function ContactProfilePage() {
         api.get(`/contacts/${id}/engagement`),
       ]);
       if (timelineRes.status === "fulfilled") {
-        setContact(timelineRes.value.data.contact);
-        setTimeline(timelineRes.value.data.timeline);
+        setContact(timelineRes.value.data.contact ?? null);
+        setTimeline(timelineRes.value.data.timeline ?? []);
       } else {
         toast.error("Failed to load contact");
         router.push("/contacts");

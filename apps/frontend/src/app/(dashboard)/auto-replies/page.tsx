@@ -79,15 +79,27 @@ function RuleModal({
 
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Keyword</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Keywords <span className="font-normal text-gray-400">(comma-separated for OR matching)</span>
+            </label>
             <input
               value={form.keyword}
               onChange={(e) => setForm({ ...form, keyword: e.target.value })}
               className="input"
-              placeholder="e.g. YES, INFO, HELLO"
+              placeholder="e.g. YES, OK, CONFIRM"
               autoFocus
             />
-            <p className="text-xs text-gray-400 mt-1">The word or phrase that triggers this rule</p>
+            {/* Show keyword chips */}
+            {form.keyword && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {form.keyword.split(",").map((kw) => kw.trim()).filter(Boolean).map((kw, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 bg-brand/10 text-brand text-xs font-semibold px-2 py-0.5 rounded-full">
+                    {kw}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-gray-400 mt-1">Any keyword in the list triggers this rule. Separate multiple keywords with commas.</p>
           </div>
 
           <div>
@@ -321,7 +333,15 @@ export default function AutoRepliesPage() {
                 {filtered.map((rule, idx) => (
                   <tr key={rule.id} className="tbl-row group">
                     <td className="tbl-td text-center text-xs text-gray-300 font-mono">{idx + 1}</td>
-                    <td className="tbl-td font-semibold text-gray-900">{rule.keyword}</td>
+                    <td className="tbl-td">
+                      <div className="flex flex-wrap gap-1">
+                        {rule.keyword.split(",").map((kw) => kw.trim()).filter(Boolean).map((kw, i) => (
+                          <span key={i} className="inline-block bg-brand/10 text-brand text-[11px] font-semibold px-1.5 py-0.5 rounded-full max-w-[120px] truncate">
+                            {kw}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="tbl-td hidden sm:table-cell">
                       <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${MATCH_BADGE[rule.matchType] ?? "bg-gray-100 text-gray-600"}`}>
                         {MATCH_LABELS[rule.matchType]}

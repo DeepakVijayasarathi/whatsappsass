@@ -2,12 +2,13 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import crypto from "crypto";
 import { prisma } from "../lib/prisma";
-import { authenticate } from "../middleware/authenticate";
+import { authenticate, checkPermission } from "../middleware/authenticate";
 import { requireWhatsappEnabled } from "../middleware/whatsappEnabled";
 import type { JwtPayload } from "../middleware/authenticate";
 import { sendWhatsAppTemplate } from "../lib/whatsapp";
 import type { ProviderConfig } from "../lib/whatsapp";
 import { fireWebhooks } from "../lib/webhookDispatcher";
+import { decryptNullable } from "../lib/encrypt";
 
 const META_APP_SECRET = process.env.META_APP_SECRET;
 
@@ -32,17 +33,19 @@ async function getProviderConfig(workspaceId: string): Promise<ProviderConfig> {
     },
   });
 
-  // Use whatsappProvider as-is; the send functions guard against missing credentials.
-  // Do NOT default to "meta" — a workspace with no provider set should fail explicitly.
-  const provider = (ws?.whatsappProvider as "meta" | "msg91" | null | undefined);
+  // Treat null, undefined, AND empty string as "not configured".
+  // The Prisma schema defaults whatsappProvider to "meta", but a new workspace
+  // has no credentials — catching the empty string prevents a misleading
+  // "Meta credentials not configured" message when the real issue is provider selection.
+  const provider = (ws?.whatsappProvider?.trim() as "meta" | "msg91" | "" | null | undefined);
   if (!provider) {
     throw new Error("No WhatsApp provider configured. Go to Settings → WhatsApp Provider and select Meta Cloud API or MSG91.");
   }
   return {
     provider,
     metaPhoneNumberId: ws?.metaPhoneNumberId ?? undefined,
-    metaAccessToken: ws?.metaAccessToken ?? undefined,
-    msg91AuthKey: ws?.msg91AuthKey ?? undefined,
+    metaAccessToken: decryptNullable(ws?.metaAccessToken) ?? undefined,
+    msg91AuthKey: decryptNullable(ws?.msg91AuthKey) ?? undefined,
     msg91IntegratedNumber: ws?.msg91IntegratedNumber ?? undefined,
   };
 }
@@ -59,7 +62,7 @@ function normalisePhone(phone: string): string {
 export async function whatsappRoutes(app: FastifyInstance) {
   app.post(
     "/send",
-    { preHandler: [authenticate, requireWhatsappEnabled] },
+    { preHandler: [checkPermission("can_send_whatsapp"), requireWhatsappEnabled] },
     async (request, reply) => {
       const user = request.user as JwtPayload;
       const parsed = sendMessageSchema.safeParse(request.body);
@@ -135,7 +138,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
 
   app.post(
     "/send-bulk",
-    { preHandler: [authenticate, requireWhatsappEnabled] },
+    { preHandler: [checkPermission("can_send_whatsapp"), requireWhatsappEnabled] },
     async (request, reply) => {
       const user = request.user as JwtPayload;
       const schema = z.object({
@@ -494,10 +497,15 @@ export async function whatsappRoutes(app: FastifyInstance) {
               for (const rule of rules) {
                 const msgLower = bodyText.trim().toLowerCase();
                 const keyLower = rule.keyword.toLowerCase();
+                // Support comma-separated multi-keyword OR matching (e.g. "yes,ok,sure")
+                const keywords = keyLower.split(",").map((k: string) => k.trim()).filter(Boolean);
                 let matches = false;
-                if (rule.matchType === "exact") matches = msgLower === keyLower;
-                else if (rule.matchType === "contains") matches = msgLower.includes(keyLower);
-                else if (rule.matchType === "starts_with") matches = msgLower.startsWith(keyLower);
+                for (const kw of keywords) {
+                  if (rule.matchType === "exact") matches = msgLower === kw;
+                  else if (rule.matchType === "contains") matches = msgLower.includes(kw);
+                  else if (rule.matchType === "starts_with") matches = msgLower.startsWith(kw);
+                  if (matches) break;
+                }
 
                 if (matches) {
                   try {
@@ -692,10 +700,15 @@ export async function whatsappRoutes(app: FastifyInstance) {
               for (const rule of rules) {
                 const msgLower = msgBody.trim().toLowerCase();
                 const keyLower = rule.keyword.toLowerCase();
+                // Support comma-separated multi-keyword OR matching (e.g. "yes,ok,sure")
+                const keywords = keyLower.split(",").map((k: string) => k.trim()).filter(Boolean);
                 let matches = false;
-                if (rule.matchType === "exact") matches = msgLower === keyLower;
-                else if (rule.matchType === "contains") matches = msgLower.includes(keyLower);
-                else if (rule.matchType === "starts_with") matches = msgLower.startsWith(keyLower);
+                for (const kw of keywords) {
+                  if (rule.matchType === "exact") matches = msgLower === kw;
+                  else if (rule.matchType === "contains") matches = msgLower.includes(kw);
+                  else if (rule.matchType === "starts_with") matches = msgLower.startsWith(kw);
+                  if (matches) break;
+                }
                 if (matches) {
                   try {
                     const wsConfig = await getProviderConfig(ws.id);
@@ -799,23 +812,42 @@ export async function whatsappRoutes(app: FastifyInstance) {
     { preHandler: [authenticate] },
     async (request, reply) => {
       const user = request.user as JwtPayload;
+      const { page = "1", limit = "50" } = request.query as Record<string, string>;
+      const pageNum = Math.max(1, Number(page));
+      const limitNum = Math.min(Math.max(1, Number(limit)), 200);
+      const skip = (pageNum - 1) * limitNum;
 
-      // Fetch recent messages and deduplicate by fromPhone in app code
-      const messages = await prisma.inboundMessage.findMany({
+      // Step 1: Get unique senders with their latest message timestamp (paginated)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const grouped = (await (prisma.inboundMessage.groupBy as any)({
+        by: ["fromPhone"],
         where: { workspaceId: user.workspaceId },
-        orderBy: { receivedAt: "desc" },
-        take: 500,
-        include: { contact: { select: { id: true, name: true, phone: true } } },
-      });
+        _max: { receivedAt: true },
+        orderBy: { _max: { receivedAt: "desc" } },
+        take: limitNum,
+        skip,
+      })) as Array<{ fromPhone: string; _max: { receivedAt: Date } }>;
 
-      type MsgRow = (typeof messages)[number];
-      const seen = new Set<string>();
-      const latestPerPhone = messages.filter((m: MsgRow) => {
-        if (seen.has(m.fromPhone)) return false;
-        seen.add(m.fromPhone);
-        return true;
-      });
+      // Step 2: Fetch the actual latest message for each sender in one batch query
+      // Match by (fromPhone, receivedAt) pairs — receivedAt precision means near-zero collision risk
+      const latestMessages = grouped.length > 0
+        ? await prisma.inboundMessage.findMany({
+            where: {
+              workspaceId: user.workspaceId,
+              OR: grouped.map((g) => ({ fromPhone: g.fromPhone, receivedAt: g._max.receivedAt })),
+            },
+            include: { contact: { select: { id: true, name: true, phone: true } } },
+          })
+        : [];
 
+      // Build a map of fromPhone → message (pick first if duplicates at same timestamp)
+      type MsgRow = (typeof latestMessages)[number];
+      const msgMap = new Map<string, MsgRow>();
+      for (const m of latestMessages) {
+        if (!msgMap.has(m.fromPhone)) msgMap.set(m.fromPhone, m);
+      }
+
+      // Step 3: Get unread counts per sender
       const unreadGroups = await prisma.inboundMessage.groupBy({
         by: ["fromPhone"],
         where: { workspaceId: user.workspaceId, read: false },
@@ -824,21 +856,36 @@ export async function whatsappRoutes(app: FastifyInstance) {
       type UnreadRow = (typeof unreadGroups)[number];
       const unreadMap = new Map(unreadGroups.map((g: UnreadRow) => [g.fromPhone, g._count.id]));
 
-      const conversations = latestPerPhone.map((m: MsgRow) => ({
-        fromPhone: m.fromPhone,
-        contactId: m.contactId,
-        contact: m.contact,
-        latestMessage: {
-          id: m.id,
-          body: m.body,
-          type: m.type,
-          receivedAt: m.receivedAt,
-          read: m.read,
-        },
-        unreadCount: unreadMap.get(m.fromPhone) ?? 0,
-      }));
+      // Step 4: Get total distinct-sender count for pagination metadata
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const totalGroups = (await (prisma.inboundMessage.groupBy as any)({
+        by: ["fromPhone"],
+        where: { workspaceId: user.workspaceId },
+        _count: true,
+      })) as unknown[];
+      const total = totalGroups.length;
 
-      return reply.send({ conversations });
+      const conversations = grouped
+        .map((g) => {
+          const m = msgMap.get(g.fromPhone);
+          if (!m) return null;
+          return {
+            fromPhone: m.fromPhone,
+            contactId: m.contactId,
+            contact: m.contact,
+            latestMessage: {
+              id: m.id,
+              body: m.body,
+              type: m.type,
+              receivedAt: m.receivedAt,
+              read: m.read,
+            },
+            unreadCount: unreadMap.get(m.fromPhone) ?? 0,
+          };
+        })
+        .filter(Boolean);
+
+      return reply.send({ conversations, total, page: pageNum, limit: limitNum });
     }
   );
 
@@ -878,6 +925,61 @@ export async function whatsappRoutes(app: FastifyInstance) {
       }, {});
 
       return reply.send({ replies: result });
+    }
+  );
+
+  // ── SSE: real-time inbox notifications ────────────────────────────────────
+  // Clients subscribe once; receive "new_message" events when inbound messages arrive.
+  // Sends a heartbeat comment every 25s to keep load-balancers from dropping the connection.
+  app.get(
+    "/inbox/stream",
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+
+      reply.raw.setHeader("Content-Type", "text/event-stream");
+      reply.raw.setHeader("Cache-Control", "no-cache");
+      reply.raw.setHeader("Connection", "keep-alive");
+      reply.raw.setHeader("X-Accel-Buffering", "no");
+      reply.raw.flushHeaders();
+
+      const write = (event: string, data: unknown) => {
+        try {
+          reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        } catch { /* client disconnected */ }
+      };
+
+      write("connected", { workspaceId: user.workspaceId, ts: Date.now() });
+
+      let lastSeen = new Date();
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const [newCount, totalUnread] = await Promise.all([
+            prisma.inboundMessage.count({
+              where: { workspaceId: user.workspaceId, receivedAt: { gte: lastSeen } },
+            }),
+            prisma.inboundMessage.count({
+              where: { workspaceId: user.workspaceId, read: false },
+            }),
+          ]);
+          if (newCount > 0) {
+            lastSeen = new Date();
+            write("new_message", { count: newCount, totalUnread });
+          }
+        } catch { /* ignore DB errors — keep connection alive */ }
+      }, 5_000);
+
+      // Heartbeat prevents proxy/LB timeouts
+      const heartbeat = setInterval(() => {
+        try { reply.raw.write(": heartbeat\n\n"); } catch { /* disconnected */ }
+      }, 25_000);
+
+      // Cleanup when client disconnects
+      await new Promise<void>((resolve) => {
+        request.raw.on("close", () => { clearInterval(pollInterval); clearInterval(heartbeat); resolve(); });
+        request.raw.on("error", () => { clearInterval(pollInterval); clearInterval(heartbeat); resolve(); });
+      });
     }
   );
 }

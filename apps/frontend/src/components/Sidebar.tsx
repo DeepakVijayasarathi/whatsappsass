@@ -71,21 +71,21 @@ export default function Sidebar({ open = false, onClose }: Props) {
           <p className="font-bold text-sm text-gray-900 truncate leading-tight">
             {workspace?.name ?? "Workspace"}
           </p>
-          <span className="text-[10px] text-gray-400 uppercase tracking-widest font-medium">
+          <span className="text-2xs text-gray-400 uppercase tracking-widest font-medium">
             {workspace?.plan ?? brand.planLabel} plan
           </span>
         </div>
         <button
           onClick={onClose}
           className="lg:hidden icon-btn shrink-0"
-          aria-label="Close menu"
+          aria-label="Close navigation menu"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* ── Navigation ── */}
-      <nav className="flex-1 overflow-y-auto px-3 py-3 scroll-area">
+      <nav className="flex-1 overflow-y-auto px-3 py-3 scroll-area" aria-label="Main navigation">
 
         {/* Main section */}
         <div className="space-y-0.5">
@@ -95,28 +95,28 @@ export default function Sidebar({ open = false, onClose }: Props) {
             const showBadge =
               (badge === "inbox" && unreadCount > 0) ||
               (badge === "sequences" && activeSequenceCount > 0);
+            const badgeValue = badge === "inbox" ? unreadCount : activeSequenceCount;
             return (
               <Link
                 key={href}
                 href={href}
-                className={clsx(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
-                  active
-                    ? "bg-brand/10 text-brand"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                )}
+                aria-current={active ? "page" : undefined}
+                className={active ? "nav-link-active" : "nav-link-inactive"}
               >
-                <Icon className={clsx("w-4 h-4 shrink-0", active ? "text-brand" : "text-gray-400")} />
+                <Icon
+                  className={clsx("w-4 h-4 shrink-0", active ? "text-brand" : "text-gray-400")}
+                  aria-hidden="true"
+                />
                 <span className="flex-1 truncate">{label}</span>
                 {showBadge && (
-                  <span className={clsx(
-                    "min-w-[18px] h-[18px] text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none",
-                    badge === "inbox" ? "bg-red-500" : "bg-brand"
-                  )}>
-                    {badge === "inbox"
-                      ? (unreadCount > 99 ? "99+" : unreadCount)
-                      : (activeSequenceCount > 99 ? "99+" : activeSequenceCount)
-                    }
+                  <span
+                    aria-label={`${badgeValue} unread`}
+                    className={clsx(
+                      "min-w-[20px] h-[18px] text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1.5 leading-none tabular-nums",
+                      badge === "inbox" ? "bg-red-500" : "bg-brand"
+                    )}
+                  >
+                    {badgeValue > 99 ? "99+" : badgeValue}
                   </span>
                 )}
               </Link>
@@ -127,7 +127,7 @@ export default function Sidebar({ open = false, onClose }: Props) {
         {/* Admin section */}
         {adminItems.length > 0 && (
           <div className="mt-4">
-            <p className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+            <p className="px-3 py-1.5 text-2xs font-bold text-gray-400 uppercase tracking-widest">
               Admin
             </p>
             <div className="space-y-0.5">
@@ -138,14 +138,13 @@ export default function Sidebar({ open = false, onClose }: Props) {
                   <Link
                     key={href}
                     href={href}
-                    className={clsx(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
-                      active
-                        ? "bg-brand/10 text-brand"
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    )}
+                    aria-current={active ? "page" : undefined}
+                    className={active ? "nav-link-active" : "nav-link-inactive"}
                   >
-                    <Icon className={clsx("w-4 h-4 shrink-0", active ? "text-brand" : "text-gray-400")} />
+                    <Icon
+                      className={clsx("w-4 h-4 shrink-0", active ? "text-brand" : "text-gray-400")}
+                      aria-hidden="true"
+                    />
                     <span className="truncate">{label}</span>
                   </Link>
                 );
