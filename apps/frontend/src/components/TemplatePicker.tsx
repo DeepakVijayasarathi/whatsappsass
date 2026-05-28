@@ -38,6 +38,7 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<string>("");
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"ALL" | "APPROVED">("APPROVED");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -57,6 +58,7 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
         _cachedTemplates = tmpl;
         _cacheTs = Date.now();
         setTemplates(tmpl);
+        setProvider(r.data.provider ?? "");
       })
       .catch((e) => setError(e.response?.data?.error ?? "Failed to load templates"))
       .finally(() => setLoading(false));
@@ -154,10 +156,17 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
               </div>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-sm gap-1">
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-sm gap-1 px-6 text-center">
               <p>No templates found</p>
               {search && <p className="text-xs">Try a different search term</p>}
-              {filterStatus === "APPROVED" && !search && (
+              {filterStatus === "APPROVED" && !search && provider === "msg91" && (
+                <p className="text-xs mt-2 text-gray-500">
+                  Using MSG91? Add your templates in the{" "}
+                  <Link href="/templates" onClick={onClose} className="text-brand underline font-medium">Templates page</Link>
+                  {" "}first, then come back to send.
+                </p>
+              )}
+              {filterStatus === "APPROVED" && !search && provider !== "msg91" && (
                 <p className="text-xs mt-1">
                   <button onClick={() => setFilterStatus("ALL")} className="text-brand underline">Show all statuses</button>
                 </p>
@@ -209,7 +218,7 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
           <span>{!loading && !error && `${filtered.length} of ${templates.length} templates`}</span>
           {!loading && !error && (
             <Link href="/templates" onClick={onClose} className="text-brand hover:underline font-medium">
-              Manage templates →
+              {provider === "msg91" ? "Add / manage templates →" : "Manage templates →"}
             </Link>
           )}
         </div>

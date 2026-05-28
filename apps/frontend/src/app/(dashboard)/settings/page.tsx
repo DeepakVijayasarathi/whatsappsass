@@ -431,6 +431,12 @@ export default function SettingsPage() {
                     <p className="text-xs text-gray-400">
                       Auth key is write-only — never returned by the server. Leave blank to keep the stored key.
                     </p>
+                    <div className="mt-2 p-3 bg-amber-50 rounded-lg text-xs text-amber-700 space-y-1">
+                      <p className="font-semibold">MSG91 Basic Plan — what works in this app:</p>
+                      <p>✓ Send messages &nbsp;✓ Campaigns &nbsp;✓ Drip sequences &nbsp;✓ Delivery receipts</p>
+                      <p>✗ Auto-fetch templates from MSG91 (requires Hello plan upgrade)</p>
+                      <p className="text-amber-600">→ Add templates manually in the <a href="/templates" className="underline font-medium">Templates page</a>.</p>
+                    </div>
                   </div>
                 )}
 
