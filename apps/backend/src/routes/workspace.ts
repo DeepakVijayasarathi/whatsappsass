@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
-import { encrypt, decryptNullable, maskHint, DECRYPT_FAILED } from "../lib/encrypt";
+import { maskHint } from "../lib/encrypt";
 
 export async function workspaceRoutes(app: FastifyInstance) {
   app.get("/me", { preHandler: [authenticate] }, async (request, reply) => {
@@ -271,22 +271,11 @@ export async function workspaceRoutes(app: FastifyInstance) {
         },
       });
 
-      // Keep the submitted value if non-blank, otherwise keep stored, otherwise null.
-      // Never stores empty string — that would cause downstream parsers (e.g. MSG91 number formats)
-      // to produce garbage. null means "not configured" and is handled gracefully everywhere.
       const keepOrNull = (submitted: string | undefined, stored: string | null | undefined): string | null => {
         const s = submitted?.trim() ?? "";
         if (s.length > 0) return s;
         const t = stored?.trim() ?? "";
         return t.length > 0 ? t : null;
-      };
-
-      // Encrypt new secret values; keep (already-encrypted) stored value when blank
-      const encryptIfNew = (submitted: string | undefined, stored: string | null | undefined): string | null => {
-        const s = submitted?.trim() ?? "";
-        if (s.length > 0) return encrypt(s);           // new value → encrypt
-        const t = stored?.trim() ?? "";
-        return t.length > 0 ? t : null;                // keep stored (already encrypted) or null
       };
 
       const updateData =
@@ -295,14 +284,14 @@ export async function workspaceRoutes(app: FastifyInstance) {
               whatsappProvider: "meta" as const,
               metaPhoneNumberId: parsed.data.metaPhoneNumberId?.trim() ?? "",
               metaWabaId: parsed.data.metaWabaId?.trim() ?? "",
-              metaAccessToken: encryptIfNew(parsed.data.metaAccessToken, existing?.metaAccessToken),
-              metaWebhookVerifyToken: encryptIfNew(parsed.data.metaWebhookVerifyToken, existing?.metaWebhookVerifyToken),
+              metaAccessToken: keepOrNull(parsed.data.metaAccessToken, existing?.metaAccessToken),
+              metaWebhookVerifyToken: keepOrNull(parsed.data.metaWebhookVerifyToken, existing?.metaWebhookVerifyToken),
               msg91AuthKey: null,
               msg91IntegratedNumber: null,
             }
           : {
               whatsappProvider: "msg91" as const,
-              msg91AuthKey: encryptIfNew(parsed.data.msg91AuthKey, existing?.msg91AuthKey),
+              msg91AuthKey: keepOrNull(parsed.data.msg91AuthKey, existing?.msg91AuthKey),
               msg91IntegratedNumber: keepOrNull(parsed.data.msg91IntegratedNumber, existing?.msg91IntegratedNumber),
               metaPhoneNumberId: null,
               metaWabaId: null,
@@ -346,9 +335,8 @@ export async function workspaceRoutes(app: FastifyInstance) {
 
       const { smtpPass, ...rest } = parsed.data;
 
-      // Only update smtpPass when a new value is supplied
       const updatePass = smtpPass?.trim()
-        ? { smtpPass: encrypt(smtpPass.trim()) }
+        ? { smtpPass: smtpPass.trim() }
         : {};
 
       // Validate that the workspace has a password (either stored or newly supplied)
@@ -381,11 +369,10 @@ export async function workspaceRoutes(app: FastifyInstance) {
       });
       if (!ws) return reply.send({});
       const { smtpPass, ...safe } = ws;
-      const passPlain = decryptNullable(smtpPass);
       return reply.send({
         ...safe,
-        hasSmtpPass: !!(passPlain),
-        smtpPassHint: maskHint(passPlain),
+        hasSmtpPass: !!(smtpPass),
+        smtpPassHint: maskHint(smtpPass),
       });
     }
   );
@@ -409,26 +396,15 @@ export async function workspaceRoutes(app: FastifyInstance) {
         },
       });
       if (!workspace) return reply.status(404).send({ error: "Not found" });
-      // Decrypt to get plaintext for hint generation, but NEVER send the actual value
-      const metaTokenRaw = decryptNullable(workspace.metaAccessToken);
-      const msg91KeyRaw  = decryptNullable(workspace.msg91AuthKey);
-      const webhookTokenRaw = decryptNullable(workspace.metaWebhookVerifyToken);
-      // Treat DECRYPT_FAILED as "present but unreadable" — show a hint so user knows to re-enter
-      const metaTokenPlain = metaTokenRaw === DECRYPT_FAILED ? null : metaTokenRaw;
-      const msg91KeyPlain  = msg91KeyRaw  === DECRYPT_FAILED ? null : msg91KeyRaw;
-      const webhookTokenPlain = webhookTokenRaw === DECRYPT_FAILED ? null : webhookTokenRaw;
       const { metaAccessToken, msg91AuthKey, metaWebhookVerifyToken, ...safe } = workspace;
       return reply.send({
         ...safe,
-        hasMetaAccessToken:         metaTokenRaw === DECRYPT_FAILED ? true : !!(metaTokenPlain),
-        hasMsg91AuthKey:            msg91KeyRaw  === DECRYPT_FAILED ? true : !!(msg91KeyPlain),
-        metaAccessTokenHint:        metaTokenRaw === DECRYPT_FAILED ? "⚠ Re-enter (key changed)" : maskHint(metaTokenPlain),
-        msg91AuthKeyHint:           msg91KeyRaw  === DECRYPT_FAILED ? "⚠ Re-enter (key changed)" : maskHint(msg91KeyPlain),
-        metaWebhookVerifyToken:     webhookTokenPlain,
-        metaWebhookVerifyTokenHint: webhookTokenRaw === DECRYPT_FAILED ? "⚠ Re-enter (key changed)" : maskHint(webhookTokenPlain),
-        credentialDecryptError:     (metaTokenRaw === DECRYPT_FAILED || msg91KeyRaw === DECRYPT_FAILED)
-                                      ? "Stored credentials could not be decrypted. ENCRYPTION_KEY may have changed. Please re-enter your credentials."
-                                      : undefined,
+        hasMetaAccessToken:         !!(metaAccessToken),
+        hasMsg91AuthKey:            !!(msg91AuthKey),
+        metaAccessTokenHint:        maskHint(metaAccessToken),
+        msg91AuthKeyHint:           maskHint(msg91AuthKey),
+        metaWebhookVerifyToken:     metaWebhookVerifyToken,
+        metaWebhookVerifyTokenHint: maskHint(metaWebhookVerifyToken),
       });
     }
   );
@@ -459,12 +435,10 @@ export async function workspaceRoutes(app: FastifyInstance) {
 
       if (!workspace) return reply.status(404).send({ error: "Not found" });
 
-      const metaTokenOk = decryptNullable(workspace.metaAccessToken);
-      const msg91KeyOk  = decryptNullable(workspace.msg91AuthKey);
       const providerConfigured =
         workspace.whatsappProvider === "meta"
-          ? !!(workspace.metaPhoneNumberId && metaTokenOk && metaTokenOk !== DECRYPT_FAILED)
-          : !!(msg91KeyOk && msg91KeyOk !== DECRYPT_FAILED && workspace.msg91IntegratedNumber);
+          ? !!(workspace.metaPhoneNumberId && workspace.metaAccessToken)
+          : !!(workspace.msg91AuthKey && workspace.msg91IntegratedNumber);
 
       return reply.send({
         steps: {

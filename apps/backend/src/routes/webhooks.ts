@@ -4,7 +4,7 @@ import { prisma } from "../lib/prisma";
 import { requireOwnerOrAdmin } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
 import { fireWebhooks, isPrivateWebhookUrl, type WebhookEvent } from "../lib/webhookDispatcher";
-import { encrypt, decryptNullable, maskHint } from "../lib/encrypt";
+import { maskHint } from "../lib/encrypt";
 
 export const VALID_EVENTS: WebhookEvent[] = [
   "message.inbound",
@@ -45,8 +45,7 @@ export async function webhookRoutes(app: FastifyInstance) {
   // Strip secret from response; add hasSecret + secretHint for UX
   const sanitize = (ep: { secret?: string | null; [key: string]: unknown }) => {
     const { secret, ...rest } = ep;
-    const plain = decryptNullable(secret);
-    return { ...rest, hasSecret: !!(plain), secretHint: maskHint(plain) };
+    return { ...rest, hasSecret: !!(secret), secretHint: maskHint(secret) };
   };
 
   // List endpoints
@@ -71,7 +70,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         workspaceId: user.workspaceId,
         ...rest,
         // Encrypt the signing secret at rest — decrypted only when computing HMAC
-        secret: secret ? encrypt(secret) : null,
+        secret: secret ? secret : null,
       },
     });
     return reply.status(201).send(sanitize(endpoint));
@@ -91,7 +90,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     const updateData: Record<string, unknown> = { ...rest };
     if (secret !== undefined) {
       // Explicitly provided (even empty string clears the secret)
-      updateData.secret = secret.trim() ? encrypt(secret.trim()) : null;
+      updateData.secret = secret.trim() ? secret.trim() : null;
     }
     // If secret is not in the payload, keep the existing stored value
 

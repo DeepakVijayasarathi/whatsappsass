@@ -4,7 +4,6 @@ import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { sendEmail } from "../lib/email";
-import { decryptNullable } from "../lib/encrypt";
 
 // Strict rate limit applied to login, register, forgot-password
 // 10 attempts per 15 minutes per IP — prevents brute-force
@@ -137,8 +136,7 @@ export async function authRoutes(app: FastifyInstance) {
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
-    const smtpPassPlain = decryptNullable(ws?.smtpPass);
-    const smtpConfigured = !!(ws?.smtpHost && ws.smtpUser && smtpPassPlain && ws.smtpFromEmail);
+    const smtpConfigured = !!(ws?.smtpHost && ws.smtpUser && ws.smtpPass && ws.smtpFromEmail);
 
     if (!smtpConfigured) {
       // SMTP not configured — return the reset URL directly so an admin can share it manually
@@ -150,7 +148,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     await sendEmail(
-      { host: ws!.smtpHost!, port: ws!.smtpPort ?? 587, user: ws!.smtpUser!, pass: smtpPassPlain!, fromEmail: ws!.smtpFromEmail!, fromName: ws!.smtpFromName },
+      { host: ws!.smtpHost!, port: ws!.smtpPort ?? 587, user: ws!.smtpUser!, pass: ws!.smtpPass!, fromEmail: ws!.smtpFromEmail!, fromName: ws!.smtpFromName },
       {
         to: user.email,
         subject: "Reset your password",

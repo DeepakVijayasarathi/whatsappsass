@@ -5,7 +5,6 @@ import { authenticate, requireOwnerOrAdmin, checkPermission } from "../middlewar
 import type { JwtPayload } from "../middleware/authenticate";
 import { sendEmail, verifySmtp } from "../lib/email";
 import { logAudit } from "../lib/audit";
-import { decryptNullable } from "../lib/encrypt";
 
 const PAGE_SIZE = 20;
 
@@ -17,8 +16,7 @@ export async function emailRoutes(app: FastifyInstance) {
       where: { id: user.workspaceId },
       select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPass: true, smtpFromEmail: true, smtpFromName: true },
     });
-    const smtpPassPlain = decryptNullable(ws?.smtpPass);
-    if (!ws?.smtpHost || !ws.smtpUser || !smtpPassPlain || !ws.smtpFromEmail) {
+    if (!ws?.smtpHost || !ws.smtpUser || !ws.smtpPass || !ws.smtpFromEmail) {
       return reply.status(400).send({ error: "SMTP not fully configured (host, user, password, and from-email are required)" });
     }
     try {
@@ -26,7 +24,7 @@ export async function emailRoutes(app: FastifyInstance) {
         host: ws.smtpHost,
         port: ws.smtpPort ?? 587,
         user: ws.smtpUser,
-        pass: smtpPassPlain!,
+        pass: ws.smtpPass!,
         fromEmail: ws.smtpFromEmail,
         fromName: ws.smtpFromName,
       });
@@ -145,13 +143,12 @@ export async function emailRoutes(app: FastifyInstance) {
       where: { id: user.workspaceId },
       select: { smtpHost: true, smtpPort: true, smtpUser: true, smtpPass: true, smtpFromEmail: true, smtpFromName: true },
     });
-    const smtpPassPlain = decryptNullable(ws?.smtpPass);
-    if (!ws?.smtpHost || !ws.smtpUser || !smtpPassPlain || !ws.smtpFromEmail) {
+    if (!ws?.smtpHost || !ws.smtpUser || !ws.smtpPass || !ws.smtpFromEmail) {
       return reply.status(400).send({ error: "Email (SMTP) not fully configured. Set host, user, password, and from-email in Settings → Email." });
     }
 
     await sendEmail(
-      { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: smtpPassPlain!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName },
+      { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: ws.smtpPass!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName },
       { to: parsed.data.to, subject: parsed.data.subject, html: parsed.data.body }
     );
 
@@ -187,8 +184,7 @@ export async function emailRoutes(app: FastifyInstance) {
     if (campaign.status === "completed") {
       return reply.status(409).send({ error: "Campaign already completed. Duplicate to re-send." });
     }
-    const smtpPassPlain = decryptNullable(ws?.smtpPass);
-    if (!ws?.smtpHost || !ws.smtpUser || !smtpPassPlain || !ws.smtpFromEmail) {
+    if (!ws?.smtpHost || !ws.smtpUser || !ws.smtpPass || !ws.smtpFromEmail) {
       return reply.status(400).send({ error: "Email (SMTP) not fully configured. Set host, user, password, and from-email in Settings → Email." });
     }
 
@@ -207,7 +203,7 @@ export async function emailRoutes(app: FastifyInstance) {
     // Return immediately — send emails in the background so large lists don't timeout
     reply.send({ message: "Campaign queued", campaignId: id, total: contacts.length });
 
-    const smtpCfg = { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: smtpPassPlain!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName };
+    const smtpCfg = { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: ws.smtpPass!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName };
     const workspaceId = user.workspaceId;
     const userId = user.userId;
 

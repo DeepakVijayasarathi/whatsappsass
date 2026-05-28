@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import axios from "axios";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
-import { decryptNullable } from "../lib/encrypt";
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v19.0";
 import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
@@ -245,14 +244,13 @@ export async function templateRoutes(app: FastifyInstance) {
     }
 
     if (workspace.whatsappProvider === "meta") {
-      const metaToken = decryptNullable(workspace.metaAccessToken);
-      if (!workspace.metaWabaId || !metaToken) {
+      if (!workspace.metaWabaId || !workspace.metaAccessToken) {
         return reply.status(422).send({
           error: "Meta WABA ID and Access Token required. Configure them in Settings → WhatsApp Provider.",
         });
       }
       try {
-        const templates = await fetchMetaTemplates(workspace.metaWabaId, metaToken);
+        const templates = await fetchMetaTemplates(workspace.metaWabaId, workspace.metaAccessToken);
         return reply.send({ templates, provider: "meta", total: templates.length });
       } catch (err: unknown) {
         const rawMsg = (err as { response?: { data?: { error?: { message?: string } } } })
@@ -266,8 +264,7 @@ export async function templateRoutes(app: FastifyInstance) {
     }
 
     // MSG91
-    const msg91Key = decryptNullable(workspace.msg91AuthKey);
-    if (!msg91Key) {
+    if (!workspace.msg91AuthKey) {
       return reply.status(422).send({
         error: "MSG91 Auth Key required. Configure it in Settings → WhatsApp Provider.",
       });
@@ -278,7 +275,7 @@ export async function templateRoutes(app: FastifyInstance) {
       });
     }
     try {
-      const templates = await fetchMsg91Templates(msg91Key, workspace.msg91IntegratedNumber);
+      const templates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
       return reply.send({ templates, provider: "msg91", total: templates.length });
     } catch (err: unknown) {
       const msg =
@@ -334,8 +331,7 @@ export async function templateRoutes(app: FastifyInstance) {
     if (workspace.whatsappProvider !== "meta") {
       return reply.status(422).send({ error: "Template creation is only supported for Meta Cloud API. MSG91 templates must be created in the MSG91 dashboard." });
     }
-    const createToken = decryptNullable(workspace.metaAccessToken);
-    if (!workspace.metaWabaId || !createToken) {
+    if (!workspace.metaWabaId || !workspace.metaAccessToken) {
       return reply.status(422).send({ error: "Meta WABA ID and Access Token required. Configure them in Settings → WhatsApp Provider." });
     }
 
@@ -358,7 +354,7 @@ export async function templateRoutes(app: FastifyInstance) {
       const { data } = await axios.post(
         `https://graph.facebook.com/${META_GRAPH_VERSION}/${workspace.metaWabaId}/message_templates`,
         { name, category, language, components },
-        { headers: { Authorization: `Bearer ${createToken}`, "Content-Type": "application/json" } }
+        { headers: { Authorization: `Bearer ${workspace.metaAccessToken}`, "Content-Type": "application/json" } }
       );
 
       return reply.status(201).send({
@@ -394,8 +390,7 @@ export async function templateRoutes(app: FastifyInstance) {
     if (workspace.whatsappProvider !== "meta") {
       return reply.status(422).send({ error: "Template deletion is only supported for Meta Cloud API." });
     }
-    const deleteToken = decryptNullable(workspace.metaAccessToken);
-    if (!workspace.metaWabaId || !deleteToken) {
+    if (!workspace.metaWabaId || !workspace.metaAccessToken) {
       return reply.status(422).send({ error: "Meta WABA ID and Access Token required." });
     }
 
@@ -404,7 +399,7 @@ export async function templateRoutes(app: FastifyInstance) {
         `https://graph.facebook.com/${META_GRAPH_VERSION}/${workspace.metaWabaId}/message_templates`,
         {
           params: { name },
-          headers: { Authorization: `Bearer ${deleteToken}` },
+          headers: { Authorization: `Bearer ${workspace.metaAccessToken}` },
         }
       );
       return reply.send({ message: "Template deleted" });

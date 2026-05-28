@@ -1,6 +1,5 @@
 import crypto from "crypto";
 import { prisma } from "./prisma";
-import { decryptNullable } from "./encrypt";
 
 export type WebhookEvent =
   | "message.inbound"
@@ -76,9 +75,8 @@ export async function fireWebhooks(
       };
 
       // Decrypt the stored signing secret before computing HMAC
-      const secretPlain = decryptNullable(secret);
-      if (secretPlain) {
-        const sig = crypto.createHmac("sha256", secretPlain).update(body).digest("hex");
+      if (secret) {
+        const sig = crypto.createHmac("sha256", secret).update(body).digest("hex");
         headers["X-Webhook-Signature"] = `sha256=${sig}`;
       }
 
