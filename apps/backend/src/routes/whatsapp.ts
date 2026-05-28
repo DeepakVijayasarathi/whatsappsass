@@ -817,37 +817,35 @@ export async function whatsappRoutes(app: FastifyInstance) {
       const limitNum = Math.min(Math.max(1, Number(limit)), 200);
       const skip = (pageNum - 1) * limitNum;
 
-      // Step 1: Get unique senders with their latest message timestamp (paginated)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const grouped = (await (prisma.inboundMessage.groupBy as any)({
-        by: ["fromPhone"],
-        where: { workspaceId: user.workspaceId },
-        _max: { receivedAt: true },
-        orderBy: { _max: { receivedAt: "desc" } },
-        take: limitNum,
-        skip,
-      })) as Array<{ fromPhone: string; _max: { receivedAt: Date } }>;
+      // Get latest message per sender using raw SQL (Prisma groupBy with orderBy _max is unreliable)
+      type LatestRow = {
+        id: string; from_phone: string; contact_id: string | null;
+        body: string | null; type: string; received_at: Date; read: boolean;
+      };
+      const latestRows = await prisma.$queryRaw<LatestRow[]>`
+        SELECT DISTINCT ON (from_phone)
+          id, from_phone, contact_id, body, type, received_at, read
+        FROM inbound_messages
+        WHERE workspace_id = ${user.workspaceId}
+        ORDER BY from_phone, received_at DESC
+      `;
 
-      // Step 2: Fetch the actual latest message for each sender in one batch query
-      // Match by (fromPhone, receivedAt) pairs — receivedAt precision means near-zero collision risk
-      const latestMessages = grouped.length > 0
-        ? await prisma.inboundMessage.findMany({
-            where: {
-              workspaceId: user.workspaceId,
-              OR: grouped.map((g) => ({ fromPhone: g.fromPhone, receivedAt: g._max.receivedAt })),
-            },
-            include: { contact: { select: { id: true, name: true, phone: true } } },
+      // Sort by most recent and paginate
+      latestRows.sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
+      const total = latestRows.length;
+      const paginated = latestRows.slice(skip, skip + limitNum);
+
+      // Get contact info for each sender
+      const contactIds = paginated.map((r) => r.contact_id).filter(Boolean) as string[];
+      const contacts = contactIds.length > 0
+        ? await prisma.contact.findMany({
+            where: { id: { in: contactIds } },
+            select: { id: true, name: true, phone: true },
           })
         : [];
+      const contactMap = new Map(contacts.map((c) => [c.id, c]));
 
-      // Build a map of fromPhone → message (pick first if duplicates at same timestamp)
-      type MsgRow = (typeof latestMessages)[number];
-      const msgMap = new Map<string, MsgRow>();
-      for (const m of latestMessages) {
-        if (!msgMap.has(m.fromPhone)) msgMap.set(m.fromPhone, m);
-      }
-
-      // Step 3: Get unread counts per sender
+      // Get unread counts per sender
       const unreadGroups = await prisma.inboundMessage.groupBy({
         by: ["fromPhone"],
         where: { workspaceId: user.workspaceId, read: false },
@@ -856,34 +854,19 @@ export async function whatsappRoutes(app: FastifyInstance) {
       type UnreadRow = (typeof unreadGroups)[number];
       const unreadMap = new Map(unreadGroups.map((g: UnreadRow) => [g.fromPhone, g._count.id]));
 
-      // Step 4: Get total distinct-sender count for pagination metadata
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const totalGroups = (await (prisma.inboundMessage.groupBy as any)({
-        by: ["fromPhone"],
-        where: { workspaceId: user.workspaceId },
-        _count: true,
-      })) as unknown[];
-      const total = totalGroups.length;
-
-      const conversations = grouped
-        .map((g) => {
-          const m = msgMap.get(g.fromPhone);
-          if (!m) return null;
-          return {
-            fromPhone: m.fromPhone,
-            contactId: m.contactId,
-            contact: m.contact,
-            latestMessage: {
-              id: m.id,
-              body: m.body,
-              type: m.type,
-              receivedAt: m.receivedAt,
-              read: m.read,
-            },
-            unreadCount: unreadMap.get(m.fromPhone) ?? 0,
-          };
-        })
-        .filter(Boolean);
+      const conversations = paginated.map((r) => ({
+        fromPhone: r.from_phone,
+        contactId: r.contact_id,
+        contact: r.contact_id ? (contactMap.get(r.contact_id) ?? null) : null,
+        latestMessage: {
+          id: r.id,
+          body: r.body,
+          type: r.type,
+          receivedAt: r.received_at,
+          read: r.read,
+        },
+        unreadCount: unreadMap.get(r.from_phone) ?? 0,
+      }));
 
       return reply.send({ conversations, total, page: pageNum, limit: limitNum });
     }
@@ -933,8 +916,18 @@ export async function whatsappRoutes(app: FastifyInstance) {
   // Sends a heartbeat comment every 25s to keep load-balancers from dropping the connection.
   app.get(
     "/inbox/stream",
-    { preHandler: [authenticate] },
+    {},
     async (request, reply) => {
+      // EventSource cannot set Authorization header — accept token via query param
+      const { token } = request.query as { token?: string };
+      if (token) {
+        request.headers.authorization = `Bearer ${token}`;
+      }
+      try {
+        await request.jwtVerify();
+      } catch {
+        return reply.status(401).send({ error: "Unauthorized" });
+      }
       const user = request.user as JwtPayload;
 
       reply.raw.setHeader("Content-Type", "text/event-stream");

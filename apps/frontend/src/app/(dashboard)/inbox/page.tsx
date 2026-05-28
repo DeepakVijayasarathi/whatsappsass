@@ -179,8 +179,9 @@ export default function InboxPage() {
     loadConversations();
     loadCannedResponses();
 
-    // Connect to SSE stream via the Next.js API proxy
-    const es = new EventSource("/api/whatsapp/inbox/stream");
+    // Connect to SSE stream — pass token as query param since EventSource can't set headers
+    const token = (await import("js-cookie")).default.get("token") ?? "";
+    const es = new EventSource(`/api/whatsapp/inbox/stream?token=${encodeURIComponent(token)}`);
     sseRef.current = es;
 
     es.addEventListener("connected", () => setSseConnected(true));
