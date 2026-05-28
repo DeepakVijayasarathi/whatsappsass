@@ -134,7 +134,7 @@ function RuleModal({
                 Browse
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Must be an approved WhatsApp template</p>
+            <p className="text-xs text-gray-400 mt-1">Enter the exact template name. MSG91 users: add templates in the <a href="/templates" className="text-brand underline">Templates page</a> first.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -260,7 +260,7 @@ export default function SendPage() {
             <p className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-2">Tips</p>
             <ul className="space-y-1.5 text-xs text-blue-600">
               <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>Include country code: <code className="font-mono">+1</code> for USA, <code className="font-mono">+91</code> for India</li>
-              <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>Only approved Meta templates can be sent</li>
+              <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>Only approved templates can be sent (add MSG91 templates in the <a href="/templates" className="underline font-semibold">Templates page</a>)</li>
               <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>Type a template name to auto-look up its body and variables</li>
               <li className="flex items-start gap-1.5"><span className="shrink-0 mt-0.5">•</span>For bulk sends, use <a href="/campaigns" className="underline font-semibold">Campaigns</a> instead</li>
             </ul>

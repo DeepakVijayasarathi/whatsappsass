@@ -15,9 +15,11 @@ import {
   ChevronUp,
   ArrowDown,
   Search,
+  BookOpen,
 } from "lucide-react";
 import clsx from "clsx";
 import ConfirmModal from "@/components/ConfirmModal";
+import TemplatePicker, { type Template } from "@/components/TemplatePicker";
 
 interface SequenceStep {
   id: string;
@@ -67,6 +69,7 @@ function StepRow({
   onMoveUp: () => void;
   onMoveDown: () => void;
 }) {
+  const [showPicker, setShowPicker] = useState(false);
   return (
     <div className="relative">
       <div className="border border-gray-200 rounded-xl p-4 bg-white hover:border-brand/40 transition-colors">
@@ -102,15 +105,32 @@ function StepRow({
           </div>
         </div>
 
+        {showPicker && (
+          <TemplatePicker
+            onSelect={(t: Template) => { onChange("templateName", t.name); onChange("languageCode", t.language); setShowPicker(false); }}
+            onClose={() => setShowPicker(false)}
+          />
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
             <label className="block text-xs font-medium text-gray-500 mb-1">Template name</label>
-            <input
-              value={step.templateName}
-              onChange={(e) => onChange("templateName", e.target.value)}
-              className="input font-mono text-sm"
-              placeholder="hello_world"
-            />
+            <div className="flex gap-2">
+              <input
+                value={step.templateName}
+                onChange={(e) => onChange("templateName", e.target.value)}
+                className="input font-mono text-sm flex-1"
+                placeholder="hello_world"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPicker(true)}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-brand border border-brand/30 rounded-xl hover:bg-brand/5 transition-colors shrink-0"
+                title="Browse templates"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                Browse
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Language</label>
