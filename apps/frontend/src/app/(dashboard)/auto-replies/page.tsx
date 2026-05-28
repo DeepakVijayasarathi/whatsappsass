@@ -185,9 +185,11 @@ export default function AutoRepliesPage() {
   const [modal, setModal] = useState<"create" | AutoReply | null>(null);
   const [search, setSearch] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<AutoReply | null>(null);
+  const [provider, setProvider] = useState<string>("");
 
   const load = () => {
     setLoading(true);
+    api.get("/workspace/provider").then((r) => setProvider(r.data.whatsappProvider ?? "")).catch(() => {});
     api.get("/auto-replies")
       .then((r) => setRules(r.data.rules))
       .catch(() => { /* toast shown by interceptor */ })
@@ -261,6 +263,16 @@ export default function AutoRepliesPage() {
           onConfirm={() => remove(confirmDelete)}
           onCancel={() => setConfirmDelete(null)}
         />
+      )}
+
+      {provider === "msg91" && (
+        <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 flex items-start gap-3">
+          <span className="text-lg shrink-0">⚠</span>
+          <div>
+            <p className="font-semibold">Auto-replies require inbound messages</p>
+            <p className="text-xs mt-1 text-amber-700">MSG91 basic plan does not support receiving inbound messages — auto-reply rules will not trigger. Upgrade to the MSG91 Hello plan to enable inbound messages.</p>
+          </div>
+        </div>
       )}
 
       <div className="flex items-start justify-between mb-6 gap-4">

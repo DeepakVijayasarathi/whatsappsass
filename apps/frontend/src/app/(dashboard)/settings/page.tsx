@@ -466,7 +466,7 @@ export default function SettingsPage() {
                 {selectedProvider === "msg91" && (
                   <div className="p-3 bg-purple-50 rounded-xl text-xs text-purple-700 space-y-2">
                     <p className="font-semibold">MSG91 dashboard setup</p>
-                    <p>In <strong>MSG91 → WhatsApp → Webhooks</strong>, set your delivery/inbound webhook to:</p>
+                    <p>In <strong>MSG91 → WhatsApp → Webhooks</strong>, set your delivery webhook to:</p>
                     <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-purple-100">
                       <code className="flex-1 font-mono text-[11px] text-purple-900 break-all">
                         {typeof window !== "undefined" ? window.location.origin : "https://yourdomain.com"}/api/whatsapp/msg91-webhook
@@ -480,7 +480,8 @@ export default function SettingsPage() {
                         <Clipboard className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <p>This URL receives delivery receipts and inbound messages from MSG91.</p>
+                    <p>This URL receives <strong>delivery receipts</strong> (sent, delivered, read) from MSG91.</p>
+                    <p className="text-purple-500">⚠ Inbound messages require MSG91 Hello plan upgrade.</p>
                   </div>
                 )}
 

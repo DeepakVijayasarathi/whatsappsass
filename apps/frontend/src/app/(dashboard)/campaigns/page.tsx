@@ -329,6 +329,7 @@ export default function CampaignsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+  const [provider, setProvider] = useState<string>("");
 
   const PAGE_SIZE = 20;
 
@@ -346,6 +347,7 @@ export default function CampaignsPage() {
 
   const load = useCallback((p: number) => {
     setLoading(true);
+    api.get("/workspace/provider").then((r) => setProvider(r.data.whatsappProvider ?? "")).catch(() => {});
     const statusParam = statusFilter ? `&status=${statusFilter}` : "";
     const searchParam = search ? `&search=${encodeURIComponent(search)}` : "";
     Promise.all([
@@ -558,7 +560,7 @@ export default function CampaignsPage() {
                 <th className="tbl-th pl-4 sm:pl-0">Name</th>
                 <th className="tbl-th hidden sm:table-cell">Template</th>
                 <th className="tbl-th">Status</th>
-                <th className="tbl-th hidden md:table-cell">Replies</th>
+                {provider !== "msg91" && <th className="tbl-th hidden md:table-cell">Replies</th>}
                 <th className="tbl-th hidden lg:table-cell">Scheduled</th>
                 <th className="tbl-th text-right pr-4 sm:pr-0">Actions</th>
               </tr>
@@ -584,21 +586,23 @@ export default function CampaignsPage() {
                         {cfg.label}
                       </span>
                     </td>
-                    <td className="tbl-td hidden md:table-cell">
-                      {replyCounts[c.id] ? (
-                        <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                          <MessageCircle className="w-3.5 h-3.5 text-gray-400" />
-                          <span>{replyCounts[c.id].total}</span>
-                          {replyCounts[c.id].unread > 0 && (
-                            <span className="bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 leading-none">
-                              {replyCounts[c.id].unread} new
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-300">—</span>
-                      )}
-                    </td>
+                    {provider !== "msg91" && (
+                      <td className="tbl-td hidden md:table-cell">
+                        {replyCounts[c.id] ? (
+                          <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                            <MessageCircle className="w-3.5 h-3.5 text-gray-400" />
+                            <span>{replyCounts[c.id].total}</span>
+                            {replyCounts[c.id].unread > 0 && (
+                              <span className="bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                                {replyCounts[c.id].unread} new
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="tbl-td text-gray-500 text-xs hidden lg:table-cell">
                       {c.scheduledAt ? new Date(c.scheduledAt).toLocaleString() : <span className="text-gray-300">—</span>}
                     </td>
