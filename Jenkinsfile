@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()
+    }
+
     environment {
         IMAGE_NAME     = "whatsappsass"
         CONTAINER_NAME = "whatsappsass-container"

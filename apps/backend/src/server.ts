@@ -87,7 +87,7 @@ async function bootstrap() {
     return reply.status(status).send({ error: error.message });
   });
 
-  app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
+  app.get("/health", async () => ({ status: "ok", timestamp: new Date().toISOString(), version: "2ef8b67" }));
 
   await app.register(authRoutes, { prefix: "/auth" });
   await app.register(workspaceRoutes, { prefix: "/workspace" });
