@@ -255,11 +255,30 @@ export async function contactRoutes(app: FastifyInstance) {
       const dupeIds = dupes.map((d: { id: string }) => d.id);
 
       // Re-parent related records to the kept contact
+      // For sequence enrollments: only migrate if kept contact isn't already enrolled in that sequence
+      const dupeEnrollments = await prisma.sequenceEnrollment.findMany({
+        where: { contactId: { in: dupeIds } },
+        select: { id: true, sequenceId: true },
+      });
+      const keptEnrolledSequences = new Set(
+        (await prisma.sequenceEnrollment.findMany({
+          where: { contactId: keep.id },
+          select: { sequenceId: true },
+        })).map((e) => e.sequenceId)
+      );
+      const enrollmentsToMigrate = dupeEnrollments.filter((e) => !keptEnrolledSequences.has(e.sequenceId)).map((e) => e.id);
+      const enrollmentsToDelete = dupeEnrollments.filter((e) => keptEnrolledSequences.has(e.sequenceId)).map((e) => e.id);
+
       await Promise.all([
         prisma.messageLog.updateMany({ where: { contactId: { in: dupeIds } }, data: { contactId: keep.id } }),
         prisma.inboundMessage.updateMany({ where: { contactId: { in: dupeIds } }, data: { contactId: keep.id } }),
         prisma.contactNote.updateMany({ where: { contactId: { in: dupeIds } }, data: { contactId: keep.id } }),
-        prisma.sequenceEnrollment.deleteMany({ where: { contactId: { in: dupeIds } } }),
+        enrollmentsToMigrate.length > 0
+          ? prisma.sequenceEnrollment.updateMany({ where: { id: { in: enrollmentsToMigrate } }, data: { contactId: keep.id } })
+          : Promise.resolve(),
+        enrollmentsToDelete.length > 0
+          ? prisma.sequenceEnrollment.deleteMany({ where: { id: { in: enrollmentsToDelete } } })
+          : Promise.resolve(),
       ]);
 
       await prisma.contact.update({ where: { id: keep.id }, data: { tags: mergedTags, optIn: mergedOptIn } });

@@ -204,7 +204,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
       campaign,
       funnel: {
         sent:      { count: sentTotal,         rate: 100 },
-        delivered: { count: delivered + read,  rate: pct(delivered + read) },
+        delivered: { count: delivered,          rate: pct(delivered) },
         read:      { count: read,              rate: pct(read) },
         replied:   { count: replies,           rate: pct(replies) },
         failed:    { count: failed,            rate: pct(failed) },

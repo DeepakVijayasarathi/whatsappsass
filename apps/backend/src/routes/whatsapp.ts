@@ -635,11 +635,22 @@ export async function whatsappRoutes(app: FastifyInstance) {
         let normalized: string;
         try { normalized = normalisePhone(fromPhone); } catch { normalized = fromPhone; }
 
-        // Find contact and workspace (msg91 provider)
-        const contact = await prisma.contact.findFirst({
-          where: { OR: [{ phone: fromPhone }, { phone: normalized }] },
-          select: { id: true, workspaceId: true },
+        // Find workspace first (scoped to msg91 providers), then contact within that workspace
+        const msg91Workspaces = await prisma.workspace.findMany({
+          where: { whatsappProvider: "msg91", status: "active" },
+          select: { id: true },
         });
+        const msg91WorkspaceIds = msg91Workspaces.map((w) => w.id);
+
+        const contact = msg91WorkspaceIds.length > 0
+          ? await prisma.contact.findFirst({
+              where: {
+                workspaceId: { in: msg91WorkspaceIds },
+                OR: [{ phone: fromPhone }, { phone: normalized }],
+              },
+              select: { id: true, workspaceId: true },
+            })
+          : null;
 
         const ws = contact
           ? await prisma.workspace.findFirst({
