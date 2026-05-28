@@ -14,9 +14,10 @@ function getKey(): Buffer | null {
       );
     }
     // Development: warn once, then proceed with plaintext fallback
-    if (!globalThis.__encryptKeyWarned) {
+    const g = globalThis as Record<string, unknown>;
+    if (!g.__encryptKeyWarned) {
       console.warn("[encrypt] ENCRYPTION_KEY not set — credentials stored as PLAINTEXT. Set this variable before deploying to production.");
-      (globalThis as Record<string, unknown>).__encryptKeyWarned = true;
+      g.__encryptKeyWarned = true;
     }
     return null;
   }
