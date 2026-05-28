@@ -38,6 +38,9 @@ WORKDIR /app
 
 RUN apk add --no-cache openssl supervisor
 
+# Create non-root user for security
+RUN addgroup -g 1001 appgroup && adduser -D -u 1001 -G appgroup appuser
+
 ENV NODE_ENV=production
 ENV BACKEND_PORT=4000
 ENV FRONTEND_PORT=3000
@@ -56,6 +59,9 @@ COPY --from=frontend-builder /app/.next/standalone         ./frontend
 COPY --from=frontend-builder /app/.next/static             ./frontend/.next/static
 
 COPY supervisord.conf /etc/supervisord.conf
+
+# Set ownership to non-root user
+RUN chown -R appuser:appgroup /app
 
 EXPOSE 4000 3000
 

@@ -206,10 +206,11 @@ export default function InboxPage() {
     // Fallback polling every 30s (in case SSE is blocked by a proxy)
     const pollId = setInterval(() => loadConversations(true), 30_000);
 
+    const originalTitle = document.title;
     return () => {
       es.close(); sseRef.current = null;
       clearInterval(pollId);
-      document.title = "Inbox — WhatsApp SaaS";
+      document.title = originalTitle;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -236,7 +237,7 @@ export default function InboxPage() {
     if (!silent) {
       setLoadingThread(false);
       if (convo.unreadCount > 0) {
-        api.patch("/whatsapp/inbox/read", { fromPhone: convo.fromPhone }).then(() => loadConversations(true)).catch(() => {});
+        api.patch("/whatsapp/inbox/read", { fromPhone: convo.fromPhone }).then(() => loadConversations(true)).catch(() => toast.error("Failed to mark as read"));
       }
       if (scrollTimer.current) clearTimeout(scrollTimer.current);
       scrollTimer.current = setTimeout(() => { threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" }); }, 150);

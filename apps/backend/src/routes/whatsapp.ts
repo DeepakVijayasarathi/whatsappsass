@@ -593,13 +593,18 @@ export async function whatsappRoutes(app: FastifyInstance) {
               }).catch(() => {});
             }
           } else if (recipientNumber) {
-            // Fallback: match by recipient phone across msg91 workspaces
+            // Fallback: match by recipient phone — scope to msg91 workspaces only to prevent cross-tenant contamination
             let normalized: string;
             try { normalized = normalisePhone(recipientNumber); } catch { normalized = recipientNumber; }
-            const contact = await prisma.contact.findFirst({
-              where: { OR: [{ phone: recipientNumber }, { phone: normalized }] },
-              select: { id: true, workspaceId: true },
+            const msg91Ws = await prisma.workspace.findMany({
+              where: { whatsappProvider: "msg91", status: "active" },
+              select: { id: true },
             });
+            const msg91WsIds = msg91Ws.map((w) => w.id);
+            const contact = msg91WsIds.length > 0 ? await prisma.contact.findFirst({
+              where: { workspaceId: { in: msg91WsIds }, OR: [{ phone: recipientNumber }, { phone: normalized }] },
+              select: { id: true, workspaceId: true },
+            }) : null;
             if (contact) {
               const ws = await prisma.workspace.findFirst({
                 where: { id: contact.workspaceId, whatsappProvider: "msg91", status: "active" },

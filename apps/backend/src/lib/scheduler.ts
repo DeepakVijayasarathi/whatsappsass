@@ -220,11 +220,15 @@ async function runSequenceSteps() {
 }
 
 export function startScheduler(intervalMs = 60_000) {
-  runScheduledCampaigns().catch(console.error);
-  runSequenceSteps().catch(console.error);
-  setInterval(() => {
+  // Add jitter (0-5s) to prevent thundering herd on DB when multiple instances start
+  const jitter = Math.floor(Math.random() * 5_000);
+  setTimeout(() => {
     runScheduledCampaigns().catch(console.error);
     runSequenceSteps().catch(console.error);
-  }, intervalMs);
-  console.log("[scheduler] Campaign + sequence scheduler started");
+    setInterval(() => {
+      runScheduledCampaigns().catch(console.error);
+      runSequenceSteps().catch(console.error);
+    }, intervalMs);
+  }, jitter);
+  console.log(`[scheduler] Campaign + sequence scheduler started (jitter: ${jitter}ms)`);
 }
