@@ -403,7 +403,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
         hasMsg91AuthKey:            !!(msg91AuthKey),
         metaAccessTokenHint:        maskHint(metaAccessToken),
         msg91AuthKeyHint:           maskHint(msg91AuthKey),
-        metaWebhookVerifyToken:     metaWebhookVerifyToken,
+        hasMetaWebhookVerifyToken:  !!(metaWebhookVerifyToken),
         metaWebhookVerifyTokenHint: maskHint(metaWebhookVerifyToken),
       });
     }

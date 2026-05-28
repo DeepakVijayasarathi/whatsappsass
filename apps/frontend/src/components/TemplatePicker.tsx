@@ -72,7 +72,8 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
   }, []);
 
   const filtered = templates.filter((t) => {
-    const matchStatus = filterStatus === "ALL" || t.status === filterStatus;
+    // MSG91 templates use "PENDING" status but are valid — skip status filter for MSG91
+    const matchStatus = provider === "msg91" || filterStatus === "ALL" || t.status === filterStatus;
     const q = search.toLowerCase();
     const matchSearch = !q || t.name.toLowerCase().includes(q) || (t.body ?? "").toLowerCase().includes(q);
     return matchStatus && matchSearch;
@@ -177,7 +178,8 @@ export default function TemplatePicker({ onSelect, onClose }: Props) {
               {filtered.map((t) => {
                 const style = STATUS_META[t.status] ?? { badge: "bg-gray-100 text-gray-600", icon: AlertCircle, label: t.status };
                 const StatusIcon = style.icon;
-                const isApproved = t.status === "APPROVED";
+                // MSG91 uses "PENDING" for approved templates — treat all MSG91 templates as selectable
+                const isApproved = t.status === "APPROVED" || provider === "msg91";
                 return (
                   <button
                     key={t.id}

@@ -165,7 +165,7 @@ async function runSequenceSteps() {
         continue;
       }
 
-      if (!ws.whatsappProvider) {
+      if (!ws.whatsappProvider?.trim()) {
         console.warn(`[scheduler] Sequence enrollment ${enrollment.id} skipped — no WhatsApp provider configured`);
         // Roll back so it retries once a provider is configured
         await prisma.sequenceEnrollment.update({

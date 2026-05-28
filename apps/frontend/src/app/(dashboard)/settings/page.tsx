@@ -29,7 +29,7 @@ interface ProviderConfig {
   whatsappProvider: "meta" | "msg91";
   metaPhoneNumberId?: string | null;
   metaWabaId?: string | null;
-  metaWebhookVerifyToken?: string | null;
+  hasMetaWebhookVerifyToken?: boolean;
   metaWebhookVerifyTokenHint?: string | null;
   msg91IntegratedNumber?: string | null;
   hasMetaAccessToken?: boolean;
@@ -106,7 +106,7 @@ export default function SettingsPage() {
         whatsappProvider: cfg.whatsappProvider,
         metaPhoneNumberId: cfg.metaPhoneNumberId ?? "",
         metaWabaId: cfg.metaWabaId ?? "",
-        metaWebhookVerifyToken: cfg.metaWebhookVerifyToken ?? "",
+        metaWebhookVerifyToken: "",
         metaAccessToken: "",
         msg91IntegratedNumber: cfg.msg91IntegratedNumber ?? "",
         msg91AuthKey: "",
@@ -393,7 +393,7 @@ export default function SettingsPage() {
                     />
                     <Field
                       label="Webhook Verify Token"
-                      placeholder={providerConfig?.metaWebhookVerifyTokenHint ? "Leave blank to keep current token" : "my_random_verify_token"}
+                      placeholder={providerConfig?.hasMetaWebhookVerifyToken ? "Leave blank to keep current token" : "my_random_verify_token"}
                       mono
                       type="password"
                       {...regProvider("metaWebhookVerifyToken")}
