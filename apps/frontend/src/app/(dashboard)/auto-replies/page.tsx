@@ -265,15 +265,6 @@ export default function AutoRepliesPage() {
         />
       )}
 
-      {provider === "msg91" && (
-        <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 flex items-start gap-3">
-          <span className="text-lg shrink-0">⚠</span>
-          <div>
-            <p className="font-semibold">Auto-replies require inbound messages</p>
-            <p className="text-xs mt-1 text-amber-700">MSG91 basic plan does not support receiving inbound messages — auto-reply rules will not trigger. Upgrade to the MSG91 Hello plan to enable inbound messages.</p>
-          </div>
-        </div>
-      )}
 
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>

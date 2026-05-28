@@ -431,11 +431,9 @@ export default function SettingsPage() {
                     <p className="text-xs text-gray-400">
                       Auth key is write-only — never returned by the server. Leave blank to keep the stored key.
                     </p>
-                    <div className="mt-2 p-3 bg-amber-50 rounded-lg text-xs text-amber-700 space-y-1">
-                      <p className="font-semibold">MSG91 Basic Plan — what works in this app:</p>
-                      <p>✓ Send messages &nbsp;✓ Campaigns &nbsp;✓ Drip sequences &nbsp;✓ Delivery receipts</p>
-                      <p>✗ Auto-fetch templates from MSG91 (requires Hello plan upgrade)</p>
-                      <p className="text-amber-600">→ Add templates manually in the <a href="/templates" className="underline font-medium">Templates page</a>.</p>
+                    <div className="mt-2 p-3 bg-green-50 rounded-lg text-xs text-green-700 space-y-1">
+                      <p className="font-semibold">✓ All features available with Hello plan:</p>
+                      <p>✓ Send messages &nbsp;✓ Campaigns &nbsp;✓ Templates &nbsp;✓ Inbound messages &nbsp;✓ Auto-replies &nbsp;✓ Inbox</p>
                     </div>
                   </div>
                 )}
@@ -466,7 +464,7 @@ export default function SettingsPage() {
                 {selectedProvider === "msg91" && (
                   <div className="p-3 bg-purple-50 rounded-xl text-xs text-purple-700 space-y-2">
                     <p className="font-semibold">MSG91 dashboard setup</p>
-                    <p>In <strong>MSG91 → WhatsApp → Webhooks</strong>, set your delivery webhook to:</p>
+                    <p>In <strong>MSG91 → WhatsApp → Webhooks</strong>, set your delivery/inbound webhook to:</p>
                     <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-purple-100">
                       <code className="flex-1 font-mono text-[11px] text-purple-900 break-all">
                         {typeof window !== "undefined" ? window.location.origin : "https://yourdomain.com"}/api/whatsapp/msg91-webhook
@@ -480,8 +478,7 @@ export default function SettingsPage() {
                         <Clipboard className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <p>This URL receives <strong>delivery receipts</strong> (sent, delivered, read) from MSG91.</p>
-                    <p className="text-purple-500">⚠ Inbound messages require MSG91 Hello plan upgrade.</p>
+                    <p>This URL receives delivery receipts and inbound messages from MSG91.</p>
                   </div>
                 )}
 

@@ -341,11 +341,6 @@ export default function InboxPage() {
               <div className="text-center py-16 px-4">
                 <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                 <p className="text-sm text-gray-500">No conversations yet</p>
-                {provider === "msg91" && (
-                  <p className="text-xs text-amber-600 mt-2 bg-amber-50 rounded-lg px-3 py-2">
-                    ⚠ MSG91 basic plan does not support inbound messages. Upgrade to Hello plan to receive messages here.
-                  </p>
-                )}
               </div>
             ) : (
               filtered.map((convo) => {

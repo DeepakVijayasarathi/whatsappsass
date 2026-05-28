@@ -263,26 +263,37 @@ export async function templateRoutes(app: FastifyInstance) {
       }
     }
 
-    // MSG91 — return custom templates stored in DB (basic plan has no listing API)
+    // MSG91 — try API first (requires Hello plan), fall back to DB custom templates
     if (!workspace.msg91AuthKey) {
       return reply.status(422).send({
         error: "MSG91 Auth Key required. Configure it in Settings → WhatsApp Provider.",
       });
     }
-    const custom = await prisma.customTemplate.findMany({
-      where: { workspaceId: user.workspaceId },
-      orderBy: { createdAt: "desc" },
-    });
-    const templates: NormalizedTemplate[] = custom.map((t) => ({
-      id: t.id,
-      name: t.name,
-      status: t.status,
-      language: t.language,
-      category: t.category,
-      body: t.body,
-      provider: "msg91",
-    }));
-    return reply.send({ templates, provider: "msg91", total: templates.length });
+    if (!workspace.msg91IntegratedNumber) {
+      return reply.status(422).send({
+        error: "MSG91 Integrated Number required. Configure it in Settings → WhatsApp Provider.",
+      });
+    }
+    try {
+      const templates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
+      return reply.send({ templates, provider: "msg91", total: templates.length });
+    } catch (err: unknown) {
+      const msg = (err instanceof Error && err.message) || "Failed to fetch templates from MSG91";
+      console.warn("[templates] MSG91 API fetch failed, falling back to custom DB templates:", msg);
+      // Fall back to manually added templates from DB
+      const custom = await prisma.customTemplate.findMany({
+        where: { workspaceId: user.workspaceId },
+        orderBy: { createdAt: "desc" },
+      });
+      if (custom.length > 0) {
+        const templates: NormalizedTemplate[] = custom.map((t) => ({
+          id: t.id, name: t.name, status: t.status,
+          language: t.language, category: t.category, body: t.body, provider: "msg91",
+        }));
+        return reply.send({ templates, provider: "msg91", total: templates.length });
+      }
+      return reply.status(502).send({ error: msg });
+    }
   });
 
   // ── POST /templates/custom — create a custom template (MSG91) ───────────────
