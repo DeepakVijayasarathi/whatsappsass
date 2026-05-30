@@ -9,28 +9,33 @@ pipeline {
         IMAGE_NAME     = "whatsappsass"
         CONTAINER_NAME = "whatsappsass-container"
 
-        FRONTEND_PORT  = "3000"
+        FRONTEND_PORT  = "9100"
         BACKEND_PORT   = "4000"
 
         REPO_URL  = "https://github.com/DeepakVijayasarathi/whatsappsass.git"
         BRANCH    = "main"
 
         NODE_ENV      = "production"
-        FRONTEND_URL  = "http://103.118.158.189:3000"
+        FRONTEND_URL  = "http://5.223.64.206:9100"
         BACKEND_URL   = "http://127.0.0.1:4000"
+
+        DATABASE_URL  = "postgresql://admin:ScaleLite2026XkP9mNqR@5.223.64.206:5432/appdb"
+        JWT_SECRET    = "ScaleLite2026XkP9mNqR-jwt-secret-change-me"
     }
 
     stages {
 
         stage('Clean Workspace') {
-            steps { deleteDir() }
+            steps {
+                deleteDir()
+            }
         }
 
         stage('Clone Repository') {
             steps {
                 git branch: "${BRANCH}",
                     url: "${REPO_URL}",
-                    credentialsId: '2bbd378b-d531-4fc9-bf74-4441dbe63805'
+                    credentialsId: 'git'
             }
         }
 
@@ -38,7 +43,7 @@ pipeline {
             steps {
                 sh '''
                 ls -la
-                ls -la apps
+                ls -la apps || true
                 ls -la packages || true
                 '''
             }
@@ -50,37 +55,28 @@ pipeline {
             }
         }
 
-        stage('Stop Old Container') {
-            steps {
-                sh '''
-                docker stop $CONTAINER_NAME || true
-                docker rm   $CONTAINER_NAME || true
-                '''
-            }
-        }
-
         stage('Run Container') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'DATABASE_URL', variable: 'DATABASE_URL'),
-                    string(credentialsId: 'JWT_SECRET',   variable: 'JWT_SECRET')
-                ]) {
-                    sh '''
-                    docker run -d \
-                      --name $CONTAINER_NAME \
-                      --restart=always \
-                      -p $FRONTEND_PORT:$FRONTEND_PORT \
-                      -p $BACKEND_PORT:$BACKEND_PORT \
-                      -e FRONTEND_PORT=$FRONTEND_PORT \
-                      -e BACKEND_PORT=$BACKEND_PORT \
-                      -e BACKEND_URL=$BACKEND_URL \
-                      -e FRONTEND_URL=$FRONTEND_URL \
-                      -e DATABASE_URL="$DATABASE_URL" \
-                      -e JWT_SECRET="$JWT_SECRET" \
-                      -e NODE_ENV=$NODE_ENV \
-                      $IMAGE_NAME
-                    '''
-                }
+                sh '''
+                echo "Stopping old container..."
+                docker stop $CONTAINER_NAME || true
+                docker rm $CONTAINER_NAME || true
+
+                echo "Starting new container..."
+                docker run -d \
+                  --name $CONTAINER_NAME \
+                  --restart=always \
+                  -p $FRONTEND_PORT:3000 \
+                  -p $BACKEND_PORT:$BACKEND_PORT \
+                  -e FRONTEND_PORT=3000 \
+                  -e BACKEND_PORT=$BACKEND_PORT \
+                  -e BACKEND_URL="$BACKEND_URL" \
+                  -e FRONTEND_URL="$FRONTEND_URL" \
+                  -e DATABASE_URL="$DATABASE_URL" \
+                  -e JWT_SECRET="$JWT_SECRET" \
+                  -e NODE_ENV="$NODE_ENV" \
+                  $IMAGE_NAME
+                '''
             }
         }
 
@@ -88,28 +84,38 @@ pipeline {
             steps {
                 sh '''
                 sleep 20
-                echo "=== CONTAINERS ==="
+
+                echo "=== RUNNING CONTAINERS ==="
                 docker ps
 
-                echo "=== LOGS ==="
+                echo "=== APPLICATION LOGS ==="
                 docker logs $CONTAINER_NAME --tail 100
 
-                echo "=== HEALTH ==="
-                curl -sf http://localhost:4000/health && echo "Backend OK" || echo "Backend not yet ready"
+                echo "=== BACKEND HEALTH CHECK ==="
+                curl -sf http://localhost:4000/health && echo "Backend OK" || echo "Backend not ready"
+
+                echo "=== FRONTEND CHECK ==="
+                curl -I http://localhost:9100 || true
                 '''
             }
         }
 
         stage('Cleanup') {
             steps {
-                sh 'docker system prune -f'
+                sh 'docker image prune -f'
             }
         }
     }
 
     post {
-        success { echo "✅ WhatsApp SaaS deployed successfully" }
-        failure { echo "❌ Deployment failed - check logs" }
+        success {
+            echo "✅ WhatsApp SaaS deployed successfully"
+            echo "Frontend: http://5.223.64.206:9100"
+            echo "Backend:  http://5.223.64.206:4000"
+        }
+        failure {
+            echo "❌ Deployment failed - check logs"
+        }
         always {
             sh '''
             echo "=== FINAL STATUS ==="
