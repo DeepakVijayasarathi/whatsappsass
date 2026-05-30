@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Shield, Key, Wifi, RefreshCw, Building2, Mail, CheckCircle2, UserCog, Eye, EyeOff, AlertTriangle, Clipboard, FlaskConical } from "lucide-react";
+import { Shield, Key, Wifi, RefreshCw, Building2, Mail, CheckCircle2, UserCog, Eye, EyeOff, AlertTriangle, Clipboard, FlaskConical, Wallet, Phone } from "lucide-react";
 import clsx from "clsx";
 
 const licenseSchema = z.object({
@@ -37,6 +37,105 @@ interface ProviderConfig {
   metaAccessTokenHint?: string | null;
   msg91AuthKeyHint?: string | null;
   credentialDecryptError?: string | null;
+}
+
+function Msg91Utilities() {
+  const [balance, setBalance]   = useState<Record<string, unknown> | null>(null);
+  const [numbers, setNumbers]   = useState<unknown[] | null>(null);
+  const [loadingBal, setLoadingBal] = useState(false);
+  const [loadingNum, setLoadingNum] = useState(false);
+
+  const fetchBalance = async () => {
+    setLoadingBal(true);
+    try {
+      const r = await api.get("/whatsapp/balance");
+      setBalance(r.data);
+    } catch (err: unknown) {
+      toast.error(getErrMsg(err, "Failed to fetch balance"));
+    } finally { setLoadingBal(false); }
+  };
+
+  const fetchNumbers = async () => {
+    setLoadingNum(true);
+    try {
+      const r = await api.get("/whatsapp/numbers");
+      const raw = r.data;
+      const list: unknown[] = Array.isArray(raw) ? raw
+        : Array.isArray(raw?.data) ? raw.data
+        : Array.isArray(raw?.numbers) ? raw.numbers
+        : [raw];
+      setNumbers(list);
+    } catch (err: unknown) {
+      toast.error(getErrMsg(err, "Failed to fetch numbers"));
+    } finally { setLoadingNum(false); }
+  };
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex gap-2">
+        <button type="button" onClick={fetchBalance} disabled={loadingBal}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white border border-gray-200 rounded-lg hover:border-brand hover:text-brand transition-colors disabled:opacity-50">
+          <Wallet className="w-3.5 h-3.5" />{loadingBal ? "Checking…" : "Check Balance"}
+        </button>
+        <button type="button" onClick={fetchNumbers} disabled={loadingNum}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white border border-gray-200 rounded-lg hover:border-brand hover:text-brand transition-colors disabled:opacity-50">
+          <Phone className="w-3.5 h-3.5" />{loadingNum ? "Fetching…" : "Fetch Numbers"}
+        </button>
+      </div>
+
+      {balance && (() => {
+        // MSG91 response: { status, data: { prepaid_balance, plan_status, subscription_id }, hasError, errors }
+        const data = (balance.data && typeof balance.data === "object")
+          ? (balance.data as Record<string, unknown>)
+          : balance;
+        const status = String(balance.status ?? "");
+        const isOk = !balance.hasError && (status === "success" || status === "");
+        return (
+          <div className="p-3 bg-white border border-gray-200 rounded-lg text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-gray-700 flex items-center gap-1"><Wallet className="w-3 h-3" /> Balance</p>
+              {status && (
+                <span className={clsx("px-2 py-0.5 rounded-full text-[10px] font-bold", isOk ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600")}>
+                  {status}
+                </span>
+              )}
+            </div>
+            {data.prepaid_balance !== undefined && (
+              <p className="text-2xl font-bold text-gray-900">₹{Number(data.prepaid_balance).toFixed(2)}</p>
+            )}
+            <div className="grid grid-cols-2 gap-1 pt-1 border-t border-gray-100">
+              {Object.entries(data)
+                .filter(([k]) => k !== "prepaid_balance")
+                .map(([k, v]) => (
+                  <p key={k} className="text-gray-500">
+                    <span className="font-medium text-gray-700 capitalize">{k.replace(/_/g, " ")}:</span>{" "}
+                    {String(v)}
+                  </p>
+                ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {numbers && (
+        <div className="p-3 bg-white border border-gray-200 rounded-lg text-xs space-y-1">
+          <p className="font-semibold text-gray-700 flex items-center gap-1"><Phone className="w-3 h-3" /> Registered Numbers</p>
+          {numbers.length === 0 ? (
+            <p className="text-gray-400">No numbers found</p>
+          ) : numbers.map((n, i) => {
+            const item = n as Record<string, unknown>;
+            const display = item.number ?? item.integrated_number ?? item.phone ?? JSON.stringify(n);
+            const status  = item.status ?? item.state ?? "";
+            return (
+              <p key={i} className="text-gray-600 font-mono">
+                {String(display)}{status ? <span className="ml-2 text-green-600 font-sans">({String(status)})</span> : null}
+              </p>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -435,6 +534,9 @@ export default function SettingsPage() {
                       <p className="font-semibold">✓ All features available with Hello plan:</p>
                       <p>✓ Send messages &nbsp;✓ Campaigns &nbsp;✓ Templates &nbsp;✓ Inbound messages &nbsp;✓ Auto-replies &nbsp;✓ Inbox</p>
                     </div>
+
+                    {/* Balance + Numbers check */}
+                    <Msg91Utilities />
                   </div>
                 )}
 

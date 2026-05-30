@@ -6,6 +6,7 @@ import {
   FileText, RefreshCw, CheckCircle2, AlertCircle, Clock, Search,
   X, Eye, Plus, Trash2, ChevronDown, ChevronUp, Info, Link2, Image, Phone,
 } from "lucide-react";
+// Link2, Image, Phone are used by CreateTemplatePanel (Meta only)
 import clsx from "clsx";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
@@ -325,32 +326,55 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-const customSchema = z.object({
-  name:     z.string().min(1, "Name required").regex(/^[a-z0-9_]+$/, "Lowercase letters, digits and underscores only"),
-  category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).default("UTILITY"),
-  language: z.string().min(1, "Language required").default("en_US"),
-  body:     z.string().min(1, "Body required").max(1024, "Max 1024 characters"),
+const msg91Schema = z.object({
+  name:     z.string().min(1, "Name required").max(100).regex(/^[a-z0-9_]+$/, "Lowercase letters, digits and underscores only (e.g. hello_world)"),
+  category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"], { required_error: "Category required" }),
+  language: z.string().min(1, "Language required"),
+  body:     z.string().min(1, "Body text required").max(1024, "Max 1024 characters"),
+  footer:   z.string().max(60, "Max 60 characters").optional(),
 });
-type CustomForm = z.infer<typeof customSchema>;
+type Msg91Form = z.infer<typeof msg91Schema>;
 
-function CreateCustomTemplatePanel({ onCreated }: { onCreated: () => void }) {
+function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
-  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<CustomForm>({
-    resolver: zodResolver(customSchema),
+  const [headerFormat, setHeaderFormat] = useState<"NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT">("NONE");
+  const [headerText, setHeaderText] = useState("");
+  const [buttons, setButtons] = useState<BtnDraft[]>([]);
+
+  const { register, handleSubmit, watch, reset, formState: { errors, isSubmitting } } = useForm<Msg91Form>({
+    resolver: zodResolver(msg91Schema),
     defaultValues: { language: "en_US", category: "UTILITY" },
   });
   const bodyVal = watch("body") ?? "";
   const previewText = bodyVal.replace(/\{\{(\d+)\}\}/g, (_, n) => `[Variable ${n}]`);
 
-  const onSubmit = async (data: CustomForm) => {
+  const addButton = (type: BtnType) => {
+    if (buttons.length >= 3) { toast.error("Max 3 buttons per template"); return; }
+    setButtons((prev) => [...prev, { type, text: "", url: type === "URL" ? "https://" : undefined, phone_number: type === "PHONE_NUMBER" ? "+" : undefined }]);
+  };
+  const removeButton = (i: number) => setButtons((prev) => prev.filter((_, idx) => idx !== i));
+  const updateButton = (i: number, patch: Partial<BtnDraft>) => setButtons((prev) => prev.map((b, idx) => idx === i ? { ...b, ...patch } : b));
+  const resetForm = () => { reset(); setHeaderFormat("NONE"); setHeaderText(""); setButtons([]); };
+
+  const onSubmit = async (data: Msg91Form) => {
+    for (const btn of buttons) {
+      if (!btn.text.trim()) { toast.error("Fill in all button labels"); return; }
+      if (btn.type === "URL" && !btn.url?.startsWith("http")) { toast.error("URL buttons need a valid URL"); return; }
+      if (btn.type === "PHONE_NUMBER" && (btn.phone_number?.length ?? 0) < 7) { toast.error("Phone number too short"); return; }
+    }
+    const payload = {
+      ...data,
+      ...(headerFormat !== "NONE" ? { header: { format: headerFormat, text: headerFormat === "TEXT" ? headerText : undefined } } : {}),
+      ...(buttons.length > 0 ? { buttons } : {}),
+    };
     try {
-      await api.post("/templates/custom", data);
-      toast.success(`Template "${data.name}" saved`);
-      reset();
+      const res = await api.post("/templates/msg91", payload);
+      toast.success(res.data.message ?? "Template submitted for review");
+      resetForm();
       setOpen(false);
       onCreated();
     } catch (err: unknown) {
-      toast.error(getErrMsg(err, "Failed to save template"));
+      toast.error(getErrMsg(err, "Failed to create template"));
     }
   };
 
@@ -362,21 +386,21 @@ function CreateCustomTemplatePanel({ onCreated }: { onCreated: () => void }) {
             <Plus className="w-4 h-4 text-brand" />
           </div>
           <div className="text-left">
-            <p className="font-semibold text-gray-900 text-sm">Add Template</p>
-            <p className="text-xs text-gray-400">Save a template name + body to use in campaigns</p>
+            <p className="font-semibold text-gray-900 text-sm">Create New Template</p>
+            <p className="text-xs text-gray-400">Submit a template to MSG91 for WhatsApp review</p>
           </div>
         </div>
         {open ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
       </button>
 
       {open && (
-        <form onSubmit={handleSubmit(onSubmit)} className="mt-5 pt-5 border-t border-gray-100 space-y-4">
-          <div className="flex items-start gap-2 p-3 bg-purple-50 rounded-xl text-xs text-purple-700">
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-5 pt-5 border-t border-gray-100">
+          <div className="flex items-start gap-2 mb-5 p-3 bg-purple-50 rounded-xl text-xs text-purple-700">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
-            <p>Enter the exact template name from your MSG91 dashboard. Use <code className="bg-purple-100 px-1 rounded">{"{{1}}"}</code> <code className="bg-purple-100 px-1 rounded">{"{{2}}"}</code> for variables.</p>
+            <p>Template will be submitted to MSG91 and go through WhatsApp review — typically approved within minutes to 24 hours. Use <code className="bg-purple-100 px-1 rounded">{"{{1}}"}</code> <code className="bg-purple-100 px-1 rounded">{"{{2}}"}</code> for variables.</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Template name</label>
               <input {...register("name")} className="input font-mono text-sm" placeholder="hello_world" />
@@ -389,35 +413,114 @@ function CreateCustomTemplatePanel({ onCreated }: { onCreated: () => void }) {
                 <option value="MARKETING">Marketing</option>
                 <option value="AUTHENTICATION">Authentication</option>
               </select>
+              {errors.category && <p className="text-red-500 text-xs mt-1">{errors.category.message}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Language</label>
               <select {...register("language")} className="input text-sm">
                 {COMMON_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
               </select>
+              {errors.language && <p className="text-red-500 text-xs mt-1">{errors.language.message}</p>}
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Body text</label>
-            <textarea {...register("body")} rows={3} className="input text-sm resize-none" placeholder="Hello {{1}}, your appointment is on {{2}}." />
-            {errors.body && <p className="text-red-500 text-xs mt-1">{errors.body.message}</p>}
-          </div>
-
-          {bodyVal && (
-            <div className="bg-[#e5ddd5] rounded-xl p-3">
-              <p className="text-[10px] text-gray-500 mb-1 font-medium">Preview</p>
-              <div className="bg-white rounded-xl rounded-tl-none px-4 py-3 shadow-sm max-w-[90%]">
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{previewText}</p>
+          {/* Header */}
+          <div className="mb-4 p-4 border border-gray-100 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-gray-800">Header <span className="font-normal text-gray-400 ml-1">(optional)</span></p>
+              <div className="flex gap-1">
+                {(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"] as const).map((f) => (
+                  <button key={f} type="button" onClick={() => setHeaderFormat(f)}
+                    className={clsx("px-2 py-1 text-[11px] font-semibold rounded-lg transition-colors", headerFormat === f ? "bg-brand text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
+                    {f === "NONE" ? "None" : f.charAt(0) + f.slice(1).toLowerCase()}
+                  </button>
+                ))}
               </div>
             </div>
-          )}
+            {headerFormat === "TEXT" && (
+              <input value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="input text-sm" placeholder="Header text (max 60 chars)" maxLength={60} />
+            )}
+            {(headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && (
+              <p className="text-xs text-gray-400 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Media placeholder — URL provided at send time.</p>
+            )}
+          </div>
+
+          {/* Body + Preview */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Body text <span className="text-gray-400 font-normal">({bodyVal.length}/1024)</span></label>
+              <textarea {...register("body")} rows={5} className="input text-sm resize-none" placeholder={"Hello {{1}},\n\nYour order {{2}} has been confirmed."} />
+              {errors.body && <p className="text-red-500 text-xs mt-1">{errors.body.message}</p>}
+            </div>
+            <div>
+              <p className="block text-sm font-medium text-gray-700 mb-1">Preview</p>
+              <div className="bg-[#e5ddd5] rounded-xl p-3 h-[132px] overflow-y-auto">
+                {headerFormat === "TEXT" && headerText && <p className="text-xs font-bold text-gray-700 mb-1 px-1">{headerText}</p>}
+                {(headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && (
+                  <div className="bg-gray-200 rounded-lg mb-1 h-10 flex items-center justify-center text-[10px] text-gray-500">[{headerFormat.toLowerCase()}]</div>
+                )}
+                <div className="bg-white rounded-xl rounded-tl-none px-3 py-2 shadow-sm">
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                    {previewText || <span className="italic text-gray-400">Enter body text to preview</span>}
+                  </p>
+                  {buttons.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+                      {buttons.map((b, i) => <div key={i} className="text-[11px] text-center text-brand font-semibold py-0.5 border border-brand/30 rounded-lg">{b.text || `Button ${i + 1}`}</div>)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="mb-4 max-w-lg">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Footer <span className="text-gray-400 font-normal">(optional, max 60 chars)</span></label>
+            <input {...register("footer")} className="input text-sm" placeholder="Reply STOP to unsubscribe" />
+            {errors.footer && <p className="text-red-500 text-xs mt-1">{errors.footer.message}</p>}
+          </div>
+
+          {/* Buttons */}
+          <div className="mb-5 p-4 border border-gray-100 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-gray-800">Buttons <span className="font-normal text-gray-400 ml-1">(optional, max 3)</span></p>
+              <div className="flex gap-1.5">
+                {(["QUICK_REPLY", "URL", "PHONE_NUMBER"] as BtnType[]).map((type) => (
+                  <button key={type} type="button" onClick={() => addButton(type)} disabled={buttons.length >= 3}
+                    className={clsx("flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg disabled:opacity-40 transition-colors",
+                      type === "QUICK_REPLY" ? "bg-purple-50 text-purple-700 hover:bg-purple-100" :
+                      type === "URL"         ? "bg-blue-50 text-blue-700 hover:bg-blue-100" :
+                                               "bg-green-50 text-green-700 hover:bg-green-100")}>
+                    <Plus className="w-3 h-3" />{type === "QUICK_REPLY" ? "Quick Reply" : type === "URL" ? "URL" : "Phone"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {buttons.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-2">No buttons added.</p>
+            ) : (
+              <div className="space-y-2">
+                {buttons.map((btn, i) => (
+                  <div key={i} className="flex items-start gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <div className={clsx("px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 mt-1",
+                      btn.type === "QUICK_REPLY" ? "bg-purple-100 text-purple-700" : btn.type === "URL" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700")}>
+                      {btn.type === "QUICK_REPLY" ? "Reply" : btn.type === "URL" ? "URL" : "Phone"}
+                    </div>
+                    <div className="flex-1 space-y-1.5">
+                      <input value={btn.text} onChange={(e) => updateButton(i, { text: e.target.value })} className="input text-xs h-7 py-1" placeholder="Button label (max 25 chars)" maxLength={25} />
+                      {btn.type === "URL" && <input value={btn.url ?? ""} onChange={(e) => updateButton(i, { url: e.target.value })} className="input text-xs h-7 py-1 font-mono" placeholder="https://example.com" />}
+                      {btn.type === "PHONE_NUMBER" && <input value={btn.phone_number ?? ""} onChange={(e) => updateButton(i, { phone_number: e.target.value })} className="input text-xs h-7 py-1 font-mono" placeholder="+1234567890" />}
+                    </div>
+                    <button type="button" onClick={() => removeButton(i)} className="p-1 text-gray-300 hover:text-red-500 rounded-lg transition-colors shrink-0"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="flex gap-3">
-            <button type="submit" disabled={isSubmitting} className="btn-primary">
-              {isSubmitting ? "Saving..." : "Save Template"}
-            </button>
-            <button type="button" onClick={() => { setOpen(false); reset(); }} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={isSubmitting} className="btn-primary">{isSubmitting ? "Submitting..." : "Submit for Review"}</button>
+            <button type="button" onClick={() => { setOpen(false); resetForm(); }} className="btn-secondary">Cancel</button>
           </div>
         </form>
       )}
@@ -435,6 +538,7 @@ export default function TemplatesPage() {
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Template | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [syncing,  setSyncing]  = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -508,23 +612,45 @@ export default function TemplatesPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Templates</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {provider === "msg91" ? "MSG91 — templates stored in your app" : provider ? `Fetched from ${provider.toUpperCase()}` : "WhatsApp message templates"}
+            {provider === "msg91" ? "MSG91 templates" : provider ? `Fetched from ${provider.toUpperCase()}` : "WhatsApp message templates"}
             {!loading && !error && ` · ${templates.length} templates`}
           </p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="btn-secondary flex items-center gap-2 text-sm disabled:opacity-50"
-        >
-          <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {provider === "msg91" && (
+            <button
+              onClick={async () => {
+                setSyncing(true);
+                try {
+                  const r = await api.post("/templates/sync");
+                  toast.success(r.data.message ?? "Synced");
+                  load();
+                } catch (err: unknown) {
+                  toast.error(getErrMsg(err, "Sync failed"));
+                } finally { setSyncing(false); }
+              }}
+              disabled={syncing || loading}
+              className="btn-secondary flex items-center gap-2 text-sm disabled:opacity-50"
+              title="Pull latest template statuses from MSG91"
+            >
+              <RefreshCw className={clsx("w-4 h-4", syncing && "animate-spin")} />
+              {syncing ? "Syncing…" : "Sync"}
+            </button>
+          )}
+          <button
+            onClick={load}
+            disabled={loading}
+            className="btn-secondary flex items-center gap-2 text-sm disabled:opacity-50"
+          >
+            <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Template creation panel */}
       {!loading && !error && isMetaProvider && <CreateTemplatePanel onCreated={load} />}
-      {!loading && !error && provider === "msg91" && <CreateCustomTemplatePanel onCreated={load} />}
+      {!loading && !error && provider === "msg91" && <CreateMsg91TemplatePanel onCreated={load} />}
 
       {/* Status summary pills */}
       {!loading && !error && templates.length > 0 && (

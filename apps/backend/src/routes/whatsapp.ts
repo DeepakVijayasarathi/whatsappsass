@@ -5,8 +5,9 @@ import { prisma } from "../lib/prisma";
 import { authenticate, checkPermission } from "../middleware/authenticate";
 import { requireWhatsappEnabled } from "../middleware/whatsappEnabled";
 import type { JwtPayload } from "../middleware/authenticate";
-import { sendWhatsAppTemplate } from "../lib/whatsapp";
+import { sendWhatsAppTemplate, sendMsg91Session, sendMsg91Interactive } from "../lib/whatsapp";
 import type { ProviderConfig } from "../lib/whatsapp";
+import axios from "axios";
 import { fireWebhooks } from "../lib/webhookDispatcher";
 
 const META_APP_SECRET = process.env.META_APP_SECRET;
@@ -932,6 +933,175 @@ export async function whatsappRoutes(app: FastifyInstance) {
       return reply.send({ replies: result });
     }
   );
+
+  // ── POST /whatsapp/send-session — free-form text (session window) ────────
+  app.post(
+    "/send-session",
+    { preHandler: [checkPermission("can_send_whatsapp"), requireWhatsappEnabled] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+      const schema = z.object({
+        to:        z.string().min(7),
+        text:      z.string().min(1).max(4096),
+        contactId: z.string().uuid().optional(),
+      });
+      const parsed = schema.safeParse(request.body);
+      if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+      let config: ProviderConfig;
+      try { config = await getProviderConfig(user.workspaceId); }
+      catch (err) { return reply.status(422).send({ error: (err instanceof Error && err.message) || "Provider not configured" }); }
+
+      if (config.provider !== "msg91") {
+        return reply.status(422).send({ error: "Session messages are only supported for MSG91 provider." });
+      }
+
+      try {
+        const result = await sendMsg91Session({ to: parsed.data.to, text: parsed.data.text }, config);
+        return reply.send({ message: "Sent", provider: "msg91", wamid: result.wamid });
+      } catch (err) {
+        return reply.status(502).send({ error: (err instanceof Error && err.message) || "Send failed" });
+      }
+    }
+  );
+
+  // ── POST /whatsapp/send-interactive — buttons / list / location / payment ─
+  app.post(
+    "/send-interactive",
+    { preHandler: [checkPermission("can_send_whatsapp"), requireWhatsappEnabled] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+      const schema = z.object({
+        to:          z.string().min(7),
+        interactive: z.record(z.unknown()),
+        contactId:   z.string().uuid().optional(),
+      });
+      const parsed = schema.safeParse(request.body);
+      if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+      let config: ProviderConfig;
+      try { config = await getProviderConfig(user.workspaceId); }
+      catch (err) { return reply.status(422).send({ error: (err instanceof Error && err.message) || "Provider not configured" }); }
+
+      if (config.provider !== "msg91") {
+        return reply.status(422).send({ error: "Interactive messages are only supported for MSG91 provider." });
+      }
+
+      try {
+        const result = await sendMsg91Interactive({ to: parsed.data.to, interactive: parsed.data.interactive }, config);
+        return reply.send({ message: "Sent", provider: "msg91", wamid: result.wamid });
+      } catch (err) {
+        return reply.status(502).send({ error: (err instanceof Error && err.message) || "Send failed" });
+      }
+    }
+  );
+
+  // ── GET /whatsapp/logs — MSG91 message logs ──────────────────────────────
+  app.get("/logs", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { startDate, endDate } = request.query as { startDate?: string; endDate?: string };
+    const ws = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { whatsappProvider: true, msg91AuthKey: true },
+    });
+    if (!ws || ws.whatsappProvider !== "msg91") {
+      return reply.status(422).send({ error: "WhatsApp logs are only available for MSG91 provider." });
+    }
+    if (!ws.msg91AuthKey) return reply.status(422).send({ error: "MSG91 Auth Key required." });
+    try {
+      const { data } = await axios.get(
+        "https://control.msg91.com/api/v5/report/logs/wa",
+        {
+          params: { startDate, endDate },
+          headers: { authkey: ws.msg91AuthKey, accept: "application/json" },
+        }
+      );
+      return reply.send(data);
+    } catch (err: unknown) {
+      const d = (err as { response?: { data?: unknown } }).response?.data as Record<string, unknown> | undefined;
+      return reply.status(502).send({ error: (typeof d?.message === "string" && d.message) || "Failed to fetch logs" });
+    }
+  });
+
+  // ── GET /whatsapp/msg91-analytics — MSG91 WhatsApp analytics ─────────────
+  app.get("/msg91-analytics", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { startDate, endDate } = request.query as { startDate?: string; endDate?: string };
+    const ws = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { whatsappProvider: true, msg91AuthKey: true },
+    });
+    if (!ws || ws.whatsappProvider !== "msg91") {
+      return reply.status(422).send({ error: "MSG91 analytics are only available for MSG91 provider." });
+    }
+    if (!ws.msg91AuthKey) return reply.status(422).send({ error: "MSG91 Auth Key required." });
+    try {
+      const { data } = await axios.get(
+        "https://control.msg91.com/api/v5/report/analytics/p/wa/",
+        {
+          params: { startDate, endDate },
+          headers: { Authkey: ws.msg91AuthKey, accept: "application/json" },
+        }
+      );
+      return reply.send(data);
+    } catch (err: unknown) {
+      const d = (err as { response?: { data?: unknown } }).response?.data as Record<string, unknown> | undefined;
+      return reply.status(502).send({ error: (typeof d?.message === "string" && d.message) || "Failed to fetch analytics" });
+    }
+  });
+
+  // ── GET /whatsapp/balance — MSG91 prepaid balance ─────────────────────────
+  app.get("/balance", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const ws = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { whatsappProvider: true, msg91AuthKey: true, msg91IntegratedNumber: true },
+    });
+    if (!ws || ws.whatsappProvider !== "msg91") {
+      return reply.status(422).send({ error: "Balance check is only available for MSG91 provider." });
+    }
+    if (!ws.msg91AuthKey || !ws.msg91IntegratedNumber) {
+      return reply.status(422).send({ error: "MSG91 credentials required." });
+    }
+    try {
+      const { data } = await axios.post(
+        "https://control.msg91.com/api/v5/subscriptions/fetchPrepaidBalance",
+        { integrated_number: ws.msg91IntegratedNumber.replace(/^\+/, ""), service: "whatsapp" },
+        { headers: { Authkey: ws.msg91AuthKey, "Content-Type": "application/json" } }
+      );
+      return reply.send(data);
+    } catch (err: unknown) {
+      const axErr = err as { response?: { data?: unknown } };
+      const d = axErr.response?.data as Record<string, unknown> | undefined;
+      return reply.status(502).send({ error: (typeof d?.message === "string" && d.message) || "Failed to fetch balance" });
+    }
+  });
+
+  // ── GET /whatsapp/numbers — fetch registered MSG91 WhatsApp numbers ────────
+  app.get("/numbers", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const ws = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { whatsappProvider: true, msg91AuthKey: true },
+    });
+    if (!ws || ws.whatsappProvider !== "msg91") {
+      return reply.status(422).send({ error: "Numbers fetch is only available for MSG91 provider." });
+    }
+    if (!ws.msg91AuthKey) {
+      return reply.status(422).send({ error: "MSG91 Auth Key required." });
+    }
+    try {
+      const { data } = await axios.get(
+        "https://control.msg91.com/api/v5/whatsapp/whatsapp-activation/",
+        { headers: { authkey: ws.msg91AuthKey, accept: "application/json" } }
+      );
+      return reply.send(data);
+    } catch (err: unknown) {
+      const axErr = err as { response?: { data?: unknown } };
+      const d = axErr.response?.data as Record<string, unknown> | undefined;
+      return reply.status(502).send({ error: (typeof d?.message === "string" && d.message) || "Failed to fetch numbers" });
+    }
+  });
 
   // ── SSE: real-time inbox notifications ────────────────────────────────────
   // Clients subscribe once; receive "new_message" events when inbound messages arrive.

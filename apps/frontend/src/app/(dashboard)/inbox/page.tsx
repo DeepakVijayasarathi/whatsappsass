@@ -5,7 +5,7 @@ import { api, getErrMsg } from "@/lib/api";
 import Cookies from "js-cookie";
 import {
   Bot, CheckCheck, ChevronLeft, ExternalLink, MessageSquare,
-  Search, Send, Plus, Trash2, X, Pencil, Zap,
+  Search, Send, Plus, Trash2, X, Pencil, Zap, List, MousePointerClick, MapPin,
 } from "lucide-react";
 import clsx from "clsx";
 import toast from "react-hot-toast";
@@ -155,6 +155,19 @@ export default function InboxPage() {
   const [cannedSearch,   setCannedSearch]   = useState("");
   const [showCannedPick, setShowCannedPick] = useState(false);
   const [sseConnected,   setSseConnected]   = useState(false);
+  // Reply mode: template | text | interactive
+  const [replyMode,      setReplyMode]      = useState<"template" | "text" | "interactive">("template");
+  const [sessionText,    setSessionText]    = useState("");
+  const [sendingSession, setSendingSession] = useState(false);
+  // Interactive builder state
+  const [interactiveType, setInteractiveType] = useState<"button" | "list" | "location">("button");
+  const [iHeaderText,   setIHeaderText]    = useState("");
+  const [iBodyText,     setIBodyText]      = useState("");
+  const [iFooterText,   setIFooterText]    = useState("");
+  const [iButtons,      setIButtons]       = useState<{ id: string; title: string }[]>([{ id: "btn1", title: "" }]);
+  const [iListBtn,      setIListBtn]       = useState("Options");
+  const [iListRows,     setIListRows]      = useState<{ id: string; title: string; description: string }[]>([{ id: "row1", title: "", description: "" }]);
+  const [sendingInter,  setSendingInter]   = useState(false);
 
   const threadRef     = useRef<HTMLDivElement>(null);
   const scrollTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -281,6 +294,53 @@ export default function InboxPage() {
     setReplyPreview(null);
     setShowCannedPick(false);
     setCannedSearch("");
+  };
+
+  // ── Send session (free-form text) ───────────────────────────────────────
+  const sendSession = async () => {
+    if (!selected || !sessionText.trim()) return;
+    setSendingSession(true);
+    try {
+      await api.post("/whatsapp/send-session", { to: selected.fromPhone, text: sessionText.trim() });
+      toast.success("Message sent!");
+      setSessionText("");
+      if (selected) openConversation(selected);
+    } catch (err: unknown) {
+      toast.error(getErrMsg(err, "Failed to send"));
+    } finally { setSendingSession(false); }
+  };
+
+  // ── Send interactive message ─────────────────────────────────────────────
+  const sendInteractive = async () => {
+    if (!selected) return;
+    setSendingInter(true);
+    try {
+      let interactive: Record<string, unknown>;
+      if (interactiveType === "location") {
+        interactive = { type: "location_request_message", body: { text: iBodyText || "Please share your location" }, action: { name: "send_location" } };
+      } else if (interactiveType === "button") {
+        interactive = {
+          type: "button",
+          ...(iHeaderText ? { header: { type: "text", text: iHeaderText } } : {}),
+          body: { text: iBodyText },
+          ...(iFooterText ? { footer: { text: iFooterText } } : {}),
+          action: { buttons: iButtons.filter(b => b.title).map(b => ({ type: "reply", reply: { id: b.id, title: b.title } })) },
+        };
+      } else {
+        interactive = {
+          type: "list",
+          ...(iHeaderText ? { header: { type: "text", text: iHeaderText } } : {}),
+          body: { text: iBodyText },
+          ...(iFooterText ? { footer: { text: iFooterText } } : {}),
+          action: { button: iListBtn, sections: [{ title: "Options", rows: iListRows.filter(r => r.title) }] },
+        };
+      }
+      await api.post("/whatsapp/send-interactive", { to: selected.fromPhone, interactive });
+      toast.success("Interactive message sent!");
+      if (selected) openConversation(selected);
+    } catch (err: unknown) {
+      toast.error(getErrMsg(err, "Failed to send"));
+    } finally { setSendingInter(false); }
   };
 
   const filtered = conversations.filter((c) => {
@@ -431,83 +491,184 @@ export default function InboxPage() {
               )}
             </div>
 
-            {/* Reply input */}
-            <div className="p-3 sm:p-4 border-t border-gray-200 bg-white shrink-0">
-              {/* Canned response picker */}
-              {showCannedPick && (
-                <div className="mb-2 border border-gray-200 rounded-xl overflow-hidden shadow-lg bg-white">
-                  <div className="p-2 border-b border-gray-100">
-                    <input
-                      value={cannedSearch}
-                      onChange={(e) => setCannedSearch(e.target.value)}
-                      className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded-lg outline-none focus:border-brand"
-                      placeholder="Search canned responses…"
-                      autoFocus
-                    />
-                  </div>
-                  <div className="max-h-40 overflow-y-auto divide-y divide-gray-50">
-                    {filteredCanned.length === 0 ? (
-                      <p className="text-xs text-gray-400 p-3 text-center">No matches</p>
-                    ) : filteredCanned.map((r) => (
-                      <button key={r.id} onClick={() => pickCanned(r)} className="w-full text-left px-3 py-2 hover:bg-brand/5 transition-colors">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-gray-800">{r.title}</span>
-                          {r.shortcut && <code className="text-[10px] bg-gray-100 px-1 rounded text-gray-500">{r.shortcut}</code>}
-                        </div>
-                        <p className="text-[11px] text-gray-500 truncate mt-0.5">{r.body}</p>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="px-3 py-1.5 border-t border-gray-100 flex items-center justify-between">
-                    <span className="text-[10px] text-gray-400">Type to filter · click to use</span>
-                    <button onClick={() => setShowCannedPick(false)} className="text-[10px] text-gray-400 hover:text-gray-600">Close</button>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2 items-center">
-                {/* Canned responses button */}
-                <button
-                  onClick={() => setShowCannedPick((v) => !v)}
-                  className={clsx("p-2 rounded-xl transition-colors shrink-0", showCannedPick ? "bg-brand/10 text-brand" : "text-gray-400 hover:text-brand hover:bg-brand/10")}
-                  title="Canned responses (type / to trigger)"
-                >
-                  <Zap className="w-5 h-5" />
-                </button>
-                {/* Template picker button */}
-                <button
-                  onClick={() => setShowPicker(true)}
-                  className="p-2 text-gray-400 hover:text-brand hover:bg-brand/10 rounded-xl transition-colors shrink-0"
-                  title="Browse templates"
-                >
-                  <Bot className="w-5 h-5" />
-                </button>
-                <input
-                  value={replyTemplate}
-                  onChange={(e) => onReplyChange(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !showCannedPick && sendReply()}
-                  className="input flex-1 text-sm font-mono"
-                  placeholder="Template name or type / for canned response"
-                />
-                <input
-                  value={replyLang}
-                  onChange={(e) => setReplyLang(e.target.value)}
-                  className="input w-24 text-xs shrink-0 font-mono"
-                  placeholder="en_US"
-                  title="Language code"
-                />
-                <button onClick={sendReply} disabled={replying || !replyTemplate.trim()} className="btn-primary shrink-0">
-                  <Send className="w-4 h-4" />
-                  <span className="hidden sm:inline">{replying ? "Sending…" : "Send"}</span>
-                </button>
+            {/* Reply composer */}
+            <div className="border-t border-gray-200 bg-white shrink-0">
+              {/* Mode tabs */}
+              <div className="flex border-b border-gray-100">
+                {([
+                  { key: "template", label: "Template", icon: Bot },
+                  { key: "text",     label: "Text",     icon: MessageSquare },
+                  { key: "interactive", label: "Interactive", icon: MousePointerClick },
+                ] as const).map(({ key, label, icon: Icon }) => (
+                  <button key={key} onClick={() => setReplyMode(key)}
+                    className={clsx("flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors",
+                      replyMode === key ? "border-brand text-brand" : "border-transparent text-gray-400 hover:text-gray-600")}>
+                    <Icon className="w-3.5 h-3.5" />{label}
+                  </button>
+                ))}
               </div>
 
-              {replyPreview && (
-                <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 line-clamp-3">
-                  <span className="font-medium text-gray-400 mr-1.5">Preview:</span>{replyPreview}
-                </div>
-              )}
-              <p className="text-[10px] text-gray-400 mt-1.5 pl-1">Only approved WhatsApp templates can be sent · type <code className="bg-gray-100 px-1 rounded">/</code> to pick a canned response</p>
+              <div className="p-3 sm:p-4">
+                {/* ── Template mode ── */}
+                {replyMode === "template" && (
+                  <>
+                    {showCannedPick && (
+                      <div className="mb-2 border border-gray-200 rounded-xl overflow-hidden shadow-lg bg-white">
+                        <div className="p-2 border-b border-gray-100">
+                          <input value={cannedSearch} onChange={(e) => setCannedSearch(e.target.value)}
+                            className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded-lg outline-none focus:border-brand"
+                            placeholder="Search canned responses…" autoFocus />
+                        </div>
+                        <div className="max-h-40 overflow-y-auto divide-y divide-gray-50">
+                          {filteredCanned.length === 0 ? (
+                            <p className="text-xs text-gray-400 p-3 text-center">No matches</p>
+                          ) : filteredCanned.map((r) => (
+                            <button key={r.id} onClick={() => pickCanned(r)} className="w-full text-left px-3 py-2 hover:bg-brand/5 transition-colors">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-gray-800">{r.title}</span>
+                                {r.shortcut && <code className="text-[10px] bg-gray-100 px-1 rounded text-gray-500">{r.shortcut}</code>}
+                              </div>
+                              <p className="text-[11px] text-gray-500 truncate mt-0.5">{r.body}</p>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="px-3 py-1.5 border-t border-gray-100 flex items-center justify-between">
+                          <span className="text-[10px] text-gray-400">Type to filter · click to use</span>
+                          <button onClick={() => setShowCannedPick(false)} className="text-[10px] text-gray-400 hover:text-gray-600">Close</button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex gap-2 items-center">
+                      <button onClick={() => setShowCannedPick((v) => !v)}
+                        className={clsx("p-2 rounded-xl transition-colors shrink-0", showCannedPick ? "bg-brand/10 text-brand" : "text-gray-400 hover:text-brand hover:bg-brand/10")}
+                        title="Canned responses">
+                        <Zap className="w-5 h-5" />
+                      </button>
+                      <button onClick={() => setShowPicker(true)}
+                        className="p-2 text-gray-400 hover:text-brand hover:bg-brand/10 rounded-xl transition-colors shrink-0" title="Browse templates">
+                        <Bot className="w-5 h-5" />
+                      </button>
+                      <input value={replyTemplate} onChange={(e) => onReplyChange(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !showCannedPick && sendReply()}
+                        className="input flex-1 text-sm font-mono" placeholder="Template name or type / for canned response" />
+                      <input value={replyLang} onChange={(e) => setReplyLang(e.target.value)}
+                        className="input w-24 text-xs shrink-0 font-mono" placeholder="en_US" title="Language code" />
+                      <button onClick={sendReply} disabled={replying || !replyTemplate.trim()} className="btn-primary shrink-0">
+                        <Send className="w-4 h-4" /><span className="hidden sm:inline">{replying ? "Sending…" : "Send"}</span>
+                      </button>
+                    </div>
+                    {replyPreview && (
+                      <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 line-clamp-3">
+                        <span className="font-medium text-gray-400 mr-1.5">Preview:</span>{replyPreview}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-gray-400 mt-1.5 pl-1">Approved templates only · type <code className="bg-gray-100 px-1 rounded">/</code> for canned response</p>
+                  </>
+                )}
+
+                {/* ── Text mode (session) ── */}
+                {replyMode === "text" && (
+                  <>
+                    <div className="flex gap-2 items-end">
+                      <textarea value={sessionText} onChange={(e) => setSessionText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendSession(); } }}
+                        rows={3} className="input flex-1 text-sm resize-none"
+                        placeholder="Type a free-form message… (Enter to send, Shift+Enter for newline)" />
+                      <button onClick={sendSession} disabled={sendingSession || !sessionText.trim()} className="btn-primary shrink-0 self-end">
+                        <Send className="w-4 h-4" /><span className="hidden sm:inline">{sendingSession ? "Sending…" : "Send"}</span>
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1.5 pl-1">Session messages require the user to have messaged first within 24 hours · MSG91 only</p>
+                  </>
+                )}
+
+                {/* ── Interactive mode ── */}
+                {replyMode === "interactive" && (
+                  <div className="space-y-3">
+                    {/* Type selector */}
+                    <div className="flex gap-1.5">
+                      {([
+                        { key: "button",   label: "Buttons",  icon: MousePointerClick },
+                        { key: "list",     label: "List",     icon: List },
+                        { key: "location", label: "Location", icon: MapPin },
+                      ] as const).map(({ key, label, icon: Icon }) => (
+                        <button key={key} type="button" onClick={() => setInteractiveType(key)}
+                          className={clsx("flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors",
+                            interactiveType === key ? "bg-brand text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
+                          <Icon className="w-3 h-3" />{label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {interactiveType === "location" ? (
+                      <div className="p-3 bg-purple-50 rounded-xl text-xs text-purple-700 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 shrink-0" />
+                        Sends a location request — the user will be prompted to share their location.
+                      </div>
+                    ) : (
+                      <>
+                        <input value={iHeaderText} onChange={(e) => setIHeaderText(e.target.value)}
+                          className="input text-sm" placeholder="Header text (optional)" />
+                        <textarea value={iBodyText} onChange={(e) => setIBodyText(e.target.value)}
+                          rows={2} className="input text-sm resize-none" placeholder="Body text *" />
+                        <input value={iFooterText} onChange={(e) => setIFooterText(e.target.value)}
+                          className="input text-sm" placeholder="Footer text (optional)" />
+
+                        {interactiveType === "button" && (
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-gray-600">Buttons (max 3)</p>
+                            {iButtons.map((btn, i) => (
+                              <div key={i} className="flex gap-2">
+                                <input value={btn.title} onChange={(e) => setIButtons(prev => prev.map((b, j) => j === i ? { ...b, title: e.target.value } : b))}
+                                  className="input text-xs flex-1" placeholder={`Button ${i + 1} label`} maxLength={20} />
+                                {iButtons.length > 1 && (
+                                  <button onClick={() => setIButtons(prev => prev.filter((_, j) => j !== i))} className="p-1.5 text-gray-300 hover:text-red-500 rounded-lg"><X className="w-3.5 h-3.5" /></button>
+                                )}
+                              </div>
+                            ))}
+                            {iButtons.length < 3 && (
+                              <button onClick={() => setIButtons(prev => [...prev, { id: `btn${prev.length + 1}`, title: "" }])}
+                                className="text-xs text-brand hover:underline flex items-center gap-1"><Plus className="w-3 h-3" />Add button</button>
+                            )}
+                          </div>
+                        )}
+
+                        {interactiveType === "list" && (
+                          <div className="space-y-1.5">
+                            <div className="flex gap-2 items-center">
+                              <p className="text-xs font-medium text-gray-600 shrink-0">Button label:</p>
+                              <input value={iListBtn} onChange={(e) => setIListBtn(e.target.value)}
+                                className="input text-xs flex-1" placeholder="Options" maxLength={20} />
+                            </div>
+                            <p className="text-xs font-medium text-gray-600">List rows (max 10)</p>
+                            {iListRows.map((row, i) => (
+                              <div key={i} className="flex gap-2">
+                                <input value={row.title} onChange={(e) => setIListRows(prev => prev.map((r, j) => j === i ? { ...r, title: e.target.value } : r))}
+                                  className="input text-xs flex-1" placeholder={`Row ${i + 1} title`} maxLength={24} />
+                                <input value={row.description} onChange={(e) => setIListRows(prev => prev.map((r, j) => j === i ? { ...r, description: e.target.value } : r))}
+                                  className="input text-xs flex-1" placeholder="Description (optional)" maxLength={72} />
+                                {iListRows.length > 1 && (
+                                  <button onClick={() => setIListRows(prev => prev.filter((_, j) => j !== i))} className="p-1.5 text-gray-300 hover:text-red-500 rounded-lg"><X className="w-3.5 h-3.5" /></button>
+                                )}
+                              </div>
+                            ))}
+                            {iListRows.length < 10 && (
+                              <button onClick={() => setIListRows(prev => [...prev, { id: `row${prev.length + 1}`, title: "", description: "" }])}
+                                className="text-xs text-brand hover:underline flex items-center gap-1"><Plus className="w-3 h-3" />Add row</button>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    <button onClick={sendInteractive} disabled={sendingInter || (interactiveType !== "location" && !iBodyText.trim())}
+                      className="btn-primary w-full">
+                      <Send className="w-4 h-4" />{sendingInter ? "Sending…" : "Send Interactive"}
+                    </button>
+                    <p className="text-[10px] text-gray-400 pl-1">MSG91 only · requires an active session window</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ) : (

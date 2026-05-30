@@ -209,3 +209,61 @@ export async function sendWhatsAppTemplate(
   }
   return sendViaMeta(opts, config);
 }
+
+// ── MSG91 session message (free-form text, after user has messaged first) ────
+export interface SessionMessageOptions {
+  to: string;
+  text: string;
+}
+
+export async function sendMsg91Session(
+  opts: SessionMessageOptions,
+  config: ProviderConfig
+): Promise<SendResult> {
+  const { msg91AuthKey, msg91IntegratedNumber } = config;
+  if (!msg91AuthKey || !msg91IntegratedNumber) {
+    throw new Error("MSG91 credentials not configured");
+  }
+  const { data } = await axios.get(
+    "https://control.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/",
+    {
+      params: {
+        integrated_number: stripPlusForMsg91(msg91IntegratedNumber),
+        recipient_number:  stripPlusForMsg91(opts.to),
+        content_type:      "text",
+        text:              opts.text,
+      },
+      headers: { authkey: msg91AuthKey, accept: "application/json" },
+    }
+  );
+  const d = data as { request_id?: string; msgid?: string };
+  return { provider: "msg91", wamid: d?.request_id ?? d?.msgid ?? null, raw: data };
+}
+
+// ── MSG91 interactive message (buttons / list / location / payment) ──────────
+export interface InteractiveOptions {
+  to: string;
+  interactive: Record<string, unknown>;
+}
+
+export async function sendMsg91Interactive(
+  opts: InteractiveOptions,
+  config: ProviderConfig
+): Promise<SendResult> {
+  const { msg91AuthKey, msg91IntegratedNumber } = config;
+  if (!msg91AuthKey || !msg91IntegratedNumber) {
+    throw new Error("MSG91 credentials not configured");
+  }
+  const { data } = await axios.post(
+    "https://control.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/",
+    {
+      integrated_number: stripPlusForMsg91(msg91IntegratedNumber),
+      recipient_number:  stripPlusForMsg91(opts.to),
+      content_type:      "interactive",
+      interactive:       opts.interactive,
+    },
+    { headers: { authkey: msg91AuthKey, "Content-Type": "application/json" } }
+  );
+  const d = data as { request_id?: string; msgid?: string };
+  return { provider: "msg91", wamid: d?.request_id ?? d?.msgid ?? null, raw: data };
+}

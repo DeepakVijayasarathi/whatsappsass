@@ -89,137 +89,167 @@ function numberCandidates(stored: string): string[] {
   return candidates;
 }
 
+// MSG91 status values vary by plan/endpoint — normalize to standard set
+function normalizeMsg91Status(raw: unknown): string {
+  const s = String(raw ?? "").toUpperCase().trim();
+  if (s === "ENABLE" || s === "ENABLED" || s === "APPROVED" || s === "ACTIVE" || s === "1") return "APPROVED";
+  if (s === "DISABLE" || s === "DISABLED" || s === "PAUSED")   return "PAUSED";
+  if (s === "PENDING" || s === "IN_REVIEW" || s === "SUBMITTED") return "PENDING";
+  if (s === "REJECTED" || s === "FAILED")  return "REJECTED";
+  if (s === "") return "UNKNOWN";
+  return s; // pass through anything else (e.g. already "APPROVED")
+}
+
+let _normalizeSeq = 0;
+function normalizeMsg91Template(t: unknown): NormalizedTemplate {
+  const item = t as Record<string, unknown>;
+
+  // components[] can hold the body — check both BODY type and direct text fields
+  const components = Array.isArray(item.components) ? (item.components as Array<Record<string, unknown>>) : [];
+  const bodyComp = components.find((c) => String(c.type ?? "").toUpperCase() === "BODY");
+
+  // MSG91 content wrapper variant
+  const content = (item.content && typeof item.content === "object")
+    ? (item.content as Record<string, unknown>)
+    : undefined;
+
+  const body =
+    bodyComp?.text       != null ? String(bodyComp.text)      :
+    item.body            != null ? String(item.body)           :
+    item.template_body   != null ? String(item.template_body)  :
+    item.message         != null ? String(item.message)        :
+    content?.body        != null ? String(content.body)        :
+    content?.text        != null ? String(content.text)        :
+    null;
+
+  // Use a stable unique ID: prefer API-supplied IDs, fall back to name+lang (unique per workspace)
+  const apiId =
+    item.template_id ?? item.id ?? item._id ?? item.templateId ?? item.template_id;
+  const stableId = apiId != null
+    ? String(apiId)
+    : `msg91_${String(item.template_name ?? item.name ?? "")}_${++_normalizeSeq}`;
+
+  return {
+    id:       stableId,
+    name:     String(item.template_name ?? item.name ?? ""),
+    status:   normalizeMsg91Status(
+                item.approval_status    ??  // get-template-client primary field
+                item.waba_status        ??
+                item.template_status    ??
+                item.state              ??
+                item.status             ??
+                item.templateStatus     ??
+                item.approvalStatus
+              ),
+    language: String(item.language ?? item.lang ?? item.template_language ?? "en"),
+    category: String(item.category_name ?? item.category ?? item.template_category ?? "UTILITY"),
+    body,
+    provider: "msg91",
+  };
+}
+
 async function fetchMsg91Templates(authKey: string, integratedNumber: string): Promise<NormalizedTemplate[]> {
+  const headers = { authkey: authKey, accept: "application/json", "content-type": "text/plain" };
+  const numberFormats = numberCandidates(integratedNumber);
+
+  // Try the documented get-template-client/:number endpoint first, then fall back to get-template-plugins
+  for (const numFormat of numberFormats) {
+    try {
+      const res = await axios.get(
+        `https://control.msg91.com/api/v5/whatsapp/get-template-client/${encodeURIComponent(numFormat)}`,
+        { headers, timeout: 15_000 }
+      );
+      const d = res.data as Record<string, unknown>;
+      const raw: unknown[] = Array.isArray(d?.data)
+        ? (d.data as unknown[])
+        : Array.isArray(res.data)
+        ? (res.data as unknown[])
+        : [];
+      console.log(`[templates] MSG91 get-template-client success (${numFormat}): ${raw.length} templates`);
+      return raw.map(normalizeMsg91Template);
+    } catch (err: unknown) {
+      const axErr = err as { response?: { status?: number; data?: unknown } };
+      if (axErr.response?.status === 401) {
+        throw new Error("MSG91 Auth Key is invalid or expired. Go to Settings → WhatsApp Provider and re-enter your Auth Key.");
+      }
+      // Any other error — fall through to legacy endpoint
+      console.warn(`[templates] get-template-client failed for ${numFormat}, trying legacy endpoint`);
+    }
+  }
+
+  // Legacy fallback: get-template-plugins with number as query param
   let data: unknown;
   let lastErr: unknown;
-  // "No integration found" means the number format doesn't match MSG91's stored format.
-  // Try all common format variants automatically.
-  const numberFormats = numberCandidates(integratedNumber);
 
   for (const host of MSG91_TEMPLATE_HOSTS) {
     for (const numFormat of numberFormats) {
       try {
-        // MSG91 uses "authkey" (no underscore) as the header name — same as the send API.
-        // "auth_key" (with underscore) returns HTTP 401 even with a valid key.
         const res = await axios.get(
           `https://${host}/api/v5/whatsapp/get-template-plugins/`,
-          {
-            params: { number: numFormat },
-            headers: { authkey: authKey },
-            timeout: 15_000,
-          }
+          { params: { number: numFormat }, headers: { authkey: authKey }, timeout: 15_000 }
         );
-        console.log(`[templates] MSG91 success with number format: ${numFormat}`);
+        console.log(`[templates] MSG91 get-template-plugins success (${numFormat})`);
         data = res.data;
         lastErr = null;
-        break; // success — stop trying formats
+        break;
       } catch (err: unknown) {
         const axiosErr = err as { response?: { status?: number; data?: unknown }; code?: string };
         if (axiosErr.response) {
-          // Got an HTTP response — this host works, analyse the error
           const status = axiosErr.response.status;
           const d = axiosErr.response.data as Record<string, unknown> | undefined;
-
-          // 400 + "No integration found" → wrong number format, try next variant
           const errText = JSON.stringify(d);
           if (status === 400 && errText.includes("No integration found")) {
-            console.warn(`[templates] MSG91 number format rejected (${numFormat}): ${errText} — trying next format`);
             lastErr = new Error(`No integration found for any number format tried. Last: ${numFormat}`);
-            continue; // try next format
+            continue;
           }
-
-          console.error(`[templates] MSG91 HTTP error (${host}):`, status, errText);
-
-          // MSG91 response shape: { status:"fail", errors:"Unauthorized", apiError:"201" }
-          // 401 always means the auth key is wrong or expired
           if (status === 401) {
             throw new Error("MSG91 Auth Key is invalid or expired. Go to Settings → WhatsApp Provider and re-enter your Auth Key.");
           }
           const msg =
             (typeof d?.message === "string" && d.message) ||
-            (typeof d?.errors === "string" && d.errors) ||
-            (typeof d?.error === "string" && d.error) ||
+            (typeof d?.errors  === "string" && d.errors)  ||
+            (typeof d?.error   === "string" && d.error)   ||
             `MSG91 API error (HTTP ${status})`;
           throw new Error(msg);
         }
-        // DNS / connection error — try next host
-        console.warn(`[templates] MSG91 host unreachable (${host}): ${(err as Error).message} — trying next`);
+        console.warn(`[templates] MSG91 host unreachable (${host}): ${(err as Error).message}`);
         lastErr = err;
-        break; // no point trying more number formats if host is down
+        break;
       }
     }
-    if (data !== undefined) break; // found data, stop host loop
+    if (data !== undefined) break;
   }
 
   if (lastErr !== null && data === undefined) {
     const errMsg = (lastErr as Error).message ?? "Network error";
-    // Check if all failures were "no integration found" — give a targeted message
     if (errMsg.includes("No integration found")) {
       const tried = numberCandidates(integratedNumber).join(", ");
-      console.error(`[templates] MSG91 number not found after trying: ${tried}`);
       throw new Error(
         `MSG91: "No integration found" for any number format tried (${tried}). ` +
-        `Please verify the Integrated Number in your MSG91 dashboard ` +
-        `(control.msg91.com → WhatsApp → Integrations) and update it in Settings → WhatsApp Provider.`
+        `Please verify the Integrated Number in your MSG91 dashboard and update it in Settings → WhatsApp Provider.`
       );
     }
-    // Network error
-    console.error("[templates] MSG91 host unreachable:", errMsg);
-    throw new Error(`Cannot reach MSG91 API (${MSG91_TEMPLATE_HOSTS[0]}). Ensure your container has outbound internet access (DNS + HTTPS on port 443). Error: ${errMsg}`);
+    throw new Error(`Cannot reach MSG91 API. Ensure outbound internet access (HTTPS port 443). Error: ${errMsg}`);
   }
 
   const d = data as Record<string, unknown>;
-
-  // MSG91 returns HTTP 200 with an error body in several shapes:
-  //   { type: "error", message: "..." }
-  //   { status: "error", message: "..." }
-  //   { code: 0, message: "..." }   (code 0 = failure, non-zero = success)
-  //   { success: false, message: "..." }
   const isErrorBody =
-    d?.type === "error" ||
-    d?.status === "error" ||
-    d?.success === false ||
+    d?.type === "error" || d?.status === "error" || d?.success === false ||
     (typeof d?.code === "number" && d.code === 0 && !Array.isArray(d?.data));
 
   if (isErrorBody) {
-    const msg =
-      (typeof d.message === "string" && d.message) ||
-      (typeof d.error === "string" && d.error) ||
-      "MSG91 authentication failed";
-    console.error("[templates] MSG91 auth error response:", JSON.stringify(d));
+    const msg = (typeof d.message === "string" && d.message) || (typeof d.error === "string" && d.error) || "MSG91 authentication failed";
     throw new Error(msg);
   }
 
-  // Support multiple response shapes:
-  //   { data: [...] }   — most common
-  //   { templates: [...] }
-  //   [...]             — bare array
   const raw: unknown[] = Array.isArray(d?.data)
     ? (d.data as unknown[])
     : Array.isArray((d as Record<string, unknown>)?.templates)
     ? ((d as Record<string, unknown>).templates as unknown[])
-    : Array.isArray(data)
-    ? (data as unknown[])
-    : [];
+    : Array.isArray(data) ? (data as unknown[]) : [];
 
-  console.log(`[templates] MSG91 fetched ${raw.length} templates`);
-
-  return raw.map((t): NormalizedTemplate => {
-    const item = t as Record<string, unknown>;
-    const content = item.content as Record<string, unknown> | undefined;
-    return {
-      id: String(item.template_id ?? item.id ?? item._id ?? `msg91_${Date.now()}`),
-      name: String(item.template_name ?? item.name ?? ""),
-      status: String(item.state ?? item.status ?? "UNKNOWN").toUpperCase(),
-      language: String(item.language ?? item.lang ?? "en"),
-      category: String(item.category_name ?? item.category ?? "UTILITY"),
-      body: item.body != null ? String(item.body)
-          : content?.body != null ? String(content.body)
-          : item.data != null ? String(item.data)
-          : null,
-      provider: "msg91",
-    };
-  });
+  console.log(`[templates] MSG91 fetched ${raw.length} templates via legacy endpoint`);
+  return raw.map(normalizeMsg91Template);
 }
 
 export async function templateRoutes(app: FastifyInstance) {
@@ -278,26 +308,103 @@ export async function templateRoutes(app: FastifyInstance) {
         error: "MSG91 Integrated Number required. Configure it in Settings → WhatsApp Provider.",
       });
     }
+    // Always fetch DB custom templates (includes PENDING submitted via our UI)
+    const dbTemplates = await prisma.customTemplate.findMany({
+      where: { workspaceId: user.workspaceId },
+      orderBy: { createdAt: "desc" },
+    });
+
     try {
-      const templates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
+      const apiTemplates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
+
+      // Build a lookup of DB entries by name so we can fill in missing status/body
+      const dbByName = new Map(dbTemplates.map((t) => [t.name, t]));
+
+      // API is authoritative, but if it returns UNKNOWN status or null body,
+      // fall back to the DB entry for those fields (which we set on creation)
+      const merged: NormalizedTemplate[] = apiTemplates.map((t) => {
+        const db = dbByName.get(t.name);
+        return {
+          ...t,
+          status: t.status === "UNKNOWN" && db?.status ? db.status : t.status,
+          body:   t.body ?? db?.body ?? null,
+        };
+      });
+
+      // Append DB entries whose name is not in the API response (still PENDING / not yet approved)
+      const apiNames = new Set(apiTemplates.map((t) => t.name));
+      const pendingFromDb: NormalizedTemplate[] = dbTemplates
+        .filter((t) => !apiNames.has(t.name))
+        .map((t) => ({
+          id: t.id, name: t.name, status: t.status,
+          language: t.language, category: t.category, body: t.body, provider: "msg91" as const,
+        }));
+
+      const templates = [...merged, ...pendingFromDb];
       return reply.send({ templates, provider: "msg91", total: templates.length });
     } catch (err: unknown) {
       const msg = (err instanceof Error && err.message) || "Failed to fetch templates from MSG91";
       console.warn("[templates] MSG91 API fetch failed, falling back to custom DB templates:", msg);
-      // Fall back to manually added templates from DB
-      const custom = await prisma.customTemplate.findMany({
-        where: { workspaceId: user.workspaceId },
-        orderBy: { createdAt: "desc" },
-      });
-      if (custom.length > 0) {
-        const templates: NormalizedTemplate[] = custom.map((t) => ({
+      if (dbTemplates.length > 0) {
+        const templates: NormalizedTemplate[] = dbTemplates.map((t) => ({
           id: t.id, name: t.name, status: t.status,
-          language: t.language, category: t.category, body: t.body, provider: "msg91",
+          language: t.language, category: t.category, body: t.body, provider: "msg91" as const,
         }));
         return reply.send({ templates, provider: "msg91", total: templates.length });
       }
       return reply.status(502).send({ error: msg });
     }
+  });
+
+  // ── POST /templates/sync — sync MSG91 API statuses into local DB ────────────
+  app.post("/sync", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { whatsappProvider: true, msg91AuthKey: true, msg91IntegratedNumber: true },
+    });
+
+    if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
+    if (workspace.whatsappProvider !== "msg91") {
+      return reply.status(422).send({ error: "Sync is only available for MSG91 provider." });
+    }
+    if (!workspace.msg91AuthKey || !workspace.msg91IntegratedNumber) {
+      return reply.status(422).send({ error: "MSG91 credentials required." });
+    }
+
+    let apiTemplates: NormalizedTemplate[];
+    try {
+      apiTemplates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
+    } catch (err: unknown) {
+      return reply.status(502).send({ error: (err instanceof Error && err.message) || "Failed to fetch from MSG91" });
+    }
+
+    // Upsert each API template into custom_templates so status/body are current
+    let synced = 0;
+    for (const t of apiTemplates) {
+      if (!t.name || t.status === "UNKNOWN") continue;
+      await prisma.customTemplate.upsert({
+        where:  { workspaceId_name: { workspaceId: user.workspaceId, name: t.name } },
+        create: {
+          workspaceId: user.workspaceId,
+          name:     t.name,
+          category: t.category ?? "UTILITY",
+          language: t.language ?? "en_US",
+          body:     t.body ?? "",
+          status:   t.status,
+        },
+        update: {
+          status:   t.status,
+          ...(t.body ? { body: t.body } : {}),
+          ...(t.category ? { category: t.category } : {}),
+          ...(t.language ? { language: t.language } : {}),
+        },
+      });
+      synced++;
+    }
+
+    return reply.send({ message: `Synced ${synced} template${synced !== 1 ? "s" : ""} from MSG91.`, synced, total: apiTemplates.length });
   });
 
   // ── POST /templates/custom — create a custom template (MSG91) ───────────────
@@ -323,14 +430,17 @@ export async function templateRoutes(app: FastifyInstance) {
     return reply.status(201).send(template);
   });
 
-  // ── PUT /templates/custom/:id — update a custom template (MSG91) ────────────
+  // ── PUT /templates/custom/:id — update template in MSG91 API + DB ───────────
   app.put("/custom/:id", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const { id } = request.params as { id: string };
     const schema = z.object({
-      category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).optional(),
-      language: z.string().min(2).max(10).optional(),
       body:     z.string().min(1).max(1024).optional(),
+      buttons:  z.array(z.union([
+        z.object({ type: z.literal("QUICK_REPLY"),  text: z.string().min(1).max(25) }),
+        z.object({ type: z.literal("URL"),          text: z.string().min(1).max(25), url: z.string().url() }),
+        z.object({ type: z.literal("PHONE_NUMBER"), text: z.string().min(1).max(25), phone_number: z.string().min(7) }),
+      ])).max(3).optional(),
     });
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
@@ -340,23 +450,199 @@ export async function templateRoutes(app: FastifyInstance) {
     });
     if (!existing) return reply.status(404).send({ error: "Template not found" });
 
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { msg91AuthKey: true, msg91IntegratedNumber: true },
+    });
+
+    // Call MSG91 edit API if credentials are present
+    if (workspace?.msg91AuthKey && workspace.msg91IntegratedNumber && parsed.data.body) {
+      const components: Record<string, unknown>[] = [];
+      const bodyVars = [...parsed.data.body.matchAll(/\{\{(\d+)\}\}/g)].map((m) => `sample_${m[1]}`);
+      const bodyComp: Record<string, unknown> = { type: "BODY", text: parsed.data.body };
+      if (bodyVars.length > 0) bodyComp.example = { body_text: [bodyVars] };
+      components.push(bodyComp);
+
+      if (parsed.data.buttons && parsed.data.buttons.length > 0) {
+        components.push({
+          type: "BUTTONS",
+          buttons: parsed.data.buttons.map((btn) => {
+            if (btn.type === "URL") return { type: "URL", text: btn.text, url: btn.url };
+            if (btn.type === "PHONE_NUMBER") return { type: "PHONE_NUMBER", text: btn.text, phone_number: btn.phone_number };
+            return { type: "QUICK_REPLY", text: btn.text };
+          }),
+        });
+      }
+
+      try {
+        await axios.put(
+          `https://control.msg91.com/api/v5/whatsapp/client-panel-template/${existing.name}/`,
+          {
+            integrated_number: workspace.msg91IntegratedNumber.replace(/^\+/, ""),
+            components,
+            button_url: parsed.data.buttons?.some((b) => b.type === "URL") ?? false,
+          },
+          { headers: { authkey: workspace.msg91AuthKey, "Content-Type": "application/json" } }
+        );
+      } catch (err: unknown) {
+        console.warn("[templates] MSG91 edit warning:", (err as Error).message);
+      }
+    }
+
     const updated = await prisma.customTemplate.update({
       where: { id },
-      data: parsed.data,
+      data: { body: parsed.data.body },
     });
     return reply.send(updated);
   });
 
-  // ── DELETE /templates/custom/:id — delete a custom template (MSG91) ─────────
+  // ── DELETE /templates/custom/:id — delete template from MSG91 API + DB ──────
   app.delete("/custom/:id", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
     const user = request.user as JwtPayload;
     const { id } = request.params as { id: string };
+
     const existing = await prisma.customTemplate.findFirst({
       where: { id, workspaceId: user.workspaceId },
     });
     if (!existing) return reply.status(404).send({ error: "Template not found" });
+
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { msg91AuthKey: true, msg91IntegratedNumber: true },
+    });
+
+    // Best-effort delete from MSG91 API (only if credentials present)
+    if (workspace?.msg91AuthKey && workspace.msg91IntegratedNumber) {
+      try {
+        await axios.delete(
+          "https://control.msg91.com/api/v5/whatsapp/client-panel-template/",
+          {
+            params: {
+              integrated_number: workspace.msg91IntegratedNumber.replace(/^\+/, ""),
+              template_name:     existing.name,
+            },
+            headers: { authkey: workspace.msg91AuthKey, "Content-Type": "application/json" },
+          }
+        );
+      } catch (err: unknown) {
+        // Log but don't fail — template may not exist on MSG91 side if it was only local
+        console.warn("[templates] MSG91 delete warning:", (err as Error).message);
+      }
+    }
+
     await prisma.customTemplate.delete({ where: { id } });
     return reply.send({ message: "Template deleted" });
+  });
+
+  // ── POST /templates/msg91 — create a template via MSG91 API ─────────────────
+  app.post("/msg91", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+
+    const buttonSchema = z.union([
+      z.object({ type: z.literal("QUICK_REPLY"),  text: z.string().min(1).max(25) }),
+      z.object({ type: z.literal("URL"),          text: z.string().min(1).max(25), url: z.string().url() }),
+      z.object({ type: z.literal("PHONE_NUMBER"), text: z.string().min(1).max(25), phone_number: z.string().min(7) }),
+    ]);
+    const schema = z.object({
+      name:     z.string().min(1).max(100).regex(/^[a-z0-9_]+$/, "Name must be lowercase letters, numbers, underscores only"),
+      category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).default("UTILITY"),
+      language: z.string().min(2).max(10).default("en_US"),
+      body:     z.string().min(1).max(1024),
+      header:   z.object({ format: z.enum(["TEXT", "IMAGE", "VIDEO", "DOCUMENT"]), text: z.string().max(60).optional() }).optional(),
+      footer:   z.string().max(60).optional(),
+      buttons:  z.array(buttonSchema).max(3).optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { whatsappProvider: true, msg91AuthKey: true, msg91IntegratedNumber: true },
+    });
+
+    if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
+    if (workspace.whatsappProvider !== "msg91") {
+      return reply.status(422).send({ error: "This endpoint is for MSG91 provider only." });
+    }
+    if (!workspace.msg91AuthKey) {
+      return reply.status(422).send({ error: "MSG91 Auth Key required. Configure it in Settings → WhatsApp Provider." });
+    }
+    if (!workspace.msg91IntegratedNumber) {
+      return reply.status(422).send({ error: "MSG91 Integrated Number required. Configure it in Settings → WhatsApp Provider." });
+    }
+
+    const { name, category, language, body, header, footer, buttons } = parsed.data;
+
+    // Build MSG91 components array
+    const components: Record<string, unknown>[] = [];
+
+    if (header) {
+      const hComp: Record<string, unknown> = { type: "HEADER", format: header.format };
+      if (header.format === "TEXT" && header.text) {
+        hComp.text = header.text;
+        hComp.example = { header_text: [header.text] };
+      }
+      components.push(hComp);
+    }
+
+    const bodyVars = [...body.matchAll(/\{\{(\d+)\}\}/g)].map((m) => `sample_${m[1]}`);
+    const bodyComp: Record<string, unknown> = { type: "BODY", text: body };
+    if (bodyVars.length > 0) bodyComp.example = { body_text: [bodyVars] };
+    components.push(bodyComp);
+
+    if (footer) components.push({ type: "FOOTER", text: footer });
+
+    const hasUrlButton = buttons?.some((b) => b.type === "URL") ?? false;
+    if (buttons && buttons.length > 0) {
+      components.push({
+        type: "BUTTONS",
+        buttons: buttons.map((btn) => {
+          if (btn.type === "URL") {
+            const urlVars = [...btn.url.matchAll(/\{\{(\d+)\}\}/g)].map(() => btn.url.replace(/\{\{(\d+)\}\}/g, "sample"));
+            return { type: "URL", text: btn.text, url: btn.url, ...(urlVars.length ? { example: urlVars } : {}) };
+          }
+          if (btn.type === "PHONE_NUMBER") return { type: "PHONE_NUMBER", text: btn.text, phone_number: btn.phone_number };
+          return { type: "QUICK_REPLY", text: btn.text };
+        }),
+      });
+    }
+
+    try {
+      await axios.post(
+        "https://api.msg91.com/api/v5/whatsapp/client-panel-template/",
+        {
+          integrated_number: workspace.msg91IntegratedNumber.replace(/^\+/, ""),
+          template_name:     name,
+          language,
+          category,
+          ...(hasUrlButton ? { button_url: true } : {}),
+          components,
+        },
+        { headers: { authkey: workspace.msg91AuthKey, "content-type": "application/json" }, timeout: 15_000 }
+      );
+    } catch (err: unknown) {
+      const axErr = err as { response?: { data?: unknown; status?: number } };
+      const d = axErr.response?.data as Record<string, unknown> | undefined;
+      const msg =
+        (typeof d?.message === "string" && d.message) ||
+        (typeof d?.error   === "string" && d.error)   ||
+        (typeof d?.errors  === "string" && d.errors)  ||
+        `MSG91 API error (HTTP ${axErr.response?.status ?? "network error"})`;
+      console.error("[templates] MSG91 create error:", msg, JSON.stringify(d ?? {}));
+      return reply.status(502).send({ error: msg });
+    }
+
+    // Save locally as PENDING so it appears in the list immediately while awaiting approval
+    await prisma.customTemplate.upsert({
+      where:  { workspaceId_name: { workspaceId: user.workspaceId, name } },
+      create: { workspaceId: user.workspaceId, name, category, language, body, status: "PENDING" },
+      update: { status: "PENDING", category, language, body },
+    });
+
+    return reply.status(201).send({
+      message: "Template submitted to MSG91 for WhatsApp review. It will show as Pending until approved.",
+    });
   });
 
   // ── POST /templates — create a new template (Meta only) ─────────────────────

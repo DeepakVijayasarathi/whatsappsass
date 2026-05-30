@@ -31,7 +31,7 @@ export const nav: NavItem[] = [
   { href: "/campaigns",        icon: "Megaphone",       label: "WA Campaigns",    roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/email-campaigns",  icon: "Mail",            label: "Email Campaigns", roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/send",             icon: "Send",            label: "Send Message",    roles: ["owner","admin","marketer"], badge: null,    group: "main" },
-  { href: "/inbox",            icon: "Inbox",           label: "Inbox",           roles: ["owner","admin","marketer"], badge: "inbox", group: "main" },
+  { href: "/inbox",            icon: "Inbox",           label: "Inbox",           roles: ["owner","admin","marketer"], badge: "inbox", group: "main", enabled: false },
   { href: "/crm",              icon: "Kanban",          label: "CRM Pipeline",    roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/templates",        icon: "FileText",        label: "Templates",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/analytics",        icon: "BarChart2",       label: "Analytics",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
