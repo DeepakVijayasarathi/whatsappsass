@@ -104,44 +104,58 @@ let _normalizeSeq = 0;
 function normalizeMsg91Template(t: unknown): NormalizedTemplate {
   const item = t as Record<string, unknown>;
 
-  // components[] can hold the body — check both BODY type and direct text fields
+  // get-template-client response shape:
+  // { name, category, languages: [{ id, language, status, code: [{ type, text }] }] }
+  // Flatten the first languages[] entry into the item for unified field access.
+  const langs = Array.isArray(item.languages) ? (item.languages as Array<Record<string, unknown>>) : [];
+  const lang0 = langs[0] ?? {};
+
+  // Body: from languages[0].code[] where type === "BODY", or legacy component fields
+  const codeArr = Array.isArray(lang0.code) ? (lang0.code as Array<Record<string, unknown>>) : [];
+  const bodyFromCode = codeArr.find((c) => String(c.type ?? "").toUpperCase() === "BODY");
+
   const components = Array.isArray(item.components) ? (item.components as Array<Record<string, unknown>>) : [];
   const bodyComp = components.find((c) => String(c.type ?? "").toUpperCase() === "BODY");
 
-  // MSG91 content wrapper variant
   const content = (item.content && typeof item.content === "object")
     ? (item.content as Record<string, unknown>)
     : undefined;
 
-  const body =
-    bodyComp?.text       != null ? String(bodyComp.text)      :
-    item.body            != null ? String(item.body)           :
-    item.template_body   != null ? String(item.template_body)  :
-    item.message         != null ? String(item.message)        :
-    content?.body        != null ? String(content.body)        :
-    content?.text        != null ? String(content.text)        :
+  const rawBody =
+    bodyFromCode?.text   != null ? String(bodyFromCode.text)   :
+    bodyComp?.text       != null ? String(bodyComp.text)       :
+    lang0.body           != null ? String(lang0.body)           :
+    item.body            != null ? String(item.body)            :
+    item.template_body   != null ? String(item.template_body)   :
+    item.message         != null ? String(item.message)         :
+    content?.body        != null ? String(content.body)         :
+    content?.text        != null ? String(content.text)         :
     null;
 
-  // Use a stable unique ID: prefer API-supplied IDs, fall back to name+lang (unique per workspace)
-  const apiId =
-    item.template_id ?? item.id ?? item._id ?? item.templateId ?? item.template_id;
+  // Strip surrounding quotes that MSG91 sometimes wraps text in (e.g. '"Hii"' → 'Hii')
+  const body = rawBody != null ? rawBody.replace(/^"(.*)"$/, "$1") : null;
+
+  // ID: languages[0].id is the real template variant ID
+  const apiId = lang0.id ?? item.template_id ?? item.id ?? item._id ?? item.templateId;
   const stableId = apiId != null
     ? String(apiId)
     : `msg91_${String(item.template_name ?? item.name ?? "")}_${++_normalizeSeq}`;
 
+  // Status: languages[0].status = "approved" | "pending" | "rejected"
+  const rawStatus =
+    lang0.status         ??
+    lang0.approval_status ??
+    item.approval_status  ??
+    item.waba_status      ??
+    item.template_status  ??
+    item.state            ??
+    item.status;
+
   return {
     id:       stableId,
     name:     String(item.template_name ?? item.name ?? ""),
-    status:   normalizeMsg91Status(
-                item.approval_status    ??  // get-template-client primary field
-                item.waba_status        ??
-                item.template_status    ??
-                item.state              ??
-                item.status             ??
-                item.templateStatus     ??
-                item.approvalStatus
-              ),
-    language: String(item.language ?? item.lang ?? item.template_language ?? "en"),
+    status:   normalizeMsg91Status(rawStatus),
+    language: String(lang0.language ?? item.language ?? item.lang ?? item.template_language ?? "en"),
     category: String(item.category_name ?? item.category ?? item.template_category ?? "UTILITY"),
     body,
     provider: "msg91",
