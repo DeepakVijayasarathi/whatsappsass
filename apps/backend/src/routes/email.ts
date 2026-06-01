@@ -5,6 +5,7 @@ import { authenticate, requireOwnerOrAdmin, checkPermission } from "../middlewar
 import type { JwtPayload } from "../middleware/authenticate";
 import { sendEmail, verifySmtp } from "../lib/email";
 import { logAudit } from "../lib/audit";
+import { decryptNullable } from "../lib/encrypt";
 
 const PAGE_SIZE = 20;
 
@@ -24,7 +25,7 @@ export async function emailRoutes(app: FastifyInstance) {
         host: ws.smtpHost,
         port: ws.smtpPort ?? 587,
         user: ws.smtpUser,
-        pass: ws.smtpPass!,
+        pass: decryptNullable(ws.smtpPass)!,
         fromEmail: ws.smtpFromEmail,
         fromName: ws.smtpFromName,
       });
@@ -148,7 +149,7 @@ export async function emailRoutes(app: FastifyInstance) {
     }
 
     await sendEmail(
-      { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: ws.smtpPass!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName },
+      { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: decryptNullable(ws.smtpPass)!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName },
       { to: parsed.data.to, subject: parsed.data.subject, html: parsed.data.body }
     );
 
@@ -203,7 +204,7 @@ export async function emailRoutes(app: FastifyInstance) {
     // Return immediately — send emails in the background so large lists don't timeout
     reply.send({ message: "Campaign queued", campaignId: id, total: contacts.length });
 
-    const smtpCfg = { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: ws.smtpPass!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName };
+    const smtpCfg = { host: ws.smtpHost, port: ws.smtpPort ?? 587, user: ws.smtpUser, pass: decryptNullable(ws.smtpPass)!, fromEmail: ws.smtpFromEmail, fromName: ws.smtpFromName };
     const workspaceId = user.workspaceId;
     const userId = user.userId;
 

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
-import { maskHint } from "../lib/encrypt";
+import { maskHint, encrypt } from "../lib/encrypt";
 
 export async function workspaceRoutes(app: FastifyInstance) {
   app.get("/me", { preHandler: [authenticate] }, async (request, reply) => {
@@ -271,11 +271,21 @@ export async function workspaceRoutes(app: FastifyInstance) {
         },
       });
 
+      // For non-secret fields (verify token, integrated number): keep the
+      // submitted value, or fall back to the stored one, both as plaintext.
       const keepOrNull = (submitted: string | undefined, stored: string | null | undefined): string | null => {
         const s = submitted?.trim() ?? "";
         if (s.length > 0) return s;
         const t = stored?.trim() ?? "";
         return t.length > 0 ? t : null;
+      };
+
+      // For secret credentials: encrypt a freshly-submitted value; otherwise
+      // preserve the stored value verbatim (it is already encrypted at rest).
+      const encryptOrKeep = (submitted: string | undefined, stored: string | null | undefined): string | null => {
+        const s = submitted?.trim() ?? "";
+        if (s.length > 0) return encrypt(s);
+        return stored ?? null;
       };
 
       const updateData =
@@ -284,14 +294,15 @@ export async function workspaceRoutes(app: FastifyInstance) {
               whatsappProvider: "meta" as const,
               metaPhoneNumberId: parsed.data.metaPhoneNumberId?.trim() ?? "",
               metaWabaId: parsed.data.metaWabaId?.trim() ?? "",
-              metaAccessToken: keepOrNull(parsed.data.metaAccessToken, existing?.metaAccessToken),
+              metaAccessToken: encryptOrKeep(parsed.data.metaAccessToken, existing?.metaAccessToken),
+              // Verify token stays plaintext — it's a shared handshake value matched by equality lookup, not a credential.
               metaWebhookVerifyToken: keepOrNull(parsed.data.metaWebhookVerifyToken, existing?.metaWebhookVerifyToken),
               msg91AuthKey: null,
               msg91IntegratedNumber: null,
             }
           : {
               whatsappProvider: "msg91" as const,
-              msg91AuthKey: keepOrNull(parsed.data.msg91AuthKey, existing?.msg91AuthKey),
+              msg91AuthKey: encryptOrKeep(parsed.data.msg91AuthKey, existing?.msg91AuthKey),
               msg91IntegratedNumber: keepOrNull(parsed.data.msg91IntegratedNumber, existing?.msg91IntegratedNumber),
               metaPhoneNumberId: null,
               metaWabaId: null,
@@ -336,7 +347,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       const { smtpPass, ...rest } = parsed.data;
 
       const updatePass = smtpPass?.trim()
-        ? { smtpPass: smtpPass.trim() }
+        ? { smtpPass: encrypt(smtpPass.trim()) }
         : {};
 
       // Validate that the workspace has a password (either stored or newly supplied)

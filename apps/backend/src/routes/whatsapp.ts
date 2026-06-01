@@ -9,8 +9,18 @@ import { sendWhatsAppTemplate, sendMsg91Session, sendMsg91Interactive } from "..
 import type { ProviderConfig } from "../lib/whatsapp";
 import axios from "axios";
 import { fireWebhooks } from "../lib/webhookDispatcher";
+import { decryptNullable } from "../lib/encrypt";
 
 const META_APP_SECRET = process.env.META_APP_SECRET;
+
+// MSG91 does not sign its webhooks, so authenticity is enforced with a shared
+// secret. Configure the same value in the MSG91 dashboard webhook URL
+// (?token=...) or as an x-webhook-token header. If set, requests missing/wrong
+// the token are rejected. If unset, the endpoint is open (logged on boot below).
+const MSG91_WEBHOOK_TOKEN = process.env.MSG91_WEBHOOK_TOKEN;
+if (!MSG91_WEBHOOK_TOKEN && process.env.NODE_ENV === "production") {
+  console.warn("[whatsapp] WARNING: MSG91_WEBHOOK_TOKEN is not set — the MSG91 webhook is unauthenticated and accepts forged events. Set it in production.");
+}
 
 const sendMessageSchema = z.object({
   to: z.string().min(7),
@@ -45,8 +55,8 @@ async function getProviderConfig(workspaceId: string): Promise<ProviderConfig> {
   return {
     provider,
     metaPhoneNumberId: ws?.metaPhoneNumberId ?? undefined,
-    metaAccessToken: ws?.metaAccessToken ?? undefined,
-    msg91AuthKey: ws?.msg91AuthKey ?? undefined,
+    metaAccessToken: decryptNullable(ws?.metaAccessToken) ?? undefined,
+    msg91AuthKey: decryptNullable(ws?.msg91AuthKey) ?? undefined,
     msg91IntegratedNumber: ws?.msg91IntegratedNumber ?? undefined,
   };
 }
@@ -547,6 +557,19 @@ export async function whatsappRoutes(app: FastifyInstance) {
   // Delivery update: { requestId, status, number }
   // Inbound message: { type, from, body, messageId, ... }
   app.post("/msg91-webhook", async (request, reply) => {
+    // Authenticate via shared secret (query token or x-webhook-token header).
+    if (MSG91_WEBHOOK_TOKEN) {
+      const q = (request.query as Record<string, string | undefined>)?.token;
+      const h = request.headers["x-webhook-token"];
+      const provided = (typeof h === "string" ? h : q) ?? "";
+      const expected = MSG91_WEBHOOK_TOKEN;
+      const provBuf = Buffer.from(provided.padEnd(expected.length));
+      const expBuf = Buffer.from(expected);
+      if (provBuf.length !== expBuf.length || !crypto.timingSafeEqual(provBuf, expBuf)) {
+        return reply.status(403).send({ error: "Invalid webhook token" });
+      }
+    }
+
     const body = request.body as Record<string, unknown>;
 
     // ── Delivery receipt ────────────────────────────────────────────────────
@@ -1013,7 +1036,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
         "https://control.msg91.com/api/v5/report/logs/wa",
         {
           params: { startDate, endDate },
-          headers: { authkey: ws.msg91AuthKey, accept: "application/json" },
+          headers: { authkey: decryptNullable(ws.msg91AuthKey)!, accept: "application/json" },
         }
       );
       return reply.send(data);
@@ -1040,7 +1063,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
         "https://control.msg91.com/api/v5/report/analytics/p/wa/",
         {
           params: { startDate, endDate },
-          headers: { Authkey: ws.msg91AuthKey, accept: "application/json" },
+          headers: { Authkey: decryptNullable(ws.msg91AuthKey)!, accept: "application/json" },
         }
       );
       return reply.send(data);
@@ -1067,7 +1090,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
       const { data } = await axios.post(
         "https://control.msg91.com/api/v5/subscriptions/fetchPrepaidBalance",
         { integrated_number: ws.msg91IntegratedNumber.replace(/^\+/, ""), service: "whatsapp" },
-        { headers: { Authkey: ws.msg91AuthKey, "Content-Type": "application/json" } }
+        { headers: { Authkey: decryptNullable(ws.msg91AuthKey)!, "Content-Type": "application/json" } }
       );
       return reply.send(data);
     } catch (err: unknown) {
@@ -1093,7 +1116,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
     try {
       const { data } = await axios.get(
         "https://control.msg91.com/api/v5/whatsapp/whatsapp-activation/",
-        { headers: { authkey: ws.msg91AuthKey, accept: "application/json" } }
+        { headers: { authkey: decryptNullable(ws.msg91AuthKey)!, accept: "application/json" } }
       );
       return reply.send(data);
     } catch (err: unknown) {

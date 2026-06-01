@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { sendEmail } from "../lib/email";
+import { decryptNullable } from "../lib/encrypt";
 
 // Strict rate limit applied to login, register, forgot-password
 // 10 attempts per 15 minutes per IP — prevents brute-force
@@ -148,7 +149,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     await sendEmail(
-      { host: ws!.smtpHost!, port: ws!.smtpPort ?? 587, user: ws!.smtpUser!, pass: ws!.smtpPass!, fromEmail: ws!.smtpFromEmail!, fromName: ws!.smtpFromName },
+      { host: ws!.smtpHost!, port: ws!.smtpPort ?? 587, user: ws!.smtpUser!, pass: decryptNullable(ws!.smtpPass)!, fromEmail: ws!.smtpFromEmail!, fromName: ws!.smtpFromName },
       {
         to: user.email,
         subject: "Reset your password",

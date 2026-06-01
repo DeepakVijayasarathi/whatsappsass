@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
-import { authenticate, requireOwnerOrAdmin, requireSuperAdmin } from "../middleware/authenticate";
+import { authenticate, requireOwnerOrAdmin, requireSuperAdmin, invalidateWorkspaceStatus } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
 import { logAudit } from "../lib/audit";
 
@@ -144,6 +144,8 @@ export async function adminRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
 
     const workspace = await prisma.workspace.update({ where: { id }, data: { status: parsed.data.status } });
+    // Drop the cached status so suspension/reactivation takes effect on the next request, not after the TTL.
+    invalidateWorkspaceStatus(id);
     await logAudit({ workspaceId: id, userId: actor.userId, action: `workspace.${parsed.data.status}`, entityType: "workspace", entityId: id });
     return reply.send(workspace);
   });

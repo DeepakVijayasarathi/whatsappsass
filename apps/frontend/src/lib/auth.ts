@@ -18,7 +18,10 @@ export function getToken(): string | undefined {
 }
 
 export function setAuth(token: string, user: AuthUser, workspace: AuthWorkspace) {
-  Cookies.set("token", token, { expires: 7, sameSite: "strict" });
+  // `secure` is set whenever the page is served over HTTPS so the token is never
+  // sent over plaintext HTTP. It's omitted on http://localhost so local dev works.
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:";
+  Cookies.set("token", token, { expires: 7, sameSite: "strict", secure });
   if (typeof window !== "undefined") {
     localStorage.setItem("user", JSON.stringify(user));
     localStorage.setItem("workspace", JSON.stringify(workspace));

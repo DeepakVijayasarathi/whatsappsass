@@ -2,10 +2,23 @@ import type { FastifyInstance } from "fastify";
 import axios from "axios";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { decryptNullable } from "../lib/encrypt";
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v19.0";
 import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
+
+/** Decrypt the at-rest credential fields on a workspace row in-place so
+ *  downstream provider calls receive plaintext. Safe on partial selects
+ *  (only touches fields that are present) and on legacy plaintext values. */
+function decryptWsSecrets<
+  T extends { metaAccessToken?: string | null; msg91AuthKey?: string | null }
+>(ws: T | null): T | null {
+  if (!ws) return ws;
+  if ("metaAccessToken" in ws) ws.metaAccessToken = decryptNullable(ws.metaAccessToken);
+  if ("msg91AuthKey" in ws) ws.msg91AuthKey = decryptNullable(ws.msg91AuthKey);
+  return ws;
+}
 
 export interface NormalizedTemplate {
   id: string;
@@ -271,7 +284,7 @@ export async function templateRoutes(app: FastifyInstance) {
   app.get("/", { preHandler: [authenticate] }, async (request, reply) => {
     const user = request.user as JwtPayload;
 
-    const workspace = await prisma.workspace.findUnique({
+    const workspace = decryptWsSecrets(await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
       select: {
         whatsappProvider: true,
@@ -280,7 +293,7 @@ export async function templateRoutes(app: FastifyInstance) {
         msg91AuthKey: true,
         msg91IntegratedNumber: true,
       },
-    });
+    }));
 
     if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
 
@@ -374,10 +387,10 @@ export async function templateRoutes(app: FastifyInstance) {
   app.post("/sync", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
     const user = request.user as JwtPayload;
 
-    const workspace = await prisma.workspace.findUnique({
+    const workspace = decryptWsSecrets(await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
       select: { whatsappProvider: true, msg91AuthKey: true, msg91IntegratedNumber: true },
-    });
+    }));
 
     if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
     if (workspace.whatsappProvider !== "msg91") {
@@ -464,10 +477,10 @@ export async function templateRoutes(app: FastifyInstance) {
     });
     if (!existing) return reply.status(404).send({ error: "Template not found" });
 
-    const workspace = await prisma.workspace.findUnique({
+    const workspace = decryptWsSecrets(await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
       select: { msg91AuthKey: true, msg91IntegratedNumber: true },
-    });
+    }));
 
     // Call MSG91 edit API if credentials are present
     if (workspace?.msg91AuthKey && workspace.msg91IntegratedNumber && parsed.data.body) {
@@ -520,10 +533,10 @@ export async function templateRoutes(app: FastifyInstance) {
     });
     if (!existing) return reply.status(404).send({ error: "Template not found" });
 
-    const workspace = await prisma.workspace.findUnique({
+    const workspace = decryptWsSecrets(await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
       select: { msg91AuthKey: true, msg91IntegratedNumber: true },
-    });
+    }));
 
     // Best-effort delete from MSG91 API (only if credentials present)
     if (workspace?.msg91AuthKey && workspace.msg91IntegratedNumber) {
@@ -570,10 +583,10 @@ export async function templateRoutes(app: FastifyInstance) {
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
 
-    const workspace = await prisma.workspace.findUnique({
+    const workspace = decryptWsSecrets(await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
       select: { whatsappProvider: true, msg91AuthKey: true, msg91IntegratedNumber: true },
-    });
+    }));
 
     if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
     if (workspace.whatsappProvider !== "msg91") {
@@ -694,10 +707,10 @@ export async function templateRoutes(app: FastifyInstance) {
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
 
-    const workspace = await prisma.workspace.findUnique({
+    const workspace = decryptWsSecrets(await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
       select: { whatsappProvider: true, metaWabaId: true, metaAccessToken: true },
-    });
+    }));
 
     if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
     if (workspace.whatsappProvider !== "meta") {
@@ -753,10 +766,10 @@ export async function templateRoutes(app: FastifyInstance) {
     const user = request.user as JwtPayload;
     const { name } = request.params as { name: string };
 
-    const workspace = await prisma.workspace.findUnique({
+    const workspace = decryptWsSecrets(await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
       select: { whatsappProvider: true, metaWabaId: true, metaAccessToken: true },
-    });
+    }));
 
     if (!workspace) return reply.status(404).send({ error: "Workspace not found" });
     if (workspace.whatsappProvider !== "meta") {
