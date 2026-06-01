@@ -169,19 +169,105 @@ export async function campaignRoutes(app: FastifyInstance) {
       });
       if (!campaign) return reply.status(404).send({ error: "Campaign not found" });
 
-      const stats = await prisma.messageLog.groupBy({
-        by: ["status"],
-        where: { campaignId: id, workspaceId: user.workspaceId },
-        _count: { status: true },
-      });
+      const [stats, replies] = await Promise.all([
+        prisma.messageLog.groupBy({
+          by: ["status"],
+          where: { campaignId: id, workspaceId: user.workspaceId },
+          _count: { status: true },
+        }),
+        // Replies attributed to this campaign (inbound messages linked to it)
+        prisma.inboundMessage.count({ where: { campaignId: id, workspaceId: user.workspaceId } }),
+      ]);
 
       type StatsRow = { status: string; _count: { status: number } };
-      const result = (stats as StatsRow[]).reduce<Record<string, number>>(
+      const byStatus = (stats as StatsRow[]).reduce<Record<string, number>>(
         (acc, s) => ({ ...acc, [s.status]: s._count.status }),
         {}
       );
 
-      return reply.send({ campaignId: id, stats: result });
+      // Build a delivery funnel. read implies delivered implies sent, but providers
+      // don't always emit every intermediate event, so we treat the counts as the
+      // furthest stage each message reached and roll them up for the funnel view.
+      const sent = byStatus.sent ?? 0;
+      const delivered = byStatus.delivered ?? 0;
+      const read = byStatus.read ?? 0;
+      const failed = byStatus.failed ?? 0;
+      const totalAttempted = sent + delivered + read + failed;
+      const totalSent = sent + delivered + read; // everything that left successfully
+      const reachedDelivered = delivered + read; // delivered or beyond
+      const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
+
+      return reply.send({
+        campaignId: id,
+        stats: byStatus,
+        funnel: {
+          attempted: totalAttempted,
+          sent: totalSent,
+          delivered: reachedDelivered,
+          read,
+          failed,
+          replies,
+          rates: {
+            deliveryRate: pct(reachedDelivered, totalSent),
+            readRate: pct(read, totalSent),
+            failureRate: pct(failed, totalAttempted),
+            replyRate: pct(replies, totalSent),
+          },
+        },
+      });
+    }
+  );
+
+  // ── Per-recipient CSV export ──────────────────────────────────────────────
+  app.get(
+    "/:id/export",
+    { preHandler: [checkPermission("can_export")] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+      const { id } = request.params as { id: string };
+
+      const campaign = await prisma.campaign.findFirst({
+        where: { id, workspaceId: user.workspaceId },
+        select: { id: true, name: true },
+      });
+      if (!campaign) return reply.status(404).send({ error: "Campaign not found" });
+
+      const EXPORT_LIMIT = 50_000;
+      const logs = await prisma.messageLog.findMany({
+        where: { campaignId: id, workspaceId: user.workspaceId },
+        orderBy: { createdAt: "asc" },
+        take: EXPORT_LIMIT,
+        select: {
+          status: true,
+          wamid: true,
+          createdAt: true,
+          contact: { select: { name: true, phone: true, email: true } },
+        },
+      });
+
+      // Escape for CSV and neutralise spreadsheet formula injection (leading = + - @).
+      const escape = (v: string) => {
+        const safe = /^[=+\-@]/.test(v) ? `'${v}` : v;
+        return `"${safe.replace(/"/g, '""').replace(/[\r\n]/g, " ")}"`;
+      };
+      const header = ["contact_name", "phone", "email", "status", "wamid", "sent_at"].join(",");
+      const rows = logs.map((l) =>
+        [
+          escape(l.contact?.name ?? ""),
+          escape(l.contact?.phone ?? ""),
+          escape(l.contact?.email ?? ""),
+          escape(l.status),
+          escape(l.wamid ?? ""),
+          escape(l.createdAt.toISOString()),
+        ].join(",")
+      );
+      const csv = [header, ...rows].join("\n");
+
+      const slug = campaign.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40);
+      return reply
+        .header("Content-Type", "text/csv; charset=utf-8")
+        .header("Content-Disposition", `attachment; filename="campaign-${slug}-${Date.now()}.csv"`)
+        .send(csv);
     }
   );
 }

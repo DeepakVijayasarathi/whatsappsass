@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
-import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle, Clock, Copy, Search } from "lucide-react";
+import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle, Clock, Copy, Search, Download } from "lucide-react";
 import { SkeletonTableRow } from "@/components/Skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -71,7 +71,11 @@ function RunModal({ campaign, onClose, onDone }: {
   const [leadStatusFilter, setLeadStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<{ summary: Record<string, number>; total: number } | null>(null);
+  const [result, setResult] = useState<
+    | { background: true; queued: number; skipped: number }
+    | { summary: Record<string, number>; total: number; skipped: number }
+    | null
+  >(null);
   const [varValues, setVarValues] = useState<Record<number, string>>({});
   const [templateBody, setTemplateBody] = useState<string | null>(campaign.templateBody ?? null);
   const [allTags, setAllTags] = useState<string[]>([]);
@@ -127,7 +131,10 @@ function RunModal({ campaign, onClose, onDone }: {
     }
     setRunning(true);
     try {
-      await api.patch(`/campaigns/${campaign.campaignId}`, { status: "running" });
+      // The backend now owns campaign status: small audiences return 200 with a
+      // summary (status → completed); large audiences return 202 and finish in the
+      // background (status → running, then completed). We no longer patch status
+      // from here, which previously force-completed background sends prematurely.
       const res = await api.post("/whatsapp/send-bulk", {
         campaignId: campaign.campaignId,
         contactIds: Array.from(selectedIds),
@@ -135,14 +142,16 @@ function RunModal({ campaign, onClose, onDone }: {
         languageCode: campaign.languageCode || "en_US",
         components: buildComponents(varValues),
       });
-      await api.patch(`/campaigns/${campaign.campaignId}`, { status: "completed" });
-      setResult(res.data);
+      if (res.status === 202) {
+        // Background send queued — there's no per-status summary yet.
+        setResult({ background: true, queued: res.data.queued ?? selectedIds.size, skipped: res.data.skipped ?? 0 });
+      } else {
+        setResult({ summary: res.data.summary ?? {}, total: res.data.total ?? 0, skipped: res.data.skipped ?? 0 });
+      }
       onDone();
     } catch (err: unknown) {
       const errData = (err as { response?: { data?: { error?: unknown } } }).response?.data?.error;
       toast.error(typeof errData === "string" ? errData : "Failed to run campaign");
-      // Revert campaign status so the user can retry
-      await api.patch(`/campaigns/${campaign.campaignId}`, { status: "paused" }).catch(() => {});
     } finally {
       setRunning(false);
     }
@@ -162,15 +171,32 @@ function RunModal({ campaign, onClose, onDone }: {
         {result ? (
           <div className="p-6 text-center flex-1">
             <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
-            <p className="text-lg font-bold text-gray-900">Campaign sent!</p>
-            <div className="flex justify-center gap-6 mt-4">
-              {Object.entries(result.summary).map(([status, count]) => (
-                <div key={status} className="text-center">
-                  <p className="text-2xl font-bold text-gray-900">{count}</p>
-                  <p className="text-xs text-gray-500 capitalize">{status}</p>
+            {"background" in result ? (
+              <>
+                <p className="text-lg font-bold text-gray-900">Sending in the background</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {result.queued} message{result.queued === 1 ? "" : "s"} queued. Check the campaign
+                  stats shortly to see delivery results.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg font-bold text-gray-900">Campaign sent!</p>
+                <div className="flex justify-center gap-6 mt-4">
+                  {Object.entries(result.summary).map(([status, count]) => (
+                    <div key={status} className="text-center">
+                      <p className="text-2xl font-bold text-gray-900">{count}</p>
+                      <p className="text-xs text-gray-500 capitalize">{status}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
+            {result.skipped > 0 && (
+              <p className="text-xs text-gray-400 mt-3">
+                {result.skipped} contact{result.skipped === 1 ? "" : "s"} skipped (already sent in this campaign)
+              </p>
+            )}
             <button onClick={onClose} className="btn-primary mt-6">Done</button>
           </div>
         ) : (
@@ -258,25 +284,49 @@ function RunModal({ campaign, onClose, onDone }: {
   );
 }
 
+interface CampaignFunnel {
+  attempted: number; sent: number; delivered: number; read: number; failed: number; replies: number;
+  rates: { deliveryRate: number; readRate: number; failureRate: number; replyRate: number };
+}
+
 function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: () => void }) {
   const [stats, setStats] = useState<CampaignStats | null>(null);
+  const [funnel, setFunnel] = useState<CampaignFunnel | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     setStatsLoading(true);
     setStatsError(false);
     api.get(`/campaigns/${id}/stats`)
-      .then((r) => setStats(r.data.stats ?? {}))
+      .then((r) => { setStats(r.data.stats ?? {}); setFunnel(r.data.funnel ?? null); })
       .catch(() => setStatsError(true))
       .finally(() => setStatsLoading(false));
   }, [id]);
 
   const total = stats ? Object.values(stats).reduce((a, b) => a + b, 0) : 0;
 
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get(`/campaigns/${id}/export`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `campaign-${name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Failed to export campaign results");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-sm p-5 sm:p-6">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-sm p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-bold text-gray-900 mb-1">{name}</h2>
         <p className="text-sm text-gray-500 mb-5">Campaign statistics</p>
         {statsLoading ? (
@@ -300,9 +350,34 @@ function StatsModal({ id, name, onClose }: { id: string; name: string; onClose: 
                 </div>
               );
             })}
+
+            {funnel && (
+              <div className="mt-5 pt-4 border-t border-gray-100 grid grid-cols-2 gap-3">
+                {([
+                  ["Delivery rate", funnel.rates.deliveryRate],
+                  ["Read rate", funnel.rates.readRate],
+                  ["Failure rate", funnel.rates.failureRate],
+                  ["Reply rate", funnel.rates.replyRate],
+                ] as const).map(([label, rate]) => (
+                  <div key={label} className="bg-gray-50 rounded-lg p-2.5 text-center">
+                    <p className="text-lg font-bold text-gray-900">{rate}%</p>
+                    <p className="text-[11px] text-gray-500">{label}</p>
+                  </div>
+                ))}
+                <div className="col-span-2 text-center text-xs text-gray-500">
+                  {funnel.replies} repl{funnel.replies === 1 ? "y" : "ies"} received
+                </div>
+              </div>
+            )}
           </div>
         ) : null}
-        <button onClick={onClose} className="btn-secondary w-full mt-5">Close</button>
+        <div className="flex gap-2 mt-5">
+          <button onClick={exportCsv} disabled={exporting || total === 0} className="btn-secondary flex-1 text-sm flex items-center justify-center gap-2">
+            <Download className="w-4 h-4" />
+            {exporting ? "Exporting..." : "Export CSV"}
+          </button>
+          <button onClick={onClose} className="btn-primary flex-1 text-sm">Close</button>
+        </div>
       </div>
     </div>
   );

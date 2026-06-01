@@ -10,6 +10,16 @@ import type { ProviderConfig } from "../lib/whatsapp";
 import axios from "axios";
 import { fireWebhooks } from "../lib/webhookDispatcher";
 import { decryptNullable } from "../lib/encrypt";
+import { sendInBatches } from "../lib/batchSend";
+
+/** Collapse settled send results into a {status: count} summary. */
+function summariseSettled(results: PromiseSettledResult<{ status: string }>[]): Record<string, number> {
+  return results.reduce<Record<string, number>>((acc, r) => {
+    if (r.status === "fulfilled") acc[r.value.status] = (acc[r.value.status] ?? 0) + 1;
+    else acc.failed = (acc.failed ?? 0) + 1; // a thrown worker counts as failed
+    return acc;
+  }, {});
+}
 
 const META_APP_SECRET = process.env.META_APP_SECRET;
 
@@ -178,7 +188,22 @@ export async function whatsappRoutes(app: FastifyInstance) {
           workspaceId: user.workspaceId,
           optIn: true,
         },
+        select: { id: true, phone: true },
       });
+
+      // Idempotency: skip contacts already logged as sent/delivered/read for this
+      // campaign, so a re-run (or background resume) never double-sends.
+      const already = await prisma.messageLog.findMany({
+        where: {
+          campaignId: parsed.data.campaignId,
+          workspaceId: user.workspaceId,
+          contactId: { in: contacts.map((c) => c.id) },
+          status: { in: ["sent", "delivered", "read"] },
+        },
+        select: { contactId: true },
+      });
+      const alreadySent = new Set(already.map((m) => m.contactId));
+      const pending = contacts.filter((c) => !alreadySent.has(c.id));
 
       let config;
       try {
@@ -188,50 +213,78 @@ export async function whatsappRoutes(app: FastifyInstance) {
         return reply.status(422).send({ error: msg });
       }
 
-      const results = await Promise.allSettled(
-        contacts.map(async (contact: { id: string; phone: string; workspaceId: string }) => {
-          let status = "sent";
-          let wamid: string | null = null;
-          try {
-            const result = await sendWhatsAppTemplate(
-              {
-                to: contact.phone,
-                templateName: parsed.data.templateName,
-                languageCode: parsed.data.languageCode,
-                components: parsed.data.components,
-              },
-              config
-            );
-            wamid = result.wamid;
-          } catch {
-            status = "failed";
-          }
-
-          await prisma.messageLog.create({
-            data: {
-              workspaceId: user.workspaceId,
-              contactId: contact.id,
-              campaignId: parsed.data.campaignId,
-              wamid,
-              status,
+      const sendOne = async (contact: { id: string; phone: string }) => {
+        let status = "sent";
+        let wamid: string | null = null;
+        try {
+          const result = await sendWhatsAppTemplate(
+            {
+              to: contact.phone,
+              templateName: parsed.data.templateName,
+              languageCode: parsed.data.languageCode,
+              components: parsed.data.components,
             },
+            config
+          );
+          wamid = result.wamid;
+        } catch {
+          status = "failed";
+        }
+        await prisma.messageLog.create({
+          data: {
+            workspaceId: user.workspaceId,
+            contactId: contact.id,
+            campaignId: parsed.data.campaignId,
+            wamid,
+            status,
+          },
+        });
+        return { contactId: contact.id, status };
+      };
+
+      // Large audiences would exceed the 30s proxy timeout if sent synchronously,
+      // so send them in the background and return 202 immediately. The threshold
+      // is comfortably under what fits in the timeout window at our concurrency.
+      const BACKGROUND_THRESHOLD = 50;
+
+      if (pending.length > BACKGROUND_THRESHOLD) {
+        await prisma.campaign.update({ where: { id: parsed.data.campaignId }, data: { status: "running" } });
+        // Fire-and-forget — don't await. Errors are logged, not surfaced to the client.
+        void sendInBatches(pending, sendOne)
+          .then(async (results) => {
+            const summary = summariseSettled(results);
+            await prisma.campaign.update({ where: { id: parsed.data.campaignId }, data: { status: "completed" } });
+            fireWebhooks(user.workspaceId, "campaign.completed", {
+              campaignId: parsed.data.campaignId,
+              sent: summary.sent ?? 0,
+              failed: summary.failed ?? 0,
+              total: pending.length,
+            }).catch(() => {});
+            app.log.info({ campaignId: parsed.data.campaignId, summary }, "Background bulk send completed");
+          })
+          .catch(async (err) => {
+            app.log.error({ err, campaignId: parsed.data.campaignId }, "Background bulk send failed");
+            await prisma.campaign.update({ where: { id: parsed.data.campaignId }, data: { status: "paused" } }).catch(() => {});
           });
 
-          return { contactId: contact.id, status };
-        })
-      );
+        return reply.status(202).send({
+          campaignId: parsed.data.campaignId,
+          status: "running",
+          queued: pending.length,
+          skipped: alreadySent.size,
+          message: "Campaign is sending in the background.",
+        });
+      }
 
-      const summary = results.reduce(
-        (acc, r) => {
-          if (r.status === "fulfilled") {
-            acc[r.value.status] = (acc[r.value.status] || 0) + 1;
-          }
-          return acc;
-        },
-        {} as Record<string, number>
-      );
-
-      return reply.send({ campaignId: parsed.data.campaignId, summary, total: contacts.length });
+      // Small audience — send synchronously and return the summary.
+      const results = await sendInBatches(pending, sendOne);
+      const summary = summariseSettled(results);
+      return reply.send({
+        campaignId: parsed.data.campaignId,
+        summary,
+        total: pending.length,
+        skipped: alreadySent.size,
+      });
     }
   );
 

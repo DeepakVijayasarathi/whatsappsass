@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, Megaphone, Send, Inbox, BarChart2,
   Settings, LogOut, MessageSquare, UserCircle, UsersRound,
   FileText, Mail, ClipboardList, Shield, LineChart, Kanban,
-  X, Bot, Webhook, GitBranch, BookOpen,
+  X, Bot, Webhook, GitBranch, BookOpen, Layers,
 } from "lucide-react";
 import { clearAuth, getUser, getWorkspace } from "@/lib/auth";
 import { useInboxNotifications } from "@/lib/useInboxNotifications";
@@ -22,7 +22,7 @@ const ICONS: Record<string, LucideIcon> = {
   LayoutDashboard, Users, Megaphone, Send, Inbox, BarChart2,
   Settings, MessageSquare, UsersRound,
   FileText, Mail, ClipboardList, Shield, LineChart, Kanban,
-  Bot, Webhook, GitBranch, BookOpen,
+  Bot, Webhook, GitBranch, BookOpen, Layers,
 };
 
 interface Props { open?: boolean; onClose?: () => void; }

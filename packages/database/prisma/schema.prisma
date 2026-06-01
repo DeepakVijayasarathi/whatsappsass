@@ -45,6 +45,7 @@ model Workspace {
   campaignSequences CampaignSequence[]
   cannedResponses   CannedResponse[]
   customTemplates   CustomTemplate[]
+  contactSegments   ContactSegment[]
 
   @@map("workspaces")
 }
@@ -64,6 +65,24 @@ model CustomTemplate {
   @@unique([workspaceId, name])
   @@index([workspaceId])
   @@map("custom_templates")
+}
+
+// A saved, reusable contact audience. `filter` stores the same query options the
+// contacts list endpoint accepts (tag, leadStatus, optIn, search) so a segment
+// resolves to a live set of contacts at send time rather than a frozen snapshot.
+model ContactSegment {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  filter      Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("contact_segments")
 }
 
 model User {

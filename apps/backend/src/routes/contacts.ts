@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { authenticate, checkPermission } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
 import { parsePagination } from "../lib/queryParams";
+import { buildContactWhere, contactFilterSchema } from "../lib/contactFilter";
 
 const contactSchema = z.object({
   name: z.string().min(1),
@@ -19,24 +20,13 @@ export async function contactRoutes(app: FastifyInstance) {
     const { tag, search, sort, optIn, leadStatus, ...pageQuery } = request.query as Record<string, string>;
     const { page, limit, skip } = parsePagination(pageQuery, { maxLimit: 1000 });
 
-    const where = {
-      workspaceId: user.workspaceId,
-      ...(tag ? { tags: { has: tag } } : {}),
-      // ?optIn=true  → only opted-in contacts (used by campaign run modal)
-      // ?optIn=false → only opted-out contacts
-      ...(optIn === "true" ? { optIn: true } : optIn === "false" ? { optIn: false } : {}),
-      // ?leadStatus=new|prospect|qualified|customer|churned (used by CRM board)
-      ...(leadStatus ? { leadStatus } : {}),
-      ...(search
-        ? {
-            OR: [
-              { name: { contains: search, mode: "insensitive" as const } },
-              { phone: { contains: search } },
-              { email: { contains: search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
-    };
+    // ?optIn=true → opted-in only, ?optIn=false → opted-out only (used by campaign modal/CRM board)
+    const where = buildContactWhere(user.workspaceId, {
+      tag,
+      leadStatus,
+      optIn: optIn === "true" ? true : optIn === "false" ? false : undefined,
+      search,
+    });
 
     const orderBy = sort === "recent" ? { createdAt: "desc" as const } : { name: "asc" as const };
 
@@ -458,5 +448,97 @@ export async function contactRoutes(app: FastifyInstance) {
 
     const raw = (logs as ScoreLog[]).reduce<number>((sum, l) => sum + (SCORE_MAP[l.status] ?? 0), 0) / total;
     return reply.send({ score: Math.round(raw), total, breakdown });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SAVED SEGMENTS — reusable contact audiences for campaigns
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // List segments (with a live contact count for each)
+  app.get("/segments", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const segments = await prisma.contactSegment.findMany({
+      where: { workspaceId: user.workspaceId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const withCounts = await Promise.all(
+      segments.map(async (seg) => {
+        const filter = contactFilterSchema.safeParse(seg.filter);
+        const count = filter.success
+          ? await prisma.contact.count({ where: buildContactWhere(user.workspaceId, filter.data) })
+          : 0;
+        return { ...seg, count };
+      })
+    );
+
+    return reply.send({ segments: withCounts });
+  });
+
+  // Create a segment
+  app.post("/segments", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const parsed = z
+      .object({ name: z.string().min(1), filter: contactFilterSchema })
+      .safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const existing = await prisma.contactSegment.findUnique({
+      where: { workspaceId_name: { workspaceId: user.workspaceId, name: parsed.data.name } },
+    });
+    if (existing) return reply.status(409).send({ error: "A segment with that name already exists" });
+
+    const segment = await prisma.contactSegment.create({
+      data: { workspaceId: user.workspaceId, name: parsed.data.name, filter: parsed.data.filter },
+    });
+    return reply.status(201).send(segment);
+  });
+
+  // Update a segment
+  app.patch("/segments/:id", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const parsed = z
+      .object({ name: z.string().min(1).optional(), filter: contactFilterSchema.optional() })
+      .safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+    const existing = await prisma.contactSegment.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    if (!existing) return reply.status(404).send({ error: "Segment not found" });
+
+    const segment = await prisma.contactSegment.update({
+      where: { id },
+      data: { name: parsed.data.name, filter: parsed.data.filter },
+    });
+    return reply.send(segment);
+  });
+
+  // Delete a segment
+  app.delete("/segments/:id", { preHandler: [checkPermission("can_manage_contacts")] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const existing = await prisma.contactSegment.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    if (!existing) return reply.status(404).send({ error: "Segment not found" });
+    await prisma.contactSegment.delete({ where: { id } });
+    return reply.send({ message: "Segment deleted" });
+  });
+
+  // Resolve a segment to live, opted-in contact IDs — the campaign send modal
+  // calls this to turn a saved audience into the contactIds /send-bulk expects.
+  app.get("/segments/:id/resolve", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { id } = request.params as { id: string };
+    const segment = await prisma.contactSegment.findFirst({ where: { id, workspaceId: user.workspaceId } });
+    if (!segment) return reply.status(404).send({ error: "Segment not found" });
+
+    const filter = contactFilterSchema.safeParse(segment.filter);
+    if (!filter.success) return reply.status(422).send({ error: "Segment filter is malformed" });
+
+    // Force opt-in: campaigns may only target opted-in contacts regardless of the
+    // saved filter, so a segment can never be used to message opted-out people.
+    const where = buildContactWhere(user.workspaceId, { ...filter.data, optIn: true });
+    const contacts = await prisma.contact.findMany({ where, select: { id: true } });
+
+    return reply.send({ segmentId: id, name: segment.name, contactIds: contacts.map((c) => c.id), total: contacts.length });
   });
 }

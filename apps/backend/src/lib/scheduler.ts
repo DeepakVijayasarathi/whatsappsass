@@ -3,6 +3,7 @@ import { sendWhatsAppTemplate } from "./whatsapp";
 import type { ProviderConfig } from "./whatsapp";
 import { fireWebhooks } from "./webhookDispatcher";
 import { decryptNullable } from "./encrypt";
+import { sendInBatches } from "./batchSend";
 
 async function getWorkspaceConfig(workspaceId: string) {
   return prisma.workspace.findUnique({
@@ -69,8 +70,21 @@ async function runScheduledCampaigns() {
         select: { id: true, phone: true },
       });
 
+      // Idempotency: skip contacts already sent for this campaign, so a retry
+      // (e.g. after the scheduler was interrupted) never double-sends.
+      const already = await prisma.messageLog.findMany({
+        where: {
+          campaignId: campaign.id,
+          workspaceId: campaign.workspaceId,
+          status: { in: ["sent", "delivered", "read"] },
+        },
+        select: { contactId: true },
+      });
+      const alreadySent = new Set(already.map((m) => m.contactId));
+      const pending = contacts.filter((c) => !alreadySent.has(c.id));
+
       let sent = 0, failed = 0;
-      for (const contact of contacts) {
+      const results = await sendInBatches(pending, async (contact) => {
         try {
           const result = await sendWhatsAppTemplate(
             { to: contact.phone, templateName: campaign.template, languageCode: campaign.languageCode ?? "en_US", components: [] },
@@ -79,13 +93,17 @@ async function runScheduledCampaigns() {
           await prisma.messageLog.create({
             data: { workspaceId: campaign.workspaceId, contactId: contact.id, campaignId: campaign.id, wamid: result.wamid, status: "sent" },
           });
-          sent++;
+          return "sent" as const;
         } catch {
           await prisma.messageLog.create({
             data: { workspaceId: campaign.workspaceId, contactId: contact.id, campaignId: campaign.id, status: "failed" },
           });
-          failed++;
+          return "failed" as const;
         }
+      });
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value === "sent") sent++;
+        else failed++;
       }
 
       await prisma.campaign.update({ where: { id: campaign.id }, data: { status: "completed" } });

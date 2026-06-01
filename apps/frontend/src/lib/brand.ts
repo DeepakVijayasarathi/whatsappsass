@@ -28,6 +28,7 @@ export const nav: NavItem[] = [
   // ── Main section ──────────────────────────────────────────────────────────
   { href: "/dashboard",        icon: "LayoutDashboard", label: "Dashboard",       roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/contacts",         icon: "Users",           label: "Contacts",        roles: ["owner","admin","marketer"], badge: null,    group: "main" },
+  { href: "/segments",         icon: "Layers",          label: "Segments",        roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/campaigns",        icon: "Megaphone",       label: "WA Campaigns",    roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/email-campaigns",  icon: "Mail",            label: "Email Campaigns", roles: ["owner","admin","marketer"], badge: null,    group: "main" },
   { href: "/send",             icon: "Send",            label: "Send Message",    roles: ["owner","admin","marketer"], badge: null,    group: "main" },
