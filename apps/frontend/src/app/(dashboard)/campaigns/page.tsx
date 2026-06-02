@@ -79,6 +79,9 @@ function RunModal({ campaign, onClose, onDone }: {
   const [varValues, setVarValues] = useState<Record<number, string>>({});
   const [templateBody, setTemplateBody] = useState<string | null>(campaign.templateBody ?? null);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [segments, setSegments] = useState<{ id: string; name: string; count: number }[]>([]);
+  const [activeSegment, setActiveSegment] = useState("");
+  const [resolvingSegment, setResolvingSegment] = useState(false);
 
   useEffect(() => {
     setTemplateBody(campaign.templateBody ?? null);
@@ -104,6 +107,44 @@ function RunModal({ campaign, onClose, onDone }: {
       setAllTags(tags);
     }).finally(() => setLoading(false));
   }, []);
+
+  // Load saved segments so the user can pick one as the audience.
+  useEffect(() => {
+    api.get("/contacts/segments")
+      .then((r) => setSegments((r.data.segments as Array<{ id: string; name: string; count: number }>) ?? []))
+      .catch(() => { /* segments are optional — ignore load failures */ });
+  }, []);
+
+  // Resolve a saved segment to its (opted-in) contact IDs and select exactly those.
+  const applySegment = async (segmentId: string) => {
+    setActiveSegment(segmentId);
+    if (!segmentId) {
+      // "No segment" → select all loaded contacts (the default).
+      setSelectedIds(new Set(contacts.map((c) => c.id)));
+      return;
+    }
+    setResolvingSegment(true);
+    try {
+      const r = await api.get(`/contacts/segments/${segmentId}/resolve`);
+      const ids = new Set<string>((r.data.contactIds as string[]) ?? []);
+      // Intersect with the contacts loaded in this modal so the checklist stays in sync.
+      const loadedIds = new Set(contacts.map((c) => c.id));
+      const selectable = [...ids].filter((id) => loadedIds.has(id));
+      setSelectedIds(new Set(selectable));
+      if (selectable.length === 0) {
+        toast("This segment matches no opted-in contacts.", { icon: "⚠️" });
+      } else if (selectable.length < ids.size) {
+        toast(`${selectable.length} of ${ids.size} segment contacts are loaded here.`, { icon: "ℹ️" });
+      }
+      // Clear the tag/status filters so the segment selection is shown unfiltered.
+      setTagFilter("");
+      setLeadStatusFilter("");
+    } catch {
+      toast.error("Failed to load segment");
+    } finally {
+      setResolvingSegment(false);
+    }
+  };
 
   const filtered = contacts.filter((c) => {
     if (tagFilter && !c.tags.includes(tagFilter)) return false;
@@ -202,6 +243,20 @@ function RunModal({ campaign, onClose, onDone }: {
         ) : (
           <>
             <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-2">
+              {segments.length > 0 && (
+                <select
+                  value={activeSegment}
+                  onChange={(e) => applySegment(e.target.value)}
+                  disabled={resolvingSegment}
+                  className="input text-sm flex-1 min-w-[140px]"
+                  aria-label="Select a saved segment as the audience"
+                >
+                  <option value="">Audience: all opted-in</option>
+                  {segments.map((s) => (
+                    <option key={s.id} value={s.id}>Segment: {s.name} ({s.count})</option>
+                  ))}
+                </select>
+              )}
               <select
                 value={tagFilter}
                 onChange={(e) => setTagFilter(e.target.value)}
