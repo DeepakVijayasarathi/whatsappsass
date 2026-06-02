@@ -49,6 +49,20 @@ pipeline {
             }
         }
 
+        stage('Run Backend Tests') {
+            steps {
+                // Run the Vitest suite (+ coverage gate) in a Node container so the
+                // build is gated on tests passing. No DB needed — tests mock Prisma.
+                sh '''
+                docker run --rm -v "$PWD":/app -w /app node:20-alpine sh -c "
+                  npm install --workspace=packages/database --workspace=apps/backend &&
+                  node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma &&
+                  npm run test:coverage --workspace=apps/backend
+                "
+                '''
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 sh 'docker build --no-cache -t $IMAGE_NAME .'
