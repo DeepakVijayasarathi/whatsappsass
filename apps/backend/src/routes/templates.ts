@@ -667,28 +667,42 @@ export async function templateRoutes(app: FastifyInstance) {
       });
     }
 
+    const msg91Payload = {
+      integrated_number: workspace.msg91IntegratedNumber.replace(/^\+/, ""),
+      template_name:     name,
+      language,
+      category,
+      ...(hasUrlButton ? { button_url: true } : {}),
+      components,
+    };
+    console.log("[templates] MSG91 create payload:", JSON.stringify(msg91Payload, null, 2));
+
     try {
-      await axios.post(
+      const msg91Res = await axios.post(
         "https://api.msg91.com/api/v5/whatsapp/client-panel-template/",
-        {
-          integrated_number: workspace.msg91IntegratedNumber.replace(/^\+/, ""),
-          template_name:     name,
-          language,
-          category,
-          ...(hasUrlButton ? { button_url: true } : {}),
-          components,
-        },
+        msg91Payload,
         { headers: { authkey: workspace.msg91AuthKey, "content-type": "application/json" }, timeout: 15_000 }
       );
+      console.log("[templates] MSG91 create success:", JSON.stringify(msg91Res.data));
     } catch (err: unknown) {
       const axErr = err as { response?: { data?: unknown; status?: number } };
       const d = axErr.response?.data as Record<string, unknown> | undefined;
+
+      // Log the full raw response so we can see the real WhatsApp error
+      console.error("[templates] MSG91 create error — HTTP", axErr.response?.status, "— full body:", JSON.stringify(d ?? {}));
+
+      // Surface nested error strings (MSG91 wraps WhatsApp errors in various shapes)
       const msg =
-        (typeof d?.message === "string" && d.message) ||
+        (typeof d?.message === "string" && d.message !== "invalid response from vendor" && d.message) ||
         (typeof d?.error   === "string" && d.error)   ||
         (typeof d?.errors  === "string" && d.errors)  ||
+        // Dig into common nested shapes: { data: { message: "..." } } or { error: { message: "..." } }
+        (typeof (d?.data as Record<string,unknown>)?.message === "string" && (d?.data as Record<string,unknown>).message as string) ||
+        (typeof (d?.error as Record<string,unknown>)?.message === "string" && (d?.error as Record<string,unknown>).message as string) ||
+        // Fall back to the full body as a string so nothing is hidden
+        (d ? JSON.stringify(d) : null) ||
         `MSG91 API error (HTTP ${axErr.response?.status ?? "network error"})`;
-      console.error("[templates] MSG91 create error:", msg, JSON.stringify(d ?? {}));
+
       return reply.status(502).send({ error: msg });
     }
 
