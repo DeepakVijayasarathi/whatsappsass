@@ -645,11 +645,11 @@ export async function templateRoutes(app: FastifyInstance) {
       if (header.format === "TEXT" && header.text) {
         hComp.text = header.text;
         hComp.example = { header_text: [header.text] };
-      } else if (header.format !== "TEXT" && header.mediaUrl) {
-        // MSG91 uses header_url (not header_handle) for URL-based media samples.
-        // header_handle is only for handles from WhatsApp's own media upload API.
-        hComp.example = { header_url: [header.mediaUrl] };
       }
+      // For IMAGE/VIDEO/DOCUMENT headers: do NOT include example.header_url.
+      // MSG91 passes the payload through to WhatsApp which rejects example URLs
+      // with "invalid response from vendor". MSG91 only needs the format type;
+      // the actual media is supplied per-message when sending, not at template creation.
       components.push(hComp);
     }
 
