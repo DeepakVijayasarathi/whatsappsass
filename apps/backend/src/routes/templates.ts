@@ -588,7 +588,7 @@ export async function templateRoutes(app: FastifyInstance) {
       name:     z.string().min(1).max(100).regex(/^[a-z0-9_]+$/, "Name must be lowercase letters, numbers, underscores only"),
       category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).default("UTILITY"),
       language: z.string().min(2).max(10).default("en_US"),
-      body:     z.string().min(1).max(1024),
+      body:     z.string().min(20, "Body must be at least 20 characters — WhatsApp rejects short or test-like content").max(1024),
       header:   z.object({ format: z.enum(["TEXT", "IMAGE", "VIDEO", "DOCUMENT"]), text: z.string().max(60).optional(), mediaUrl: z.string().url().optional() }).optional(),
       footer:   z.string().max(60).optional(),
       buttons:  z.array(buttonSchema).max(3).optional(),
@@ -679,7 +679,7 @@ export async function templateRoutes(app: FastifyInstance) {
 
     try {
       const msg91Res = await axios.post(
-        "https://api.msg91.com/api/v5/whatsapp/client-panel-template/",
+        "https://control.msg91.com/api/v5/whatsapp/client-panel-template/",
         msg91Payload,
         { headers: { authkey: workspace.msg91AuthKey, "content-type": "application/json" }, timeout: 15_000 }
       );
@@ -692,16 +692,23 @@ export async function templateRoutes(app: FastifyInstance) {
       console.error("[templates] MSG91 create error — HTTP", axErr.response?.status, "— full body:", JSON.stringify(d ?? {}));
 
       // Surface nested error strings (MSG91 wraps WhatsApp errors in various shapes)
-      const msg =
-        (typeof d?.message === "string" && d.message !== "invalid response from vendor" && d.message) ||
+      const rawMsg =
+        (typeof d?.message === "string" && d.message) ||
         (typeof d?.error   === "string" && d.error)   ||
         (typeof d?.errors  === "string" && d.errors)  ||
-        // Dig into common nested shapes: { data: { message: "..." } } or { error: { message: "..." } }
         (typeof (d?.data as Record<string,unknown>)?.message === "string" && (d?.data as Record<string,unknown>).message as string) ||
         (typeof (d?.error as Record<string,unknown>)?.message === "string" && (d?.error as Record<string,unknown>).message as string) ||
-        // Fall back to the full body as a string so nothing is hidden
         (d ? JSON.stringify(d) : null) ||
         `MSG91 API error (HTTP ${axErr.response?.status ?? "network error"})`;
+
+      // MSG91 returns this generic string when WhatsApp itself rejected the template.
+      // Give the user actionable guidance since MSG91 does not forward the real WhatsApp error.
+      const msg = rawMsg === "invalid response from vendor"
+        ? "WhatsApp rejected the template (MSG91 error: \"invalid response from vendor\"). Common causes: " +
+          "(1) Template name already exists — try a different name. " +
+          "(2) Body text is too short or low quality — use a real message (not \"test\"). " +
+          "(3) The sample media URL is not publicly accessible — ensure the image/video link can be opened by anyone without login."
+        : rawMsg;
 
       return reply.status(502).send({ error: msg });
     }
@@ -730,7 +737,7 @@ export async function templateRoutes(app: FastifyInstance) {
         .regex(/^[a-z0-9_]+$/, "Template name may only contain lowercase letters, digits, and underscores"),
       category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]),
       language: z.string().min(2).max(10).default("en_US"),
-      body: z.string().min(1).max(1024),
+      body: z.string().min(20, "Body must be at least 20 characters — Meta rejects short or test-like content").max(1024),
       footer: z.string().max(60).optional(),
       header: z
         .object({

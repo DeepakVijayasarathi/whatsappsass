@@ -51,7 +51,7 @@ const createSchema = z.object({
     .regex(/^[a-z0-9_]+$/, "Lowercase letters, digits and underscores only (e.g. hello_world)"),
   category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"], { required_error: "Category required" }),
   language: z.string().min(1, "Language required"),
-  body: z.string().min(1, "Body text required").max(1024, "Max 1024 characters"),
+  body: z.string().min(20, "Body must be at least 20 characters").max(1024, "Max 1024 characters"),
   footer: z.string().max(60, "Max 60 characters").optional(),
 });
 type CreateForm = z.infer<typeof createSchema>;
@@ -398,6 +398,9 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
               <textarea {...register("body")} rows={5} className="input text-sm resize-none"
                 placeholder={"Hello {{1}},\n\nYour order {{2}} has been confirmed."} />
               {errors.body && <p className="text-red-500 text-xs mt-1">{errors.body.message}</p>}
+              <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-1.5 leading-relaxed">
+                Use a real message (min 20 chars). Meta rejects short or generic content like &quot;test&quot;.
+              </p>
             </div>
             <div>
               <p className="block text-sm font-medium text-gray-700 mb-1">Preview</p>
@@ -508,7 +511,7 @@ const msg91Schema = z.object({
   name:     z.string().min(1, "Name required").max(100).regex(/^[a-z0-9_]+$/, "Lowercase letters, digits and underscores only (e.g. hello_world)"),
   category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"], { required_error: "Category required" }),
   language: z.string().min(1, "Language required"),
-  body:     z.string().min(1, "Body text required").max(1024, "Max 1024 characters"),
+  body:     z.string().min(20, "Body must be at least 20 characters").max(1024, "Max 1024 characters"),
   footer:   z.string().max(60, "Max 60 characters").optional(),
 });
 type Msg91Form = z.infer<typeof msg91Schema>;
@@ -645,6 +648,9 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
               <label className="block text-sm font-medium text-gray-700 mb-1">Body text <span className="text-gray-400 font-normal">({bodyVal.length}/1024)</span></label>
               <textarea {...register("body")} rows={5} className="input text-sm resize-none" placeholder={"Hello {{1}},\n\nYour order {{2}} has been confirmed."} />
               {errors.body && <p className="text-red-500 text-xs mt-1">{errors.body.message}</p>}
+              <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-1.5 leading-relaxed">
+                Use a real message (min 20 chars). WhatsApp rejects short or generic content like &quot;test&quot;.
+              </p>
             </div>
             <div>
               <p className="block text-sm font-medium text-gray-700 mb-1">Preview</p>
