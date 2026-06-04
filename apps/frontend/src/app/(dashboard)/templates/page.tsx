@@ -207,11 +207,12 @@ function MediaHeaderInput({
             placeholder={`https://example.com/sample.${format === "IMAGE" ? "jpg" : format === "VIDEO" ? "mp4" : "pdf"}`}
             type="url"
           />
-          <p className="text-[10px] text-gray-400 mt-1">
-            Must be a publicly accessible HTTPS URL that Meta/MSG91 can download during review.
-          </p>
         </div>
       )}
+      <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 leading-relaxed">
+        <strong>Required.</strong> Meta/MSG91 must be able to fetch this URL to review your template.
+        Use a public CDN, S3, or Imgur link — <em>localhost</em> URLs will be rejected.
+      </p>
     </div>
   );
 }
@@ -278,6 +279,11 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
   const updateButton = (i: number, patch: Partial<BtnDraft>) => setButtons((prev) => prev.map((b, idx) => idx === i ? { ...b, ...patch } : b));
 
   const onSubmit = async (data: CreateForm) => {
+    // Media headers require a publicly accessible sample URL (Meta fetches it during review)
+    if ((headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && !headerMediaUrl.trim()) {
+      toast.error(`A sample ${headerFormat.toLowerCase()} URL is required for ${headerFormat.toLowerCase()} headers`);
+      return;
+    }
     // Validate buttons
     for (const btn of buttons) {
       if (!btn.text.trim()) { toast.error("Fill in all button labels"); return; }
@@ -530,6 +536,11 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
   const resetForm = () => { reset(); setHeaderFormat("NONE"); setHeaderText(""); setHeaderMediaUrl(""); setButtons([]); };
 
   const onSubmit = async (data: Msg91Form) => {
+    // Media headers require a publicly accessible sample URL (MSG91/Meta fetches it during review)
+    if ((headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && !headerMediaUrl.trim()) {
+      toast.error(`A sample ${headerFormat.toLowerCase()} URL is required for ${headerFormat.toLowerCase()} headers`);
+      return;
+    }
     for (const btn of buttons) {
       if (!btn.text.trim()) { toast.error("Fill in all button labels"); return; }
       if (btn.type === "URL" && !btn.url?.startsWith("http")) { toast.error("URL buttons need a valid URL"); return; }

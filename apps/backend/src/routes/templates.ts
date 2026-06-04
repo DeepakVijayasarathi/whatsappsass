@@ -8,6 +8,20 @@ const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v19.0";
 import { authenticate, requireOwnerOrAdmin } from "../middleware/authenticate";
 import type { JwtPayload } from "../middleware/authenticate";
 
+/**
+ * Returns true when the URL hostname is localhost/127.0.0.1/::1 — these cannot
+ * be fetched by Meta or MSG91 servers during template review, so we reject them
+ * early with a helpful message instead of surfacing a cryptic upstream error.
+ */
+function isLocalhostUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
 /** Decrypt the at-rest credential fields on a workspace row in-place so
  *  downstream provider calls receive plaintext. Safe on partial selects
  *  (only touches fields that are present) and on legacy plaintext values. */
@@ -601,6 +615,20 @@ export async function templateRoutes(app: FastifyInstance) {
 
     const { name, category, language, body, header, footer, buttons } = parsed.data;
 
+    // MSG91 (and Meta behind it) require an example for every media header component.
+    if (header && header.format !== "TEXT") {
+      if (!header.mediaUrl) {
+        return reply.status(400).send({
+          error: `A sample ${header.format.toLowerCase()} URL is required for media header templates. Upload a file or enter a publicly accessible URL in the Header section.`,
+        });
+      }
+      if (isLocalhostUrl(header.mediaUrl)) {
+        return reply.status(400).send({
+          error: `The sample media URL must be publicly accessible — "localhost" cannot be reached by MSG91/Meta servers. Set BACKEND_PUBLIC_URL to a real public domain, or paste a URL from a public CDN/S3/Imgur in the "Enter URL" tab.`,
+        });
+      }
+    }
+
     // Build MSG91 components array
     const components: Record<string, unknown>[] = [];
 
@@ -724,6 +752,20 @@ export async function templateRoutes(app: FastifyInstance) {
     }
 
     const { name, category, language, body, footer, header, buttons } = parsed.data;
+
+    // Meta requires an example for every media header component.
+    if (header && header.format !== "TEXT") {
+      if (!header.mediaUrl) {
+        return reply.status(400).send({
+          error: `A sample ${header.format.toLowerCase()} URL is required for media header templates. Upload a file or enter a publicly accessible URL in the Header section.`,
+        });
+      }
+      if (isLocalhostUrl(header.mediaUrl)) {
+        return reply.status(400).send({
+          error: `The sample media URL must be publicly accessible — "localhost" cannot be reached by Meta servers. Set BACKEND_PUBLIC_URL to a real public domain, or paste a URL from a public CDN/S3/Imgur in the "Enter URL" tab.`,
+        });
+      }
+    }
 
     // Build components array for Meta API
     const components: object[] = [];
