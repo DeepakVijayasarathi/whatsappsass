@@ -1,10 +1,13 @@
 import "dotenv/config";
 import crypto from "crypto";
+import path from "path";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import rateLimit from "@fastify/rate-limit";
 import helmet from "@fastify/helmet";
+import multipart from "@fastify/multipart";
+import staticFiles from "@fastify/static";
 
 import { authRoutes } from "./routes/auth";
 import { workspaceRoutes } from "./routes/workspace";
@@ -21,6 +24,7 @@ import { autoReplyRoutes } from "./routes/auto-replies";
 import { webhookRoutes } from "./routes/webhooks";
 import { sequenceRoutes } from "./routes/sequences";
 import { cannedResponseRoutes } from "./routes/canned-responses";
+import { uploadRoutes, getUploadDir } from "./routes/uploads";
 import { startScheduler } from "./lib/scheduler";
 
 const app = Fastify({
@@ -37,6 +41,16 @@ if (!JWT_SECRET) {
 }
 
 async function bootstrap() {
+  // Multipart/form-data support (required for file uploads)
+  await app.register(multipart);
+
+  // Serve uploaded files at GET /uploads/*
+  await app.register(staticFiles, {
+    root: getUploadDir(),
+    prefix: "/uploads/",
+    decorateReply: false,
+  });
+
   await app.register(helmet, { global: true });
   // When FRONTEND_URL is set, restrict CORS to that exact origin.
   // The comparison is exact (not prefix) to prevent subdomain-bypass attacks.
@@ -110,6 +124,7 @@ async function bootstrap() {
   await app.register(webhookRoutes, { prefix: "/webhooks" });
   await app.register(sequenceRoutes, { prefix: "/sequences" });
   await app.register(cannedResponseRoutes, { prefix: "/canned-responses" });
+  await app.register(uploadRoutes, { prefix: "/uploads" });
 
   const port = Number(process.env.PORT) || 4000;
   await app.listen({ port, host: "0.0.0.0" });

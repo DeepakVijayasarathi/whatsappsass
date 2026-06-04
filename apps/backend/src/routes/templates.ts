@@ -575,7 +575,7 @@ export async function templateRoutes(app: FastifyInstance) {
       category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).default("UTILITY"),
       language: z.string().min(2).max(10).default("en_US"),
       body:     z.string().min(1).max(1024),
-      header:   z.object({ format: z.enum(["TEXT", "IMAGE", "VIDEO", "DOCUMENT"]), text: z.string().max(60).optional() }).optional(),
+      header:   z.object({ format: z.enum(["TEXT", "IMAGE", "VIDEO", "DOCUMENT"]), text: z.string().max(60).optional(), mediaUrl: z.string().url().optional() }).optional(),
       footer:   z.string().max(60).optional(),
       buttons:  z.array(buttonSchema).max(3).optional(),
     });
@@ -609,6 +609,8 @@ export async function templateRoutes(app: FastifyInstance) {
       if (header.format === "TEXT" && header.text) {
         hComp.text = header.text;
         hComp.example = { header_text: [header.text] };
+      } else if (header.format !== "TEXT" && header.mediaUrl) {
+        hComp.example = { header_handle: [header.mediaUrl] };
       }
       components.push(hComp);
     }
@@ -690,6 +692,7 @@ export async function templateRoutes(app: FastifyInstance) {
         .object({
           format: z.enum(["TEXT", "IMAGE", "VIDEO", "DOCUMENT"]),
           text: z.string().max(60).optional(),
+          mediaUrl: z.string().url().optional(),
         })
         .optional(),
       buttons: z
@@ -726,7 +729,11 @@ export async function templateRoutes(app: FastifyInstance) {
     const components: object[] = [];
     if (header) {
       const hComp: Record<string, unknown> = { type: "HEADER", format: header.format };
-      if (header.format === "TEXT" && header.text) hComp.text = header.text;
+      if (header.format === "TEXT" && header.text) {
+        hComp.text = header.text;
+      } else if (header.format !== "TEXT" && header.mediaUrl) {
+        hComp.example = { header_handle: [header.mediaUrl] };
+      }
       components.push(hComp);
     }
     components.push({ type: "BODY", text: body });

@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, getErrMsg } from "@/lib/api";
 import {
   FileText, RefreshCw, CheckCircle2, AlertCircle, Clock, Search,
   X, Eye, Plus, Trash2, ChevronDown, ChevronUp, Info, Link2, Image, Phone,
+  Upload, Video, File, CheckCircle,
 } from "lucide-react";
-// Link2, Image, Phone are used by CreateTemplatePanel (Meta only)
 import clsx from "clsx";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import Cookies from "js-cookie";
 import ConfirmModal from "@/components/ConfirmModal";
 import type { Template } from "@/components/TemplatePicker";
 
@@ -54,6 +55,166 @@ const createSchema = z.object({
   footer: z.string().max(60, "Max 60 characters").optional(),
 });
 type CreateForm = z.infer<typeof createSchema>;
+
+// ── File upload helper ────────────────────────────────────────────────────────
+
+async function uploadTemplateMedia(file: File): Promise<string> {
+  const token = Cookies.get("token");
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/uploads/template-media", {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  const json = await res.json() as { url?: string; error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Upload failed");
+  return json.url!;
+}
+
+const ACCEPT_BY_FORMAT = {
+  IMAGE:    "image/jpeg,image/png,image/webp,image/gif",
+  VIDEO:    "video/mp4,video/3gpp",
+  DOCUMENT: "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation",
+} as const;
+
+const SIZE_HINT_BY_FORMAT = {
+  IMAGE:    "JPEG, PNG, WEBP, GIF · max 5 MB",
+  VIDEO:    "MP4, 3GP · max 16 MB",
+  DOCUMENT: "PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX · max 100 MB",
+} as const;
+
+type MediaFormat = "IMAGE" | "VIDEO" | "DOCUMENT";
+type InputMode = "upload" | "url";
+
+/**
+ * Dual-mode media input: "Upload File" tab and "Enter URL" tab.
+ * Calls onChange(url) whenever a URL becomes available (either from
+ * a successful upload or from the user typing/pasting a URL).
+ */
+function MediaHeaderInput({
+  format,
+  value,
+  onChange,
+}: {
+  format: MediaFormat;
+  value: string;
+  onChange: (url: string) => void;
+}) {
+  const [mode, setMode] = useState<InputMode>("upload");
+  const [uploading, setUploading] = useState(false);
+  const [uploadedName, setUploadedName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const url = await uploadTemplateMedia(file);
+      onChange(url);
+      setUploadedName(file.name);
+      toast.success("File uploaded");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      toast.error(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const FormatIcon = format === "IMAGE" ? Image : format === "VIDEO" ? Video : File;
+
+  return (
+    <div className="space-y-2">
+      {/* Tab switcher */}
+      <div className="flex rounded-lg border border-gray-200 overflow-hidden w-fit text-[11px] font-semibold">
+        <button
+          type="button"
+          onClick={() => setMode("upload")}
+          className={clsx(
+            "px-3 py-1.5 flex items-center gap-1.5 transition-colors",
+            mode === "upload" ? "bg-brand text-white" : "bg-white text-gray-500 hover:bg-gray-50"
+          )}
+        >
+          <Upload className="w-3 h-3" /> Upload File
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("url")}
+          className={clsx(
+            "px-3 py-1.5 flex items-center gap-1.5 transition-colors border-l border-gray-200",
+            mode === "url" ? "bg-brand text-white" : "bg-white text-gray-500 hover:bg-gray-50"
+          )}
+        >
+          <Link2 className="w-3 h-3" /> Enter URL
+        </button>
+      </div>
+
+      {mode === "upload" ? (
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPT_BY_FORMAT[format]}
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+          />
+          <label
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+            className={clsx(
+              "flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl px-4 py-5 cursor-pointer transition-colors",
+              uploading
+                ? "border-brand/40 bg-brand/5 cursor-wait"
+                : "border-gray-200 hover:border-brand/50 hover:bg-brand/5"
+            )}
+            onClick={() => !uploading && fileInputRef.current?.click()}
+          >
+            {uploading ? (
+              <>
+                <RefreshCw className="w-5 h-5 text-brand animate-spin" />
+                <span className="text-xs text-brand font-medium">Uploading…</span>
+              </>
+            ) : value && uploadedName ? (
+              <>
+                <CheckCircle className="w-5 h-5 text-green-500" />
+                <span className="text-xs text-green-700 font-medium text-center break-all">{uploadedName}</span>
+                <span className="text-[10px] text-gray-400">Click to replace</span>
+              </>
+            ) : (
+              <>
+                <FormatIcon className="w-5 h-5 text-gray-400" />
+                <span className="text-xs text-gray-500 font-medium">Click to choose file</span>
+                <span className="text-[10px] text-gray-400 text-center">{SIZE_HINT_BY_FORMAT[format]}</span>
+                <span className="text-[10px] text-gray-400">or drag and drop</span>
+              </>
+            )}
+          </label>
+        </div>
+      ) : (
+        <div>
+          <input
+            value={value}
+            onChange={(e) => { setUploadedName(""); onChange(e.target.value); }}
+            className="input text-sm"
+            placeholder={`https://example.com/sample.${format === "IMAGE" ? "jpg" : format === "VIDEO" ? "mp4" : "pdf"}`}
+            type="url"
+          />
+          <p className="text-[10px] text-gray-400 mt-1">
+            Must be a publicly accessible HTTPS URL that Meta/MSG91 can download during review.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function TemplatePreviewModal({ template, onClose }: { template: Template; onClose: () => void }) {
   const style = statusStyle[template.status] ?? { badge: "bg-gray-100 text-gray-600", icon: AlertCircle, label: template.status };
@@ -98,6 +259,7 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
   // Header state (not in RHF — complex nested type)
   const [headerFormat, setHeaderFormat] = useState<"NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT">("NONE");
   const [headerText, setHeaderText] = useState("");
+  const [headerMediaUrl, setHeaderMediaUrl] = useState("");
   // Buttons state
   const [buttons, setButtons] = useState<BtnDraft[]>([]);
 
@@ -124,14 +286,20 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
     }
     const payload = {
       ...data,
-      ...(headerFormat !== "NONE" ? { header: { format: headerFormat, text: headerFormat === "TEXT" ? headerText : undefined } } : {}),
+      ...(headerFormat !== "NONE" ? {
+        header: {
+          format: headerFormat,
+          ...(headerFormat === "TEXT" ? { text: headerText } : {}),
+          ...(headerFormat !== "TEXT" && headerMediaUrl ? { mediaUrl: headerMediaUrl } : {}),
+        },
+      } : {}),
       ...(buttons.length > 0 ? { buttons } : {}),
     };
     try {
       const res = await api.post("/templates", payload);
       toast.success(res.data.message ?? "Template submitted for review");
       reset();
-      setHeaderFormat("NONE"); setHeaderText(""); setButtons([]);
+      setHeaderFormat("NONE"); setHeaderText(""); setHeaderMediaUrl(""); setButtons([]);
       setOpen(false);
       onCreated();
     } catch (err: unknown) {
@@ -196,7 +364,7 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
               <p className="text-sm font-semibold text-gray-800">Header <span className="font-normal text-gray-400 ml-1">(optional)</span></p>
               <div className="flex gap-1">
                 {(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"] as const).map((f) => (
-                  <button key={f} type="button" onClick={() => setHeaderFormat(f)}
+                  <button key={f} type="button" onClick={() => { setHeaderFormat(f); setHeaderMediaUrl(""); setHeaderText(""); }}
                     className={clsx("px-2 py-1 text-[11px] font-semibold rounded-lg transition-colors", headerFormat === f ? "bg-brand text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
                     {f === "NONE" ? "None" : f.charAt(0) + f.slice(1).toLowerCase()}
                   </button>
@@ -207,12 +375,11 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
               <input value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="input text-sm" placeholder="Header text (max 60 chars)" maxLength={60} />
             )}
             {(headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && (
-              <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                {headerFormat === "IMAGE" && <Image className="w-4 h-4" />}
-                {headerFormat === "VIDEO" && <FileText className="w-4 h-4" />}
-                {headerFormat === "DOCUMENT" && <FileText className="w-4 h-4" />}
-                <span>The user sending the message will need to provide the media file. Meta will accept this template with a media header placeholder.</span>
-              </div>
+              <MediaHeaderInput
+                format={headerFormat}
+                value={headerMediaUrl}
+                onChange={setHeaderMediaUrl}
+              />
             )}
           </div>
 
@@ -233,9 +400,14 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
                   <p className="text-xs font-bold text-gray-700 mb-1 px-1">{headerText}</p>
                 )}
                 {(headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && (
-                  <div className="bg-gray-200 rounded-lg mb-1 h-10 flex items-center justify-center text-[10px] text-gray-500">
-                    [{headerFormat.toLowerCase()}]
-                  </div>
+                  headerFormat === "IMAGE" && headerMediaUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={headerMediaUrl} alt="header preview" className="rounded-lg mb-1 w-full h-20 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  ) : (
+                    <div className="bg-gray-200 rounded-lg mb-1 h-10 flex items-center justify-center text-[10px] text-gray-500">
+                      [{headerFormat.toLowerCase()}{headerMediaUrl ? " ✓" : ""}]
+                    </div>
+                  )
                 )}
                 <div className="bg-white rounded-xl rounded-tl-none px-3 py-2 shadow-sm">
                   <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
@@ -316,7 +488,7 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
             <button type="submit" disabled={isSubmitting} className="btn-primary">
               {isSubmitting ? "Submitting..." : "Submit for Review"}
             </button>
-            <button type="button" onClick={() => { setOpen(false); reset(); setHeaderFormat("NONE"); setHeaderText(""); setButtons([]); }} className="btn-secondary">
+            <button type="button" onClick={() => { setOpen(false); reset(); setHeaderFormat("NONE"); setHeaderText(""); setHeaderMediaUrl(""); setButtons([]); }} className="btn-secondary">
               Cancel
             </button>
           </div>
@@ -339,6 +511,7 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [headerFormat, setHeaderFormat] = useState<"NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT">("NONE");
   const [headerText, setHeaderText] = useState("");
+  const [headerMediaUrl, setHeaderMediaUrl] = useState("");
   const [buttons, setButtons] = useState<BtnDraft[]>([]);
 
   const { register, handleSubmit, watch, reset, formState: { errors, isSubmitting } } = useForm<Msg91Form>({
@@ -354,7 +527,7 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
   };
   const removeButton = (i: number) => setButtons((prev) => prev.filter((_, idx) => idx !== i));
   const updateButton = (i: number, patch: Partial<BtnDraft>) => setButtons((prev) => prev.map((b, idx) => idx === i ? { ...b, ...patch } : b));
-  const resetForm = () => { reset(); setHeaderFormat("NONE"); setHeaderText(""); setButtons([]); };
+  const resetForm = () => { reset(); setHeaderFormat("NONE"); setHeaderText(""); setHeaderMediaUrl(""); setButtons([]); };
 
   const onSubmit = async (data: Msg91Form) => {
     for (const btn of buttons) {
@@ -364,7 +537,13 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
     }
     const payload = {
       ...data,
-      ...(headerFormat !== "NONE" ? { header: { format: headerFormat, text: headerFormat === "TEXT" ? headerText : undefined } } : {}),
+      ...(headerFormat !== "NONE" ? {
+        header: {
+          format: headerFormat,
+          ...(headerFormat === "TEXT" ? { text: headerText } : {}),
+          ...(headerFormat !== "TEXT" && headerMediaUrl ? { mediaUrl: headerMediaUrl } : {}),
+        },
+      } : {}),
       ...(buttons.length > 0 ? { buttons } : {}),
     };
     try {
@@ -430,7 +609,7 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
               <p className="text-sm font-semibold text-gray-800">Header <span className="font-normal text-gray-400 ml-1">(optional)</span></p>
               <div className="flex gap-1">
                 {(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"] as const).map((f) => (
-                  <button key={f} type="button" onClick={() => setHeaderFormat(f)}
+                  <button key={f} type="button" onClick={() => { setHeaderFormat(f); setHeaderMediaUrl(""); setHeaderText(""); }}
                     className={clsx("px-2 py-1 text-[11px] font-semibold rounded-lg transition-colors", headerFormat === f ? "bg-brand text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
                     {f === "NONE" ? "None" : f.charAt(0) + f.slice(1).toLowerCase()}
                   </button>
@@ -441,7 +620,11 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
               <input value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="input text-sm" placeholder="Header text (max 60 chars)" maxLength={60} />
             )}
             {(headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && (
-              <p className="text-xs text-gray-400 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Media placeholder — URL provided at send time.</p>
+              <MediaHeaderInput
+                format={headerFormat}
+                value={headerMediaUrl}
+                onChange={setHeaderMediaUrl}
+              />
             )}
           </div>
 
@@ -457,7 +640,14 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
               <div className="bg-[#e5ddd5] rounded-xl p-3 h-[132px] overflow-y-auto">
                 {headerFormat === "TEXT" && headerText && <p className="text-xs font-bold text-gray-700 mb-1 px-1">{headerText}</p>}
                 {(headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && (
-                  <div className="bg-gray-200 rounded-lg mb-1 h-10 flex items-center justify-center text-[10px] text-gray-500">[{headerFormat.toLowerCase()}]</div>
+                  headerFormat === "IMAGE" && headerMediaUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={headerMediaUrl} alt="header preview" className="rounded-lg mb-1 w-full h-20 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  ) : (
+                    <div className="bg-gray-200 rounded-lg mb-1 h-10 flex items-center justify-center text-[10px] text-gray-500">
+                      [{headerFormat.toLowerCase()}{headerMediaUrl ? " ✓" : ""}]
+                    </div>
+                  )
                 )}
                 <div className="bg-white rounded-xl rounded-tl-none px-3 py-2 shadow-sm">
                   <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">

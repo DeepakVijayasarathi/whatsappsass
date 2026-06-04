@@ -7,9 +7,9 @@ const BACKEND = process.env.BACKEND_URL || "http://127.0.0.1:4000";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const SSE_PATHS = ["/whatsapp/inbox/stream"];
 
-// 10 MB response body cap to prevent memory exhaustion from pathological responses.
-// Legitimate responses (JSON, CSV exports) are well under this limit.
-const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+// 110 MB response body cap — raised from 10 MB to accommodate serving uploaded
+// template-media files (images ≤5 MB, video ≤16 MB, documents ≤100 MB).
+const MAX_RESPONSE_BYTES = 110 * 1024 * 1024;
 
 async function proxy(request: NextRequest, { params }: { params: { path: string[] } }) {
   const path = "/" + params.path.join("/");
@@ -25,7 +25,12 @@ async function proxy(request: NextRequest, { params }: { params: { path: string[
 
   let body: BodyInit | undefined;
   if (!["GET", "HEAD"].includes(request.method)) {
-    body = await request.text();
+    // Binary/multipart bodies must be forwarded as raw bytes — request.text()
+    // would re-encode the bytes as UTF-8 and corrupt non-text content.
+    const ct = request.headers.get("content-type") ?? "";
+    body = ct.startsWith("multipart/") || ct.startsWith("application/octet-stream")
+      ? await request.arrayBuffer()
+      : await request.text();
   }
 
   const isSSE = SSE_PATHS.some((p) => path === p);
