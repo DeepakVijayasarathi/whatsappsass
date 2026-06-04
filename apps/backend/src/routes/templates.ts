@@ -638,7 +638,9 @@ export async function templateRoutes(app: FastifyInstance) {
         hComp.text = header.text;
         hComp.example = { header_text: [header.text] };
       } else if (header.format !== "TEXT" && header.mediaUrl) {
-        hComp.example = { header_handle: [header.mediaUrl] };
+        // MSG91 uses header_url (not header_handle) for URL-based media samples.
+        // header_handle is only for handles from WhatsApp's own media upload API.
+        hComp.example = { header_url: [header.mediaUrl] };
       }
       components.push(hComp);
     }
