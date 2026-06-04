@@ -45,6 +45,7 @@ ENV NODE_ENV=production
 ENV BACKEND_PORT=4000
 ENV FRONTEND_PORT=3000
 ENV BACKEND_URL=http://127.0.0.1:4000
+ENV BACKEND_PUBLIC_URL=https://wealthhome.in/api
 
 # Backend
 COPY --from=backend-builder /app/apps/backend/dist         ./backend/dist

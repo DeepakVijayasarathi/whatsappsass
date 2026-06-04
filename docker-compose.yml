@@ -1,0 +1,20 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+      - "4000:4000"
+    # Non-sensitive config committed here
+    environment:
+      - BACKEND_PUBLIC_URL=https://wealthhome.in/api
+      - NODE_ENV=production
+    # Secrets come from .env on the server (never committed)
+    env_file:
+      - .env
+    volumes:
+      # Persist uploaded template-media files across container restarts
+      - uploads_data:/app/backend/uploads
+    restart: unless-stopped
+
+volumes:
+  uploads_data:
