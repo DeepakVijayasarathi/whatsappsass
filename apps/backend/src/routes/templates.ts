@@ -615,6 +615,14 @@ export async function templateRoutes(app: FastifyInstance) {
 
     const { name, category, language, body, header, footer, buttons } = parsed.data;
 
+    // Reject early if the name already exists in our DB (avoids wasting a MSG91 API call)
+    const existing = await prisma.customTemplate.findUnique({
+      where: { workspaceId_name: { workspaceId: user.workspaceId, name } },
+    });
+    if (existing) {
+      return reply.status(409).send({ error: `Template "${name}" already exists. Choose a different name.` });
+    }
+
     // MSG91 (and Meta behind it) require an example for every media header component.
     if (header && header.format !== "TEXT") {
       if (!header.mediaUrl) {

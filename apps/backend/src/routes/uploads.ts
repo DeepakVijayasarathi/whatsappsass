@@ -38,9 +38,15 @@ export function getUploadDir(): string {
 }
 
 export function buildPublicUrl(filename: string): string {
-  const base = (
-    process.env.BACKEND_PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 4000}`
+  const raw = (
+    process.env.MEDIA_PUBLIC_URL ??
+    process.env.BACKEND_PUBLIC_URL ??
+    process.env.FRONTEND_URL ??
+    `http://localhost:${process.env.PORT ?? 4000}`
   ).replace(/\/$/, "");
+  // Strip trailing /api so the file URL uses the clean /uploads/[filename] route
+  // served by the frontend — a URL WhatsApp/MSG91 servers can publicly fetch.
+  const base = raw.replace(/\/api$/, "");
   return `${base}/uploads/${filename}`;
 }
 
