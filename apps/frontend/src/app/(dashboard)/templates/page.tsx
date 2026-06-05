@@ -518,6 +518,7 @@ type Msg91Form = z.infer<typeof msg91Schema>;
 
 function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [headerFormat, setHeaderFormat] = useState<"NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT">("NONE");
   const [headerText, setHeaderText] = useState("");
   const [headerMediaUrl, setHeaderMediaUrl] = useState("");
@@ -592,9 +593,33 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
             <p>Template will be submitted to MSG91 and go through WhatsApp review — typically approved within minutes to 24 hours. Use <code className="bg-purple-100 px-1 rounded">{"{{1}}"}</code> <code className="bg-purple-100 px-1 rounded">{"{{2}}"}</code> for variables.</p>
           </div>
-          <div className="flex items-start gap-2 mb-5 p-3 bg-amber-50 rounded-xl text-xs text-amber-700">
-            <Info className="w-4 h-4 shrink-0 mt-0.5" />
-            <p><strong>Image/Video/Document headers</strong> are not supported via API. To create a media header template, use the <strong>MSG91 dashboard</strong>, then click <strong>Sync</strong> here to import it.</p>
+          <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800">
+            <button
+              type="button"
+              onClick={() => setGuideOpen((v) => !v)}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 font-medium text-left"
+            >
+              <span className="flex items-center gap-2">
+                <Info className="w-4 h-4 shrink-0" />
+                <span><strong>Image/Video/Document headers</strong> are not supported via this form — <span className="underline underline-offset-2">how to add one?</span></span>
+              </span>
+              <svg className={`w-3.5 h-3.5 shrink-0 transition-transform ${guideOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {guideOpen && (
+              <div className="px-3 pb-3 pt-1 border-t border-amber-200 space-y-2 leading-relaxed">
+                <p className="font-semibold text-amber-900 mb-1">Steps to create an image/video/document header template:</p>
+                <ol className="list-decimal list-inside space-y-1.5 text-amber-800">
+                  <li>Open <a href="https://control.msg91.com/signin" target="_blank" rel="noopener noreferrer" className="underline font-medium">control.msg91.com</a> and log in.</li>
+                  <li>Go to <strong>WhatsApp → Templates</strong> from the left sidebar.</li>
+                  <li>Click <strong>Create Template</strong> (top right).</li>
+                  <li>Fill in the template name, category, and language.</li>
+                  <li>Under <strong>Header</strong>, choose <em>Image</em>, <em>Video</em>, or <em>Document</em> and upload your sample file.</li>
+                  <li>Add your body text (use <code className="bg-amber-100 px-1 rounded">{"{{1}}"}</code> <code className="bg-amber-100 px-1 rounded">{"{{2}}"}</code> for variables).</li>
+                  <li>Submit for WhatsApp review and wait for approval (usually minutes–24 hrs).</li>
+                  <li>Once approved, come back here and click <strong>Sync Templates</strong> to import it into this app.</li>
+                </ol>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
