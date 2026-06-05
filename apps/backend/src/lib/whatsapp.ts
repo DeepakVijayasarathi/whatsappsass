@@ -284,3 +284,42 @@ export async function sendMsg91Interactive(
   const d = data as { request_id?: string; msgid?: string };
   return { provider: "msg91", wamid: d?.request_id ?? d?.msgid ?? null, raw: data };
 }
+
+// ── MSG91 standalone media message (image / video / document / audio) ─────────
+export type MediaMessageType = "image" | "video" | "document" | "audio";
+
+export interface MediaMessageOptions {
+  to: string;
+  mediaType: MediaMessageType;
+  url: string;
+  caption?: string;
+  filename?: string;
+}
+
+export async function sendMsg91Media(
+  opts: MediaMessageOptions,
+  config: ProviderConfig
+): Promise<SendResult> {
+  const { msg91AuthKey, msg91IntegratedNumber } = config;
+  if (!msg91AuthKey || !msg91IntegratedNumber) {
+    throw new Error("MSG91 credentials not configured");
+  }
+
+  const mediaPayload: Record<string, unknown> = { link: opts.url };
+  if (opts.caption) mediaPayload.caption = opts.caption;
+  if (opts.mediaType === "document" && opts.filename) mediaPayload.filename = opts.filename;
+
+  const { data: resData } = await axios.post(
+    "https://control.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/",
+    {
+      integrated_number: stripPlusForMsg91(msg91IntegratedNumber),
+      content_type:      opts.mediaType,
+      recipient_number:  stripPlusForMsg91(opts.to),
+      [opts.mediaType]:  mediaPayload,
+    },
+    { headers: { authkey: msg91AuthKey, "Content-Type": "application/json" } }
+  );
+
+  const dm = resData as { request_id?: string; msgid?: string };
+  return { provider: "msg91", wamid: dm?.request_id ?? dm?.msgid ?? null, raw: resData };
+}

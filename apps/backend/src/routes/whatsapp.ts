@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma";
 import { authenticate, checkPermission } from "../middleware/authenticate";
 import { requireWhatsappEnabled } from "../middleware/whatsappEnabled";
 import type { JwtPayload } from "../middleware/authenticate";
-import { sendWhatsAppTemplate, sendMsg91Session, sendMsg91Interactive } from "../lib/whatsapp";
+import { sendWhatsAppTemplate, sendMsg91Session, sendMsg91Interactive, sendMsg91Media } from "../lib/whatsapp";
 import type { ProviderConfig } from "../lib/whatsapp";
 import axios from "axios";
 import { fireWebhooks } from "../lib/webhookDispatcher";
@@ -1066,6 +1066,39 @@ export async function whatsappRoutes(app: FastifyInstance) {
       try {
         const result = await sendMsg91Interactive({ to: parsed.data.to, interactive: parsed.data.interactive }, config);
         return reply.send({ message: "Sent", provider: "msg91", wamid: result.wamid });
+      } catch (err) {
+        return reply.status(502).send({ error: (err instanceof Error && err.message) || "Send failed" });
+      }
+    }
+  );
+
+  // ── POST /whatsapp/send-media — standalone image/video/document/audio ───────
+  app.post(
+    "/send-media",
+    { preHandler: [checkPermission("can_send_whatsapp"), requireWhatsappEnabled] },
+    async (request, reply) => {
+      const user = request.user as JwtPayload;
+      const schema = z.object({
+        to:        z.string().min(7),
+        mediaType: z.enum(["image", "video", "document", "audio"]),
+        url:       z.string().url(),
+        caption:   z.string().max(1024).optional(),
+        filename:  z.string().max(255).optional(),
+      });
+      const parsed = schema.safeParse(request.body);
+      if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+
+      let config: ProviderConfig;
+      try { config = await getProviderConfig(user.workspaceId); }
+      catch (err) { return reply.status(422).send({ error: (err instanceof Error && err.message) || "Provider not configured" }); }
+
+      if (config.provider !== "msg91") {
+        return reply.status(422).send({ error: "Standalone media messages are only supported for MSG91 provider." });
+      }
+
+      try {
+        const result = await sendMsg91Media(parsed.data, config);
+        return reply.send({ message: "Media sent", provider: "msg91", wamid: result.wamid });
       } catch (err) {
         return reply.status(502).send({ error: (err instanceof Error && err.message) || "Send failed" });
       }

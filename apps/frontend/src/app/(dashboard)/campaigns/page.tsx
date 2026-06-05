@@ -182,10 +182,6 @@ function RunModal({ campaign, onClose, onDone }: {
 
   const run = async () => {
     if (selectedIds.size === 0) { toast.error("Select at least one contact"); return; }
-    if (templateHeaderFormat && ["IMAGE", "VIDEO", "DOCUMENT"].includes(templateHeaderFormat) && !headerMediaUrl.trim()) {
-      toast.error(`Provide a ${templateHeaderFormat.toLowerCase()} URL for the template header`);
-      return;
-    }
     for (const n of variables) {
       if (!varValues[n]?.trim()) { toast.error(`Fill in variable {{${n}}} before sending`); return; }
     }
@@ -301,6 +297,7 @@ function RunModal({ campaign, onClose, onDone }: {
               <div className="px-4 py-3 border-b border-purple-100 bg-purple-50 space-y-2">
                 <p className="text-xs font-semibold text-purple-800">
                   {templateHeaderFormat.charAt(0) + templateHeaderFormat.slice(1).toLowerCase()} Header
+                  <span className="text-purple-500 font-normal ml-1">(optional)</span>
                 </p>
                 <MediaHeaderInput
                   format={templateHeaderFormat as "IMAGE" | "VIDEO" | "DOCUMENT"}
