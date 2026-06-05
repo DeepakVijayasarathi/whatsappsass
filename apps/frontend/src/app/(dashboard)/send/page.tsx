@@ -7,6 +7,7 @@ import { z } from "zod";
 import toast from "react-hot-toast";
 import { api, getErrMsg } from "@/lib/api";
 import { Send, BookOpen, Loader2 } from "lucide-react";
+import MediaHeaderInput, { type MediaFormat } from "@/components/MediaHeaderInput";
 import TemplatePicker, { type Template } from "@/components/TemplatePicker";
 
 const schema = z.object({
@@ -24,19 +25,30 @@ function extractVariables(body: string | null): number[] {
   return nums;
 }
 
-// Build Meta components array from filled variable values
-function buildComponents(varValues: Record<number, string>): object[] {
+// Build Meta components array from filled variable values + optional media header
+function buildComponents(
+  varValues: Record<number, string>,
+  headerFormat?: string | null,
+  headerMediaUrl?: string,
+): object[] {
+  const result: object[] = [];
+  if (headerFormat && headerMediaUrl?.trim() && ["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat)) {
+    const t = headerFormat.toLowerCase();
+    result.push({ type: "header", parameters: [{ type: t, [t]: { link: headerMediaUrl.trim() } }] });
+  }
   const parameters = Object.entries(varValues)
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([, text]) => ({ type: "text", text }));
-  if (parameters.length === 0) return [];
-  return [{ type: "body", parameters }];
+  if (parameters.length > 0) result.push({ type: "body", parameters });
+  return result;
 }
+
 
 export default function SendPage() {
   const [showPicker, setShowPicker] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [varValues, setVarValues] = useState<Record<number, string>>({});
+  const [headerMediaUrl, setHeaderMediaUrl] = useState("");
   const [lookingUp, setLookingUp] = useState(false);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -85,11 +97,17 @@ export default function SendPage() {
     setValue("languageCode", t.language, { shouldValidate: true });
     setSelectedTemplate(t);
     setVarValues({});
+    setHeaderMediaUrl("");
     setShowPicker(false);
   };
 
+
   const onSubmit = async (data: FormData) => {
-    // Validate all variables are filled
+    const hf = selectedTemplate?.headerFormat;
+    if (hf && ["IMAGE", "VIDEO", "DOCUMENT"].includes(hf) && !headerMediaUrl.trim()) {
+      toast.error(`Provide a ${hf.toLowerCase()} URL for the template header`);
+      return;
+    }
     for (const n of variables) {
       if (!varValues[n]?.trim()) {
         toast.error(`Fill in variable {{${n}}} before sending`);
@@ -99,12 +117,13 @@ export default function SendPage() {
     try {
       await api.post("/whatsapp/send", {
         ...data,
-        components: buildComponents(varValues),
+        components: buildComponents(varValues, hf, headerMediaUrl),
       });
       toast.success("Message sent!");
       reset();
       setSelectedTemplate(null);
       setVarValues({});
+      setHeaderMediaUrl("");
     } catch (err: unknown) {
       toast.error(getErrMsg(err, "Failed to send message"));
     }
@@ -200,6 +219,19 @@ export default function SendPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Language code</label>
               <input {...register("languageCode")} className="input" placeholder="en_US" />
             </div>
+
+            {selectedTemplate?.headerFormat && ["IMAGE", "VIDEO", "DOCUMENT"].includes(selectedTemplate.headerFormat) && (
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  {selectedTemplate.headerFormat.charAt(0) + selectedTemplate.headerFormat.slice(1).toLowerCase()} Header
+                </label>
+                <MediaHeaderInput
+                  format={selectedTemplate.headerFormat as MediaFormat}
+                  value={headerMediaUrl}
+                  onChange={setHeaderMediaUrl}
+                />
+              </div>
+            )}
 
             {variables.length > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">

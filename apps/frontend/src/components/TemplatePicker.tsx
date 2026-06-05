@@ -13,6 +13,7 @@ export interface Template {
   language: string;
   category: string;
   body: string | null;
+  headerFormat: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null;
   provider: "meta" | "msg91";
 }
 

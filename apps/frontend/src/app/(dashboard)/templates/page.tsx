@@ -12,9 +12,9 @@ import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import Cookies from "js-cookie";
 import ConfirmModal from "@/components/ConfirmModal";
 import type { Template } from "@/components/TemplatePicker";
+import MediaHeaderInput, { type MediaFormat, ACCEPT_BY_FORMAT } from "@/components/MediaHeaderInput";
 
 const statusStyle: Record<string, { badge: string; icon: React.ElementType; label: string }> = {
   APPROVED: { badge: "bg-green-100 text-green-700",  icon: CheckCircle2, label: "Approved" },
@@ -56,166 +56,6 @@ const createSchema = z.object({
 });
 type CreateForm = z.infer<typeof createSchema>;
 
-// ── File upload helper ────────────────────────────────────────────────────────
-
-async function uploadTemplateMedia(file: File): Promise<string> {
-  const token = Cookies.get("token");
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const res = await fetch("/api/uploads/template-media", {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
-  });
-
-  const json = await res.json() as { url?: string; error?: string };
-  if (!res.ok) throw new Error(json.error ?? "Upload failed");
-  return json.url!;
-}
-
-const ACCEPT_BY_FORMAT = {
-  IMAGE:    "image/jpeg,image/png,image/webp,image/gif",
-  VIDEO:    "video/mp4,video/3gpp",
-  DOCUMENT: "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation",
-} as const;
-
-const SIZE_HINT_BY_FORMAT = {
-  IMAGE:    "JPEG, PNG, WEBP, GIF · max 5 MB",
-  VIDEO:    "MP4, 3GP · max 16 MB",
-  DOCUMENT: "PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX · max 100 MB",
-} as const;
-
-type MediaFormat = "IMAGE" | "VIDEO" | "DOCUMENT";
-type InputMode = "upload" | "url";
-
-/**
- * Dual-mode media input: "Upload File" tab and "Enter URL" tab.
- * Calls onChange(url) whenever a URL becomes available (either from
- * a successful upload or from the user typing/pasting a URL).
- */
-function MediaHeaderInput({
-  format,
-  value,
-  onChange,
-}: {
-  format: MediaFormat;
-  value: string;
-  onChange: (url: string) => void;
-}) {
-  const [mode, setMode] = useState<InputMode>("upload");
-  const [uploading, setUploading] = useState(false);
-  const [uploadedName, setUploadedName] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = async (file: File) => {
-    setUploading(true);
-    try {
-      const url = await uploadTemplateMedia(file);
-      onChange(url);
-      setUploadedName(file.name);
-      toast.success("File uploaded");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Upload failed";
-      toast.error(msg);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  };
-
-  const FormatIcon = format === "IMAGE" ? Image : format === "VIDEO" ? Video : File;
-
-  return (
-    <div className="space-y-2">
-      {/* Tab switcher */}
-      <div className="flex rounded-lg border border-gray-200 overflow-hidden w-fit text-[11px] font-semibold">
-        <button
-          type="button"
-          onClick={() => setMode("upload")}
-          className={clsx(
-            "px-3 py-1.5 flex items-center gap-1.5 transition-colors",
-            mode === "upload" ? "bg-brand text-white" : "bg-white text-gray-500 hover:bg-gray-50"
-          )}
-        >
-          <Upload className="w-3 h-3" /> Upload File
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("url")}
-          className={clsx(
-            "px-3 py-1.5 flex items-center gap-1.5 transition-colors border-l border-gray-200",
-            mode === "url" ? "bg-brand text-white" : "bg-white text-gray-500 hover:bg-gray-50"
-          )}
-        >
-          <Link2 className="w-3 h-3" /> Enter URL
-        </button>
-      </div>
-
-      {mode === "upload" ? (
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPT_BY_FORMAT[format]}
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-          />
-          <label
-            onDrop={handleDrop}
-            onDragOver={(e) => e.preventDefault()}
-            className={clsx(
-              "flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl px-4 py-5 cursor-pointer transition-colors",
-              uploading
-                ? "border-brand/40 bg-brand/5 cursor-wait"
-                : "border-gray-200 hover:border-brand/50 hover:bg-brand/5"
-            )}
-            onClick={() => !uploading && fileInputRef.current?.click()}
-          >
-            {uploading ? (
-              <>
-                <RefreshCw className="w-5 h-5 text-brand animate-spin" />
-                <span className="text-xs text-brand font-medium">Uploading…</span>
-              </>
-            ) : value && uploadedName ? (
-              <>
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                <span className="text-xs text-green-700 font-medium text-center break-all">{uploadedName}</span>
-                <span className="text-[10px] text-gray-400">Click to replace</span>
-              </>
-            ) : (
-              <>
-                <FormatIcon className="w-5 h-5 text-gray-400" />
-                <span className="text-xs text-gray-500 font-medium">Click to choose file</span>
-                <span className="text-[10px] text-gray-400 text-center">{SIZE_HINT_BY_FORMAT[format]}</span>
-                <span className="text-[10px] text-gray-400">or drag and drop</span>
-              </>
-            )}
-          </label>
-        </div>
-      ) : (
-        <div>
-          <input
-            value={value}
-            onChange={(e) => { setUploadedName(""); onChange(e.target.value); }}
-            className="input text-sm"
-            placeholder={`https://example.com/sample.${format === "IMAGE" ? "jpg" : format === "VIDEO" ? "mp4" : "pdf"}`}
-            type="url"
-          />
-        </div>
-      )}
-      <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 leading-relaxed">
-        <strong>Required.</strong> Meta/MSG91 must be able to fetch this URL to review your template.
-        Use a public CDN, S3, or Imgur link — <em>localhost</em> URLs will be rejected.
-      </p>
-    </div>
-  );
-}
 
 function TemplatePreviewModal({ template, onClose }: { template: Template; onClose: () => void }) {
   const style = statusStyle[template.status] ?? { badge: "bg-gray-100 text-gray-600", icon: AlertCircle, label: template.status };
@@ -593,34 +433,6 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
             <p>Template will be submitted to MSG91 and go through WhatsApp review — typically approved within minutes to 24 hours. Use <code className="bg-purple-100 px-1 rounded">{"{{1}}"}</code> <code className="bg-purple-100 px-1 rounded">{"{{2}}"}</code> for variables.</p>
           </div>
-          <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800">
-            <button
-              type="button"
-              onClick={() => setGuideOpen((v) => !v)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 font-medium text-left"
-            >
-              <span className="flex items-center gap-2">
-                <Info className="w-4 h-4 shrink-0" />
-                <span><strong>Image/Video/Document headers</strong> are not supported via this form — <span className="underline underline-offset-2">how to add one?</span></span>
-              </span>
-              <svg className={`w-3.5 h-3.5 shrink-0 transition-transform ${guideOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-            </button>
-            {guideOpen && (
-              <div className="px-3 pb-3 pt-1 border-t border-amber-200 space-y-2 leading-relaxed">
-                <p className="font-semibold text-amber-900 mb-1">Steps to create an image/video/document header template:</p>
-                <ol className="list-decimal list-inside space-y-1.5 text-amber-800">
-                  <li>Open <a href="https://control.msg91.com/signin" target="_blank" rel="noopener noreferrer" className="underline font-medium">control.msg91.com</a> and log in.</li>
-                  <li>Go to <strong>WhatsApp → Templates</strong> from the left sidebar.</li>
-                  <li>Click <strong>Create Template</strong> (top right).</li>
-                  <li>Fill in the template name, category, and language.</li>
-                  <li>Under <strong>Header</strong>, choose <em>Image</em>, <em>Video</em>, or <em>Document</em> and upload your sample file.</li>
-                  <li>Add your body text (use <code className="bg-amber-100 px-1 rounded">{"{{1}}"}</code> <code className="bg-amber-100 px-1 rounded">{"{{2}}"}</code> for variables).</li>
-                  <li>Submit for WhatsApp review and wait for approval (usually minutes–24 hrs).</li>
-                  <li>Once approved, come back here and click <strong>Sync Templates</strong> to import it into this app.</li>
-                </ol>
-              </div>
-            )}
-          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             <div>
@@ -650,17 +462,20 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
           <div className="mb-4 p-4 border border-gray-100 rounded-xl">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold text-gray-800">Header <span className="font-normal text-gray-400 ml-1">(optional)</span></p>
-              <div className="flex gap-1">
-                {(["NONE", "TEXT"] as const).map((f) => (
+              <div className="flex gap-1 flex-wrap">
+                {(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"] as const).map((f) => (
                   <button key={f} type="button" onClick={() => { setHeaderFormat(f); setHeaderMediaUrl(""); setHeaderText(""); }}
                     className={clsx("px-2 py-1 text-[11px] font-semibold rounded-lg transition-colors", headerFormat === f ? "bg-brand text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
-                    {f === "NONE" ? "None" : "Text"}
+                    {f === "NONE" ? "None" : f.charAt(0) + f.slice(1).toLowerCase()}
                   </button>
                 ))}
               </div>
             </div>
             {headerFormat === "TEXT" && (
               <input value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="input text-sm" placeholder="Header text (max 60 chars)" maxLength={60} />
+            )}
+            {(headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && (
+              <MediaHeaderInput format={headerFormat} value={headerMediaUrl} onChange={setHeaderMediaUrl} />
             )}
           </div>
 
@@ -787,7 +602,7 @@ export default function TemplatesPage() {
     setDeleting(true);
     try {
       if (provider === "msg91") {
-        await api.delete(`/templates/custom/${t.id}`);
+        await api.delete(`/templates/msg91/${encodeURIComponent(t.name)}`);
       } else {
         await api.delete(`/templates/${encodeURIComponent(t.name)}`);
       }

@@ -30,9 +30,14 @@ interface Props { open?: boolean; onClose?: () => void; }
 export default function Sidebar({ open = false, onClose }: Props) {
   const pathname  = usePathname();
   const router    = useRouter();
-  const user      = getUser();
-  const workspace = getWorkspace();
+  const [user, setUser]           = useState<ReturnType<typeof getUser>>(null);
+  const [workspace, setWorkspace] = useState<ReturnType<typeof getWorkspace>>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    setUser(getUser());
+    setWorkspace(getWorkspace());
+  }, []);
   const [activeSequenceCount, setActiveSequenceCount] = useState(0);
 
   useInboxNotifications(setUnreadCount);

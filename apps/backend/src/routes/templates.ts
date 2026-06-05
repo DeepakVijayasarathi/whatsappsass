@@ -41,6 +41,7 @@ export interface NormalizedTemplate {
   language: string;
   category: string;
   body: string | null;
+  headerFormat: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null;
   provider: "meta" | "msg91";
 }
 
@@ -59,16 +60,20 @@ async function fetchMetaTemplates(wabaId: string, accessToken: string): Promise<
     status: string;
     language: string;
     category: string;
-    components?: Array<{ type: string; text?: string }>;
-  }): NormalizedTemplate => ({
-    id: t.id,
-    name: t.name,
-    status: t.status,          // "APPROVED" | "PENDING" | "REJECTED" | "PAUSED" | "DISABLED"
-    language: t.language,
-    category: t.category,
-    body: t.components?.find((c) => c.type === "BODY")?.text ?? null,
-    provider: "meta",
-  }));
+    components?: Array<{ type: string; format?: string; text?: string }>;
+  }): NormalizedTemplate => {
+    const headerComp = t.components?.find((c) => c.type === "HEADER");
+    return {
+      id: t.id,
+      name: t.name,
+      status: t.status,          // "APPROVED" | "PENDING" | "REJECTED" | "PAUSED" | "DISABLED"
+      language: t.language,
+      category: t.category,
+      body: t.components?.find((c) => c.type === "BODY")?.text ?? null,
+      headerFormat: (headerComp?.format as "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null) ?? null,
+      provider: "meta",
+    };
+  });
 }
 
 // MSG91 template endpoint.
@@ -162,6 +167,15 @@ function normalizeMsg91Template(t: unknown): NormalizedTemplate {
   // Strip surrounding quotes that MSG91 sometimes wraps text in (e.g. '"Hii"' → 'Hii')
   const body = rawBody != null ? rawBody.replace(/^"(.*)"$/, "$1") : null;
 
+  // Header format: look in code[] and components[] for a HEADER entry with a format field
+  const headerFromCode = codeArr.find((c) => String(c.type ?? "").toUpperCase() === "HEADER");
+  const headerComp    = components.find((c) => String(c.type ?? "").toUpperCase() === "HEADER");
+  const rawHeaderFormat =
+    headerFromCode?.format ?? headerFromCode?.header_type ??
+    headerComp?.format    ?? headerComp?.header_type      ?? null;
+  const headerFormat: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | null =
+    rawHeaderFormat ? (String(rawHeaderFormat).toUpperCase() as "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT") : null;
+
   // ID: languages[0].id is the real template variant ID
   const apiId = lang0.id ?? item.template_id ?? item.id ?? item._id ?? item.templateId;
   const stableId = apiId != null
@@ -179,12 +193,13 @@ function normalizeMsg91Template(t: unknown): NormalizedTemplate {
     item.status;
 
   return {
-    id:       stableId,
-    name:     String(item.template_name ?? item.name ?? ""),
-    status:   normalizeMsg91Status(rawStatus),
-    language: String(lang0.language ?? item.language ?? item.lang ?? item.template_language ?? "en"),
-    category: String(item.category_name ?? item.category ?? item.template_category ?? "UTILITY"),
+    id:           stableId,
+    name:         String(item.template_name ?? item.name ?? ""),
+    status:       normalizeMsg91Status(rawStatus),
+    language:     String(lang0.language ?? item.language ?? item.lang ?? item.template_language ?? "en"),
+    category:     String(item.category_name ?? item.category ?? item.template_category ?? "UTILITY"),
     body,
+    headerFormat,
     provider: "msg91",
   };
 }
@@ -349,50 +364,11 @@ export async function templateRoutes(app: FastifyInstance) {
         error: "MSG91 Integrated Number required. Configure it in Settings → WhatsApp Provider.",
       });
     }
-    // Always fetch DB custom templates (includes PENDING submitted via our UI)
-    const dbTemplates = await prisma.customTemplate.findMany({
-      where: { workspaceId: user.workspaceId },
-      orderBy: { createdAt: "desc" },
-    });
-
     try {
-      const apiTemplates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
-
-      // Build a lookup of DB entries by name so we can fill in missing status/body
-      const dbByName = new Map(dbTemplates.map((t) => [t.name, t]));
-
-      // API is authoritative, but if it returns UNKNOWN status or null body,
-      // fall back to the DB entry for those fields (which we set on creation)
-      const merged: NormalizedTemplate[] = apiTemplates.map((t) => {
-        const db = dbByName.get(t.name);
-        return {
-          ...t,
-          status: t.status === "UNKNOWN" && db?.status ? db.status : t.status,
-          body:   t.body ?? db?.body ?? null,
-        };
-      });
-
-      // Append DB entries whose name is not in the API response (still PENDING / not yet approved)
-      const apiNames = new Set(apiTemplates.map((t) => t.name));
-      const pendingFromDb: NormalizedTemplate[] = dbTemplates
-        .filter((t) => !apiNames.has(t.name))
-        .map((t) => ({
-          id: t.id, name: t.name, status: t.status,
-          language: t.language, category: t.category, body: t.body, provider: "msg91" as const,
-        }));
-
-      const templates = [...merged, ...pendingFromDb];
+      const templates = await fetchMsg91Templates(workspace.msg91AuthKey, workspace.msg91IntegratedNumber);
       return reply.send({ templates, provider: "msg91", total: templates.length });
     } catch (err: unknown) {
       const msg = (err instanceof Error && err.message) || "Failed to fetch templates from MSG91";
-      console.warn("[templates] MSG91 API fetch failed, falling back to custom DB templates:", msg);
-      if (dbTemplates.length > 0) {
-        const templates: NormalizedTemplate[] = dbTemplates.map((t) => ({
-          id: t.id, name: t.name, status: t.status,
-          language: t.language, category: t.category, body: t.body, provider: "msg91" as const,
-        }));
-        return reply.send({ templates, provider: "msg91", total: templates.length });
-      }
       return reply.status(502).send({ error: msg });
     }
   });
@@ -615,14 +591,6 @@ export async function templateRoutes(app: FastifyInstance) {
 
     const { name, category, language, body, header, footer, buttons } = parsed.data;
 
-    // Reject early if the name already exists in our DB (avoids wasting a MSG91 API call)
-    const existing = await prisma.customTemplate.findUnique({
-      where: { workspaceId_name: { workspaceId: user.workspaceId, name } },
-    });
-    if (existing) {
-      return reply.status(409).send({ error: `Template "${name}" already exists. Choose a different name.` });
-    }
-
     // MSG91 (and Meta behind it) require an example for every media header component.
     if (header && header.format !== "TEXT") {
       if (!header.mediaUrl) {
@@ -720,16 +688,46 @@ export async function templateRoutes(app: FastifyInstance) {
       return reply.status(502).send({ error: msg });
     }
 
-    // Save locally as PENDING so it appears in the list immediately while awaiting approval
-    await prisma.customTemplate.upsert({
-      where:  { workspaceId_name: { workspaceId: user.workspaceId, name } },
-      create: { workspaceId: user.workspaceId, name, category, language, body, status: "PENDING" },
-      update: { status: "PENDING", category, language, body },
-    });
-
     return reply.status(201).send({
       message: "Template submitted to MSG91 for WhatsApp review. It will show as Pending until approved.",
     });
+  });
+
+  // ── DELETE /templates/msg91/:name — delete MSG91 template by name (no DB) ────
+  app.delete("/msg91/:name", { preHandler: [requireOwnerOrAdmin] }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+    const { name } = request.params as { name: string };
+
+    const workspace = decryptWsSecrets(await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { msg91AuthKey: true, msg91IntegratedNumber: true },
+    }));
+
+    if (!workspace?.msg91AuthKey || !workspace.msg91IntegratedNumber) {
+      return reply.status(422).send({ error: "MSG91 credentials not configured" });
+    }
+
+    try {
+      await axios.delete(
+        "https://control.msg91.com/api/v5/whatsapp/client-panel-template/",
+        {
+          params: {
+            integrated_number: workspace.msg91IntegratedNumber.replace(/^\+/, ""),
+            template_name:     name,
+          },
+          headers: { authkey: workspace.msg91AuthKey, "Content-Type": "application/json" },
+        }
+      );
+    } catch (err: unknown) {
+      const d = (err as { response?: { data?: Record<string, unknown>; status?: number } }).response?.data;
+      const msg =
+        (typeof d?.message === "string" && d.message) ||
+        (typeof d?.error   === "string" && d.error)   ||
+        `MSG91 delete error (HTTP ${(err as { response?: { status?: number } }).response?.status ?? "network"})`;
+      return reply.status(502).send({ error: msg });
+    }
+
+    return reply.send({ message: `Template "${name}" deleted from MSG91` });
   });
 
   // ── POST /templates — create a new template (Meta only) ─────────────────────

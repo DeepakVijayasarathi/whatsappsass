@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
 import { Plus, Megaphone, Play, Pause, CheckCircle2, Trash2, BarChart2, BookOpen, MessageCircle, Clock, Copy, Search, Download } from "lucide-react";
+import MediaHeaderInput from "@/components/MediaHeaderInput";
 import { SkeletonTableRow } from "@/components/Skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -53,9 +54,19 @@ function extractVariables(body: string | null): number[] {
   return nums;
 }
 
-function buildComponents(varValues: Record<number, string>): object[] {
+function buildComponents(
+  varValues: Record<number, string>,
+  headerFormat?: string | null,
+  headerMediaUrl?: string,
+): object[] {
+  const result: object[] = [];
+  if (headerFormat && headerMediaUrl?.trim() && ["IMAGE", "VIDEO", "DOCUMENT"].includes(headerFormat)) {
+    const t = headerFormat.toLowerCase();
+    result.push({ type: "header", parameters: [{ type: t, [t]: { link: headerMediaUrl.trim() } }] });
+  }
   const params = Object.entries(varValues).sort(([a], [b]) => Number(a) - Number(b)).map(([, text]) => ({ type: "text", text }));
-  return params.length ? [{ type: "body", parameters: params }] : [];
+  if (params.length) result.push({ type: "body", parameters: params });
+  return result;
 }
 
 const LEAD_STATUSES = ["new", "prospect", "qualified", "customer", "churned"];
@@ -78,6 +89,8 @@ function RunModal({ campaign, onClose, onDone }: {
   >(null);
   const [varValues, setVarValues] = useState<Record<number, string>>({});
   const [templateBody, setTemplateBody] = useState<string | null>(campaign.templateBody ?? null);
+  const [templateHeaderFormat, setTemplateHeaderFormat] = useState<string | null>(null);
+  const [headerMediaUrl, setHeaderMediaUrl] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
   const [segments, setSegments] = useState<{ id: string; name: string; count: number }[]>([]);
   const [activeSegment, setActiveSegment] = useState("");
@@ -86,11 +99,13 @@ function RunModal({ campaign, onClose, onDone }: {
   useEffect(() => {
     setTemplateBody(campaign.templateBody ?? null);
     setVarValues({});
-    if (campaign.templateBody) return;
+    setTemplateHeaderFormat(null);
+    setHeaderMediaUrl("");
     api.get("/templates").then((r) => {
-      const t = (r.data.templates as Array<{ name: string; body: string | null }>)
+      const t = (r.data.templates as Array<{ name: string; body: string | null; headerFormat: string | null }>)
         .find((tmpl) => tmpl.name === campaign.template);
       if (t?.body) setTemplateBody(t.body);
+      if (t?.headerFormat) setTemplateHeaderFormat(t.headerFormat);
     }).catch(() => {});
   }, [campaign.template, campaign.templateBody]);
 
@@ -167,6 +182,10 @@ function RunModal({ campaign, onClose, onDone }: {
 
   const run = async () => {
     if (selectedIds.size === 0) { toast.error("Select at least one contact"); return; }
+    if (templateHeaderFormat && ["IMAGE", "VIDEO", "DOCUMENT"].includes(templateHeaderFormat) && !headerMediaUrl.trim()) {
+      toast.error(`Provide a ${templateHeaderFormat.toLowerCase()} URL for the template header`);
+      return;
+    }
     for (const n of variables) {
       if (!varValues[n]?.trim()) { toast.error(`Fill in variable {{${n}}} before sending`); return; }
     }
@@ -181,7 +200,7 @@ function RunModal({ campaign, onClose, onDone }: {
         contactIds: Array.from(selectedIds),
         templateName: campaign.template,
         languageCode: campaign.languageCode || "en_US",
-        components: buildComponents(varValues),
+        components: buildComponents(varValues, templateHeaderFormat, headerMediaUrl),
       });
       if (res.status === 202) {
         // Background send queued — there's no per-status summary yet.
@@ -277,6 +296,19 @@ function RunModal({ campaign, onClose, onDone }: {
                 {selectedIds.size === filtered.length ? "Deselect all" : "Select all"}
               </button>
             </div>
+
+            {templateHeaderFormat && ["IMAGE", "VIDEO", "DOCUMENT"].includes(templateHeaderFormat) && (
+              <div className="px-4 py-3 border-b border-purple-100 bg-purple-50 space-y-2">
+                <p className="text-xs font-semibold text-purple-800">
+                  {templateHeaderFormat.charAt(0) + templateHeaderFormat.slice(1).toLowerCase()} Header
+                </p>
+                <MediaHeaderInput
+                  format={templateHeaderFormat as "IMAGE" | "VIDEO" | "DOCUMENT"}
+                  value={headerMediaUrl}
+                  onChange={setHeaderMediaUrl}
+                />
+              </div>
+            )}
 
             {variables.length > 0 && (
               <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 space-y-2">

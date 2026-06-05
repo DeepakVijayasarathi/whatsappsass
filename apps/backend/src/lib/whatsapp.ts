@@ -99,10 +99,27 @@ async function sendViaMsg91(
   // { body_1: { type, value }, button_1: { ... } } keyed object.
   // For simple sends with no variable components this stays empty ({}).
   if (opts.components && opts.components.length > 0) {
+    let headerIdx = 1;
     let bodyIdx = 1;
     let buttonIdx = 1;
     for (const comp of opts.components as Array<Record<string, unknown>>) {
-      if (comp.type === "body") {
+      if (comp.type === "header") {
+        // Media or text header: { type: "image"|"video"|"document"|"audio"|"text", value: url|text }
+        const params = (comp.parameters as Array<Record<string, unknown>>) ?? [];
+        for (const p of params) {
+          const mediaType = (p.type as string) ?? "text";
+          let value = "";
+          if (mediaType === "text") {
+            value = (p.text as string) ?? "";
+          } else {
+            // image → p.image.link, video → p.video.link, document → p.document.link, etc.
+            const mediaObj = p[mediaType] as Record<string, unknown> | undefined;
+            value = (mediaObj?.link as string) ?? "";
+          }
+          toAndComponents.components[`header_${headerIdx}`] = { type: mediaType, value };
+          headerIdx++;
+        }
+      } else if (comp.type === "body") {
         const params = (comp.parameters as Array<Record<string, unknown>>) ?? [];
         for (const p of params) {
           toAndComponents.components[`body_${bodyIdx}`] = {
