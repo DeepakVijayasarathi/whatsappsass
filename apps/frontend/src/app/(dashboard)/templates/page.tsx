@@ -622,10 +622,10 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold text-gray-800">Header <span className="font-normal text-gray-400 ml-1">(optional)</span></p>
               <div className="flex gap-1">
-                {(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"] as const).map((f) => (
+                {(["NONE", "TEXT"] as const).map((f) => (
                   <button key={f} type="button" onClick={() => { setHeaderFormat(f); setHeaderMediaUrl(""); setHeaderText(""); }}
                     className={clsx("px-2 py-1 text-[11px] font-semibold rounded-lg transition-colors", headerFormat === f ? "bg-brand text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
-                    {f === "NONE" ? "None" : f.charAt(0) + f.slice(1).toLowerCase()}
+                    {f === "NONE" ? "None" : "Text"}
                   </button>
                 ))}
               </div>
@@ -633,13 +633,10 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
             {headerFormat === "TEXT" && (
               <input value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="input text-sm" placeholder="Header text (max 60 chars)" maxLength={60} />
             )}
-            {(headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && (
-              <MediaHeaderInput
-                format={headerFormat}
-                value={headerMediaUrl}
-                onChange={setHeaderMediaUrl}
-              />
-            )}
+            <div className="flex items-start gap-2 mt-2 p-2.5 bg-amber-50 rounded-lg text-xs text-amber-700">
+              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <p>Image/Video/Document headers must be created via the <strong>MSG91 dashboard</strong> — their API does not support media header uploads. After creating there, click <strong>Sync</strong> to import it here.</p>
+            </div>
           </div>
 
           {/* Body + Preview */}
