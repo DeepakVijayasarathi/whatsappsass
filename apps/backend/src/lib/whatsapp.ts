@@ -156,6 +156,7 @@ async function sendViaMsg91(
           template: {
             name: opts.templateName,
             language: { code: opts.languageCode, policy: "deterministic" },
+            namespace: null,
             to_and_components: [toAndComponents],
           },
         },
