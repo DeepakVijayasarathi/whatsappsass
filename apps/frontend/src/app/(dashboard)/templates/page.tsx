@@ -396,10 +396,10 @@ function CreateTemplatePanel({ onCreated }: { onCreated: () => void }) {
                 Body text <span className="text-gray-400 font-normal">({bodyVal.length}/1024)</span>
               </label>
               <textarea {...register("body")} rows={5} className="input text-sm resize-none"
-                placeholder={"Hello {{1}},\n\nYour order {{2}} has been confirmed."} />
+                placeholder={"Hello {{1}}, your order {{2}} has been confirmed. Thank you for shopping with us!"} />
               {errors.body && <p className="text-red-500 text-xs mt-1">{errors.body.message}</p>}
               <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-1.5 leading-relaxed">
-                Use a real message (min 20 chars). Meta rejects short or generic content like &quot;test&quot;.
+                Use a real, meaningful message (min 20 chars). WhatsApp rejects random characters or placeholder text.
               </p>
             </div>
             <div>
@@ -646,10 +646,10 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Body text <span className="text-gray-400 font-normal">({bodyVal.length}/1024)</span></label>
-              <textarea {...register("body")} rows={5} className="input text-sm resize-none" placeholder={"Hello {{1}},\n\nYour order {{2}} has been confirmed."} />
+              <textarea {...register("body")} rows={5} className="input text-sm resize-none" placeholder={"Hello {{1}}, your order {{2}} has been confirmed. Thank you for shopping with us!"} />
               {errors.body && <p className="text-red-500 text-xs mt-1">{errors.body.message}</p>}
               <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-1.5 leading-relaxed">
-                Use a real message (min 20 chars). WhatsApp rejects short or generic content like &quot;test&quot;.
+                Use a real, meaningful message (min 20 chars). WhatsApp rejects random characters or placeholder text.
               </p>
             </div>
             <div>
