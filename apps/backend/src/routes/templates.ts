@@ -646,10 +646,7 @@ export async function templateRoutes(app: FastifyInstance) {
         hComp.text = header.text;
         hComp.example = { header_text: [header.text] };
       } else if (header.format !== "TEXT" && header.mediaUrl) {
-        // MSG91 does not use Meta's example.header_url nested format.
-        // Pass the media URL as a flat example string — the format MSG91's
-        // client-panel-template API actually accepts for media header samples.
-        hComp.example = header.mediaUrl;
+        hComp.example = { header_url: [header.mediaUrl] };
       }
       components.push(hComp);
     }
@@ -700,11 +697,12 @@ export async function templateRoutes(app: FastifyInstance) {
       // Log the full raw response so we can see the real WhatsApp error
       console.error("[templates] MSG91 create error — HTTP", axErr.response?.status, "— full body:", JSON.stringify(d ?? {}));
 
-      // Surface nested error strings (MSG91 wraps WhatsApp errors in various shapes)
+      // Surface nested error strings (MSG91 wraps WhatsApp errors in various shapes).
+      // Check d.errors first — it carries the real WhatsApp error code/message.
       const rawMsg =
+        (typeof d?.errors  === "string" && d.errors)  ||
         (typeof d?.message === "string" && d.message) ||
         (typeof d?.error   === "string" && d.error)   ||
-        (typeof d?.errors  === "string" && d.errors)  ||
         (typeof (d?.data as Record<string,unknown>)?.message === "string" && (d?.data as Record<string,unknown>).message as string) ||
         (typeof (d?.error as Record<string,unknown>)?.message === "string" && (d?.error as Record<string,unknown>).message as string) ||
         (d ? JSON.stringify(d) : null) ||
