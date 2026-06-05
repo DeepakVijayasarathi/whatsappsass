@@ -588,9 +588,13 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
 
       {open && (
         <form onSubmit={handleSubmit(onSubmit)} className="mt-5 pt-5 border-t border-gray-100">
-          <div className="flex items-start gap-2 mb-5 p-3 bg-purple-50 rounded-xl text-xs text-purple-700">
+          <div className="flex items-start gap-2 mb-3 p-3 bg-purple-50 rounded-xl text-xs text-purple-700">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
             <p>Template will be submitted to MSG91 and go through WhatsApp review — typically approved within minutes to 24 hours. Use <code className="bg-purple-100 px-1 rounded">{"{{1}}"}</code> <code className="bg-purple-100 px-1 rounded">{"{{2}}"}</code> for variables.</p>
+          </div>
+          <div className="flex items-start gap-2 mb-5 p-3 bg-amber-50 rounded-xl text-xs text-amber-700">
+            <Info className="w-4 h-4 shrink-0 mt-0.5" />
+            <p><strong>Image/Video/Document headers</strong> are not supported via API. To create a media header template, use the <strong>MSG91 dashboard</strong>, then click <strong>Sync</strong> here to import it.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
@@ -633,10 +637,6 @@ function CreateMsg91TemplatePanel({ onCreated }: { onCreated: () => void }) {
             {headerFormat === "TEXT" && (
               <input value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="input text-sm" placeholder="Header text (max 60 chars)" maxLength={60} />
             )}
-            <div className="flex items-start gap-2 mt-2 p-2.5 bg-amber-50 rounded-lg text-xs text-amber-700">
-              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <p>Image/Video/Document headers must be created via the <strong>MSG91 dashboard</strong> — their API does not support media header uploads. After creating there, click <strong>Sync</strong> to import it here.</p>
-            </div>
           </div>
 
           {/* Body + Preview */}
